@@ -2,6 +2,9 @@ import {html} from 'lit'
 
 import '@material/mwc-textfield'
 import '@material/mwc-select'
+import '@material/web/select/outlined-select.js'
+import '@material/web/select/select-option.js'
+import '@material/web/textfield/outlined-text-field.js'
 
 import '../components/GrampsjsEditor.js'
 import '../components/GrampsjsFormString.js'
@@ -9,6 +12,7 @@ import '../components/GrampsjsFormPrivate.js'
 import {GrampsjsViewNewSource} from './GrampsjsViewNewSource.js'
 
 import {makeHandle, fireEvent} from '../util.js'
+import {ATTR, srcAttribute} from '../tasks.js'
 
 const dataDefault = {
   _class: 'Source',
@@ -19,6 +23,7 @@ export class GrampsjsViewNewTask extends GrampsjsViewNewSource {
   static get properties() {
     return {
       _todoTagHandle: {type: String},
+      _members: {type: Array},
     }
   }
 
@@ -29,6 +34,7 @@ export class GrampsjsViewNewTask extends GrampsjsViewNewSource {
     this.itemPath = 'task'
     this.objClass = 'Source'
     this._todoTagHandle = ''
+    this._members = []
   }
 
   renderContent() {
@@ -73,6 +79,9 @@ export class GrampsjsViewNewTask extends GrampsjsViewNewSource {
         </mwc-select>
       </p>
 
+      <h4 class="label">${this._('Assignee')}</h4>
+      <p>${this._renderAssignee()}</p>
+
       ${this._renderTagsForm()}
 
       <div class="spacer"></div>
@@ -84,6 +93,55 @@ export class GrampsjsViewNewTask extends GrampsjsViewNewSource {
       ${this.renderButtons()}
     `
     // <pre>${JSON.stringify(this.data, null, 2)}</pre>
+  }
+
+  _renderAssignee() {
+    if (this.appState.permissions.canManageUsers && this._members.length > 0) {
+      return html`
+        <md-outlined-select @change="${this.handleAssignee}">
+          <md-select-option value="" selected>
+            <div slot="headline">${this._('Unassigned')}</div>
+          </md-select-option>
+          ${this._members.map(
+            name => html`
+              <md-select-option value="${name}">
+                <div slot="headline">${name}</div>
+              </md-select-option>
+            `
+          )}
+        </md-outlined-select>
+      `
+    }
+    return html`
+      <md-outlined-text-field
+        style="width:100%;"
+        @input="${this.handleAssignee}"
+      ></md-outlined-text-field>
+    `
+  }
+
+  handleAssignee(e) {
+    const value = (e.target.value || '').trim()
+    this.data = {
+      ...this.data,
+      attribute_list: [
+        ...this.data.attribute_list.filter(att => att.type !== ATTR.assignee),
+        ...(value ? [srcAttribute(ATTR.assignee, value)] : []),
+      ],
+    }
+  }
+
+  async _fetchMembers() {
+    if (!this.appState.permissions.canManageUsers) {
+      return
+    }
+    const result = await this.appState.apiGet('/api/users/')
+    if ('data' in result && Array.isArray(result.data)) {
+      this._members = result.data
+        .map(user => user.full_name || user.name)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+    }
   }
 
   handleName(e) {
@@ -196,6 +254,7 @@ export class GrampsjsViewNewTask extends GrampsjsViewNewSource {
 
   firstUpdated() {
     this._fetchTodoTagHandle()
+    this._fetchMembers()
   }
 
   async _submit() {
