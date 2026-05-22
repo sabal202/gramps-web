@@ -17,6 +17,7 @@ import {
   normalizeRect,
   isValidRect,
   apiVersionAtLeast,
+  buildMediaRefList,
 } from '../../src/util.js'
 
 // Helpers
@@ -444,5 +445,33 @@ describe('apiVersionAtLeast', () => {
 
   it('defaults patch to 0 when not specified', () => {
     expect(apiVersionAtLeast(dbInfo('3.9.0'), 3, 9)).to.be.true
+  })
+})
+
+describe('buildMediaRefList', () => {
+  it('wraps each handle in a MediaRef object', () => {
+    expect(buildMediaRefList(['h1', 'h2'])).to.deep.equal([
+      {_class: 'MediaRef', ref: 'h1'},
+      {_class: 'MediaRef', ref: 'h2'},
+    ])
+  })
+
+  it('preserves order', () => {
+    expect(buildMediaRefList(['b', 'a']).map(r => r.ref)).to.deep.equal([
+      'b',
+      'a',
+    ])
+  })
+
+  it('skips falsy handles', () => {
+    expect(buildMediaRefList(['h1', '', null, undefined, 'h2'])).to.deep.equal([
+      {_class: 'MediaRef', ref: 'h1'},
+      {_class: 'MediaRef', ref: 'h2'},
+    ])
+  })
+
+  it('returns an empty array for empty or missing input', () => {
+    expect(buildMediaRefList([])).to.deep.equal([])
+    expect(buildMediaRefList(undefined)).to.deep.equal([])
   })
 })

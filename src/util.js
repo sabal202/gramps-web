@@ -549,6 +549,12 @@ export function makeHandle() {
   return uuidv4()
 }
 
+// Build a list of MediaRef objects from media handles, e.g. for a new
+// object's media_list. Falsy handles are skipped.
+export function buildMediaRefList(handles) {
+  return (handles || []).filter(Boolean).map(ref => ({_class: 'MediaRef', ref}))
+}
+
 // Thin wrapper around dateToSdn for Gregorian dates.
 export function getSortval(year, month, day) {
   return dateToSdn(CALENDARS.GREGORIAN, year, month, day)
