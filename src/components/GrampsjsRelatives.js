@@ -244,11 +244,11 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
           margin-left: 6px;
         }
 
-        .inlaw-section h3 {
-          border-top: 1px solid
-            var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.12));
-          padding-top: 12px;
-          margin-top: 28px;
+        /* Relationship text for in-law people: muted + italic.           */
+        /* Applied to the <span slot="supporting-text"> inside the row.  */
+        .inlaw-rel {
+          opacity: 0.6;
+          font-style: italic;
         }
 
         .empty-message,
@@ -370,9 +370,6 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
       }))
       .filter(group => group.filteredPeople.length > 0)
 
-    const bloodGroups = visibleGroups.filter(g => g.kind !== 'inlaw')
-    const inlawGroups = visibleGroups.filter(g => g.kind === 'inlaw')
-
     const hasAny = this.groups.some(g => g.people.length > 0)
 
     const tocEntries = buildToc(visibleGroups, k => this._categoryLabel(k))
@@ -419,11 +416,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
 
       <div class="relatives-layout">
         <div class="relatives-content">
-          ${bloodGroups.map(group => this._renderGroup(group))}
-          ${inlawGroups.map(
-            group =>
-              html`<div class="inlaw-section">${this._renderGroup(group)}</div>`
-          )}
+          ${visibleGroups.map(group => this._renderGroup(group))}
         </div>
 
         ${tocEntries.length > 1
@@ -478,7 +471,9 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
                 profile: person,
                 extPerson: person,
                 supportingText: person.relationship
-                  ? html`<span slot="supporting-text"
+                  ? html`<span
+                      slot="supporting-text"
+                      class="${person.kind === 'inlaw' ? 'inlaw-rel' : ''}"
                       >${person.relationship}</span
                     >`
                   : '',
