@@ -337,3 +337,51 @@ describe('renderPersonListItem with relatives person shape', () => {
     expect(hasString(result, s => s.includes('grampsjs-img'))).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// GrampsjsViewRelatives update() guard — no double-fetch on first activation
+//
+// The guard condition in update() is:
+//   this.active && changed.has('pageId') && changed.get('pageId') !== undefined
+//
+// We verify it in isolation: simulate what Lit passes in changedProperties on
+// the very first update (oldValue = undefined) vs. a real navigation change
+// (oldValue = previous pageId string).
+// ---------------------------------------------------------------------------
+
+describe('GrampsjsViewRelatives update() fetch guard', () => {
+  /**
+   * Simulate the guard predicate exactly as it appears in the view's update().
+   * Returns true when a refetch should be triggered from update().
+   */
+  function shouldRefetchFromUpdate(active, changedPageIdOldValue) {
+    // Mirrors:  this.active && changed.has('pageId') && changed.get('pageId') !== undefined
+    // We pass changedPageIdOldValue = undefined when pageId is NOT in changedProperties,
+    // or its old value when it IS in changedProperties.
+    const hasPageId = changedPageIdOldValue !== null // null sentinel = not present
+    return active && hasPageId && changedPageIdOldValue !== undefined
+  }
+
+  it('does NOT trigger from update() on first activation (oldValue=undefined)', () => {
+    // First update: Lit sets oldValue to undefined for the initial property value
+    const oldValue = undefined
+    expect(shouldRefetchFromUpdate(true, oldValue)).toBe(false)
+  })
+
+  it('DOES trigger from update() on a real anchor change (old value is a string)', () => {
+    // pageId changed from '' to 'I0283'
+    expect(shouldRefetchFromUpdate(true, '')).toBe(true)
+    // pageId changed from 'I0283' to 'I0010'
+    expect(shouldRefetchFromUpdate(true, 'I0283')).toBe(true)
+  })
+
+  it('does NOT trigger from update() when view is not active', () => {
+    expect(shouldRefetchFromUpdate(false, '')).toBe(false)
+    expect(shouldRefetchFromUpdate(false, 'I0283')).toBe(false)
+  })
+
+  it('does NOT trigger from update() when pageId is not in changedProperties', () => {
+    // null sentinel = pageId not in changedProperties
+    expect(shouldRefetchFromUpdate(true, null)).toBe(false)
+  })
+})

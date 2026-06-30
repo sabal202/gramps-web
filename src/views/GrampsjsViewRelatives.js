@@ -71,7 +71,15 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
 
   update(changed) {
     super.update(changed)
-    if (this.active && changed.has('pageId')) {
+    // Guard: only refetch on a genuine anchor change (old value defined),
+    // not on the initial update where pageId appears in changedProperties with
+    // oldValue=undefined even though nothing actually changed.  The initial
+    // fetch is owned by firstUpdated().
+    if (
+      this.active &&
+      changed.has('pageId') &&
+      changed.get('pageId') !== undefined
+    ) {
       this._fetchData()
     }
   }
