@@ -37,9 +37,20 @@ export const getTree = (
     return {}
   }
   const person = getPerson(data, handle)
+  const surnameListA = person?.primary_name?.surname_list ?? []
   const tree = {
     name_given: person?.profile ? person?.profile?.name_given : null,
     name_surname: person?.profile ? person?.profile?.name_surname : null,
+    name_patronymic:
+      surnameListA
+        .filter(s => s.origintype === 'Patronymic')
+        .map(s => s.surname)
+        .join(' ') || null,
+    name_family_surname:
+      surnameListA
+        .filter(s => s.origintype !== 'Patronymic')
+        .map(s => s.surname)
+        .join(' ') || null,
     id: label,
     depth: i,
     person,
@@ -70,9 +81,20 @@ export const getDescendantTree = (data, handle, depth, i = 0, label = 'p') => {
     return {}
   }
   const person = getPerson(data, handle)
+  const surnameListB = person?.primary_name?.surname_list ?? []
   const tree = {
     name_given: person?.profile ? person?.profile?.name_given : null,
     name_surname: person?.profile ? person?.profile?.name_surname : null,
+    name_patronymic:
+      surnameListB
+        .filter(s => s.origintype === 'Patronymic')
+        .map(s => s.surname)
+        .join(' ') || null,
+    name_family_surname:
+      surnameListB
+        .filter(s => s.origintype !== 'Patronymic')
+        .map(s => s.surname)
+        .join(' ') || null,
     id: label,
     depth: i,
     person,

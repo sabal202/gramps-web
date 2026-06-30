@@ -248,6 +248,14 @@ function TreeChartCore(
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
           ? `${d.data.name_surname || '…'},`
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.givenPatronymicThenSurname
+          ? [d.data.name_given, d.data.name_patronymic]
+              .filter(Boolean)
+              .join(' ') || '…'
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.surnameThenGivenPatronymic
+          ? d.data.name_family_surname || d.data.name_surname || '…'
           : d.data.name_given || '…',
         textWidth(d)
       )
@@ -270,6 +278,14 @@ function TreeChartCore(
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
           ? d.data.name_given || '…'
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.givenPatronymicThenSurname
+          ? d.data.name_family_surname || d.data.name_surname || '…'
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.surnameThenGivenPatronymic
+          ? [d.data.name_given, d.data.name_patronymic]
+              .filter(Boolean)
+              .join(' ') || '…'
           : d.data.name_surname || '…',
         textWidth(d)
       )

@@ -214,6 +214,8 @@
     "Name Display Format": "Формат отображения имени",
     "Surname First": "Сначала фамилия",
     "Given Name First": "Сначала имя",
+    "Given Patronymic / Surname": "Имя Отчество / Фамилия",
+    "Surname / Given Patronymic": "Фамилия / Имя Отчество",
     "Toggle person outlines": "Рамки вокруг людей",
     "Log out": "Выйти",
     "in": "в",
