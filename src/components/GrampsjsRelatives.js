@@ -160,8 +160,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
         }
 
         .empty-message,
-        .error-message,
-        .loading-message {
+        .error-message {
           margin: 32px 0;
           opacity: 0.6;
           font-style: italic;
@@ -192,7 +191,6 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
     return {
       groups: {type: Array},
       anchor: {type: Object},
-      loading: {type: Boolean},
       error: {type: Boolean},
       _filter: {type: String},
     }
@@ -202,13 +200,11 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
     super()
     this.groups = []
     this.anchor = null
-    this.loading = false
     this.error = false
     this._filter = ''
   }
 
   _categoryLabel(key) {
-    if (key === 'inlaw') return this._('In-laws')
     const mapKey = CATEGORY_LABEL_MAP[key]
     if (mapKey) return this._(mapKey)
     return categoryFallbackLabel(key)
@@ -225,9 +221,6 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   }
 
   render() {
-    if (this.loading) {
-      return html`<p class="loading-message">${this._('Loading...')}</p>`
-    }
     if (this.error) {
       return html`<p class="error-message">
         ${this._('Error loading relatives.')}

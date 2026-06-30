@@ -6,31 +6,7 @@ import {
   personMatchesFilter,
 } from '../../src/components/GrampsjsRelatives.js'
 import {renderPersonListItem} from '../../src/components/personListUtils.js'
-
-// ---------------------------------------------------------------------------
-// Helpers — inspect Lit TemplateResult trees (same pattern as personListUtils.test.js)
-// ---------------------------------------------------------------------------
-
-function hasString(templateResult, pred) {
-  if (!templateResult || typeof templateResult !== 'object') return false
-  const strs = templateResult.strings
-  if (Array.isArray(strs) && strs.some(s => typeof s === 'string' && pred(s)))
-    return true
-  const vals = templateResult.values
-  if (!Array.isArray(vals)) return false
-  return vals.some(v => hasString(v, pred))
-}
-
-function hasValue(templateResult, pred) {
-  if (!templateResult || typeof templateResult !== 'object') return false
-  const vals = templateResult.values
-  if (!Array.isArray(vals)) return false
-  for (const v of vals) {
-    if (pred(v)) return true
-    if (v && typeof v === 'object' && hasValue(v, pred)) return true
-  }
-  return false
-}
+import {hasString, hasValue} from './helpers.js'
 
 // ---------------------------------------------------------------------------
 // CATEGORY_LABEL_MAP — static map coverage
@@ -184,6 +160,102 @@ describe('personMatchesFilter', () => {
     const p = {name_given: null, name_surname: null, relationship: null}
     expect(() => personMatchesFilter(p, 'test')).not.toThrow()
     expect(personMatchesFilter(p, '')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Group-hiding and ordering logic (pure filter simulation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulate what GrampsjsRelatives.render() does to groups given a filter query:
+ * map each group to only its matching people, then drop groups with 0 matches.
+ */
+function applyFilter(groups, query) {
+  return groups
+    .map(group => ({
+      ...group,
+      filteredPeople: query
+        ? group.people.filter(p => personMatchesFilter(p, query))
+        : group.people,
+    }))
+    .filter(group => group.filteredPeople.length > 0)
+}
+
+describe('group filtering logic', () => {
+  const groups = [
+    {
+      category_key: 'siblings',
+      kind: 'blood',
+      count: 2,
+      people: [
+        {name_given: 'Анна', name_surname: 'Иванова', relationship: 'сестра'},
+        {name_given: 'Пётр', name_surname: 'Иванов', relationship: 'брат'},
+      ],
+    },
+    {
+      category_key: 'cousins_1',
+      kind: 'blood',
+      count: 1,
+      people: [
+        {
+          name_given: 'Мария',
+          name_surname: 'Смирнова',
+          relationship: 'двоюродная сестра',
+        },
+      ],
+    },
+    {
+      category_key: 'inlaw',
+      kind: 'inlaw',
+      count: 1,
+      people: [
+        {
+          name_given: 'Сергей',
+          name_surname: 'Петров',
+          relationship: 'зять',
+        },
+      ],
+    },
+  ]
+
+  it('returns all groups when query is empty', () => {
+    const visible = applyFilter(groups, '')
+    expect(visible).toHaveLength(3)
+  })
+
+  it('hides a group when none of its people match the filter', () => {
+    // 'Мария' matches only cousins_1; siblings should be hidden
+    const visible = applyFilter(groups, 'Мария')
+    expect(visible).toHaveLength(1)
+    expect(visible[0].category_key).toBe('cousins_1')
+  })
+
+  it('hides all groups when no one matches', () => {
+    const visible = applyFilter(groups, 'НеСуществующееИмя')
+    expect(visible).toHaveLength(0)
+  })
+
+  it('filters within a group — only matching people survive', () => {
+    // 'Анна' is in siblings but not Пётр
+    const visible = applyFilter(groups, 'Анна')
+    expect(visible).toHaveLength(1)
+    expect(visible[0].filteredPeople).toHaveLength(1)
+    expect(visible[0].filteredPeople[0].name_given).toBe('Анна')
+  })
+
+  it('keeps inlaw group when its person matches', () => {
+    const visible = applyFilter(groups, 'зять')
+    expect(visible).toHaveLength(1)
+    expect(visible[0].kind).toBe('inlaw')
+  })
+
+  it('blood groups appear before inlaw groups in source order', () => {
+    // The source groups array already puts blood first; filter preserves order.
+    const visible = applyFilter(groups, '')
+    const bloodIdx = visible.findIndex(g => g.kind === 'blood')
+    const inlawIdx = visible.findIndex(g => g.kind === 'inlaw')
+    expect(bloodIdx).toBeLessThan(inlawIdx)
   })
 })
 
