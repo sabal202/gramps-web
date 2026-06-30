@@ -4,6 +4,7 @@ import {linkVertical} from 'd3-shape'
 import {Graphviz} from '@hpcc-js/wasm'
 import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
+import {selectParentFamilies, childRefStyle} from './familyHelpers.js'
 
 const sexColor = {
   F: 'var(--color-girl)',
@@ -133,6 +134,16 @@ function createGraph(graph) {
   const data = graph.getData()
   graph.unionMap = buildFamilyUnionMap(data)
 
+  // Helper: which parent families to use for person p.
+  // When showAllParents is ON, returns all parent families (including non-primary).
+  // When OFF, falls back to the primary only — exact prior behaviour.
+  const parentFamiliesOf = p =>
+    graph.showAllParents
+      ? selectParentFamilies(p)
+      : p.extended?.primary_parent_family
+      ? [p.extended.primary_parent_family]
+      : []
+
   // step 1: collect all persons to be shown
   for (const p of data) {
     graph.addPerson(p)
@@ -145,9 +156,10 @@ function createGraph(graph) {
         graph.addNode(f, f.handle, f.father_handle, f.mother_handle)
       }
     }
-    if (p.extended?.primary_parent_family?.handle) {
-      const f = p.extended.primary_parent_family
-      graph.addNode(f, f.handle, f.father_handle, f.mother_handle)
+    for (const f of parentFamiliesOf(p)) {
+      if (f?.handle) {
+        graph.addNode(f, f.handle, f.father_handle, f.mother_handle)
+      }
     }
   }
 
@@ -159,29 +171,32 @@ function createGraph(graph) {
     }
   }
 
-  // step 4: create edges
+  // step 4: create edges (child → parent family)
   for (const p of data) {
-    const f = p.extended.primary_parent_family
     const me = p.handle
-    const father = f.father_handle
-    const mother = f.mother_handle
-    if (graph.known(father) && graph.known(mother)) {
-      graph.addEdge(f.handle, false, me)
-    } else if (graph.known(father)) {
-      graph.addEdge(f.handle, father, me)
-    } else if (graph.known(mother)) {
-      graph.addEdge(f.handle, mother, me)
+    for (const f of parentFamiliesOf(p)) {
+      const father = f.father_handle
+      const mother = f.mother_handle
+      const dashed = graph.showAllParents ? childRefStyle(f, me).dashed : false
+      if (graph.known(father) && graph.known(mother)) {
+        graph.addEdge(f.handle, false, me, dashed)
+      } else if (graph.known(father)) {
+        graph.addEdge(f.handle, father, me, dashed)
+      } else if (graph.known(mother)) {
+        graph.addEdge(f.handle, mother, me, dashed)
+      }
     }
   }
 
   // step 5: connect unconnected couples (no parents and more than one family)
   for (const p of data) {
-    const fp = p.extended?.primary_parent_family
-    // no parents?
-    if (
-      (!fp?.father_handle || !graph.known(fp?.father_handle)) &&
-      (!fp?.mother_handle || !graph.known(fp?.mother_handle))
-    ) {
+    // Has any known parent across all selected parent families?
+    const hasKnownParent = parentFamiliesOf(p).some(
+      f =>
+        (f?.father_handle && graph.known(f.father_handle)) ||
+        (f?.mother_handle && graph.known(f.mother_handle))
+    )
+    if (!hasKnownParent) {
       let np = 0
       for (const f of p.extended.families) {
         let ck = 0
@@ -210,7 +225,7 @@ function createGraph(graph) {
           },
         })
         graph.addNode({fake: true}, `p_${fakeHandle}`, fakeHandle, false)
-        graph.addEdge(`p_${fakeHandle}`, fakeHandle, p.handle)
+        graph.addEdge(`p_${fakeHandle}`, fakeHandle, p.handle, false)
       }
     }
   }
@@ -282,13 +297,14 @@ function generateDot(graph) {
   }
   // edges
   for (const e of graph.getEdges()) {
+    const dashedAttr = e.dashed ? ', class="dashed_edge"' : ''
     for (const targetnode of graph.getNodesOfPerson(e.targetPerson)) {
       if (e.sourcePerson) {
         // one-person node as source
-        dot += `"node_${e.sourceFamily}x${e.sourcePerson}" -> "node_${targetnode}x${e.targetPerson}" [label="", arrowhead=none, color="#555"]
+        dot += `"node_${e.sourceFamily}x${e.sourcePerson}" -> "node_${targetnode}x${e.targetPerson}" [label="", arrowhead=none, color="#555"${dashedAttr}]
       `
       } else {
-        dot += `"node_${e.sourceFamily}" -> "node_${targetnode}x${e.targetPerson}" [ltail="node_${e.sourceFamily}", label="", arrowhead=none, color="#555"]
+        dot += `"node_${e.sourceFamily}" -> "node_${targetnode}x${e.targetPerson}" [ltail="node_${e.sourceFamily}", label="", arrowhead=none, color="#555"${dashedAttr}]
       `
       }
     }
@@ -315,11 +331,12 @@ function generateDot(graph) {
 }
 
 class Relgraph {
-  constructor(data, boxWidth, boxHeight, grampsId) {
+  constructor(data, boxWidth, boxHeight, grampsId, showAllParents = false) {
     this.data = data
     this.boxWidth = boxWidth
     this.boxHeight = boxHeight
     this.rootPersonGrampsId = grampsId
+    this.showAllParents = showAllParents
     this.rootPerson = undefined
     this.nodes = {}
     this.edges = {}
@@ -416,12 +433,13 @@ class Relgraph {
     return []
   }
 
-  addEdge(sourcefamily, sourceperson, targetperson) {
+  addEdge(sourcefamily, sourceperson, targetperson, dashed = false) {
     const key = `${sourcefamily}__${sourceperson}__${targetperson}`
     this.edges[key] = {
       sourceFamily: sourcefamily,
       sourcePerson: sourceperson,
       targetPerson: targetperson,
+      dashed,
     }
   }
 
@@ -817,7 +835,9 @@ function remasterChart(
     .y(d => d.y)
   // copy edges
   gvchartx.selectAll('.edge').each(function () {
-    const path = select(this).select('path')
+    const group = select(this)
+    const dashed = group.attr('class')?.includes('dashed_edge')
+    const path = group.select('path')
     const pathData = path.attr('d')
     // extract points from path data
     const points = pathData
@@ -842,6 +862,7 @@ function remasterChart(
       .attr('fill', 'none')
       .attr('stroke', 'var(--grampsjs-body-font-color-40)')
       .attr('stroke-width', 1)
+      .attr('stroke-dasharray', dashed ? '5,3' : null)
   })
   // edges.selectAll('path').attr('stroke-opacity', '0.4')
 
@@ -884,6 +905,7 @@ export function RelationshipChart(
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     canEdit = false,
     showUnionDates = false,
+    showAllParents = false,
     initialZoom = null,
     unionStatusLabels = {},
   }
@@ -906,7 +928,13 @@ export function RelationshipChart(
     svg.node().__zoom = initialZoom
     chartContent.attr('transform', initialZoom.toString())
   }
-  const graph = new Relgraph(data, boxWidth, boxHeight, grampsId)
+  const graph = new Relgraph(
+    data,
+    boxWidth,
+    boxHeight,
+    grampsId,
+    showAllParents
+  )
   const dot = graph.getDot()
   Graphviz.load().then(graphviz => {
     graphviz.dot(dot)

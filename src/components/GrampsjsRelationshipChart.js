@@ -35,6 +35,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       gapX: {type: Number},
       nameDisplayFormat: {type: String},
       showUnionDates: {type: Boolean},
+      showAllParents: {type: Boolean},
       canEdit: {type: Boolean},
     }
   }
@@ -68,6 +69,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         bboxHeight: this.containerHeight,
         nameDisplayFormat: this.nameDisplayFormat,
         showUnionDates: this.showUnionDates,
+        showAllParents: this.showAllParents,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         unionStatusLabels: {
