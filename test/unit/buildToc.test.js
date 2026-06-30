@@ -2,7 +2,7 @@ import {describe, it, expect} from 'vitest'
 import {
   buildToc,
   CATEGORY_LABEL_MAP,
-  categoryFallbackLabel,
+  categoryLabelKey,
 } from '../../src/components/GrampsjsRelatives.js'
 
 // ---------------------------------------------------------------------------
@@ -93,15 +93,15 @@ describe('buildToc — default label resolution', () => {
     expect(result[0].label).toBe(CATEGORY_LABEL_MAP.siblings)
   })
 
-  it('resolves inlaw key', () => {
+  it('resolves inlaw key to "Distant relatives" (dead key, no longer mapped)', () => {
     const result = buildToc([groupInlaw])
-    expect(result[0].label).toBe(CATEGORY_LABEL_MAP.inlaw)
+    expect(result[0].label).toBe('Distant relatives')
   })
 
-  it('falls back to categoryFallbackLabel for unknown keys', () => {
+  it('falls back to "Distant relatives" for unmapped keys', () => {
     const result = buildToc([groupFallback])
-    expect(result[0].label).toBe(categoryFallbackLabel('ancestors_7'))
-    expect(result[0].label).toContain('7')
+    expect(result[0].label).toBe(categoryLabelKey('ancestors_7'))
+    expect(result[0].label).toBe('Distant relatives')
   })
 
   it('does not return raw key for unrecognised category_key', () => {

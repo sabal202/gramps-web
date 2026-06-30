@@ -15,10 +15,8 @@ import {sharedStyles} from '../SharedStyles.js'
  * for the group section header.  Keys are the English display strings from
  * lang/en.json — passed through this._() at render time.
  *
- * For keys NOT present in this map (e.g. dynamic ones like "ancestors_5" or
- * "cousins_3_removed_2") we fall back to _categoryFallback() which returns a
- * human-readable label constructed from the key segments so nothing ever
- * displays a raw machine key.
+ * For keys NOT present in this map the component falls back to the translatable
+ * "Distant relatives" label via categoryLabelKey().
  */
 export const CATEGORY_LABEL_MAP = {
   parents: 'Parents',
@@ -38,68 +36,21 @@ export const CATEGORY_LABEL_MAP = {
   cousins_1_removed_1: 'First cousins once removed',
   cousins_1_removed_2: 'First cousins twice removed',
   cousins_2_removed_1: 'Second cousins once removed',
-  inlaw: 'In-laws',
 }
 
 /**
- * Fallback label builder for category keys not in CATEGORY_LABEL_MAP.
+ * Return the i18n key string for a category_key.
  *
- * Strategy: parse the key by parts and produce a reasonable English phrase.
- * Examples:
- *   "ancestors_5"           → "5th ancestors"
- *   "descendants_4"         → "4th descendants"
- *   "great_uncle_aunt_3"    → "3× great-uncles and great-aunts"
- *   "cousins_3_removed_2"   → "3rd cousins 2× removed"
- *
- * If parsing yields nothing useful we return "Other relatives".
+ * Known categories return their mapped English key (from CATEGORY_LABEL_MAP).
+ * All unmapped categories — distant cousins, ancestors_N, etc. — return the
+ * single translatable key 'Distant relatives' so no English is ever constructed
+ * in JS.
  *
  * @param {string} key
  * @returns {string}
  */
-export function categoryFallbackLabel(key) {
-  if (!key) return 'Other relatives'
-
-  // ancestors_N / descendants_N
-  const ancestorMatch = key.match(/^(ancestors|descendants)_(\d+)$/)
-  if (ancestorMatch) {
-    const n = parseInt(ancestorMatch[2], 10)
-    const base = ancestorMatch[1] === 'ancestors' ? 'ancestors' : 'descendants'
-    return `${ordinal(n)} ${base}`
-  }
-
-  // great_uncle_aunt_N  /  great_niece_nephew_N
-  const greatUncleMatch = key.match(/^great_(uncle_aunt|niece_nephew)_(\d+)$/)
-  if (greatUncleMatch) {
-    const n = parseInt(greatUncleMatch[2], 10)
-    const base =
-      greatUncleMatch[1] === 'uncle_aunt'
-        ? 'great-uncles and great-aunts'
-        : 'great-nieces and great-nephews'
-    return `${n}× ${base}`
-  }
-
-  // cousins_N_removed_M
-  const cousinRemovedMatch = key.match(/^cousins_(\d+)_removed_(\d+)$/)
-  if (cousinRemovedMatch) {
-    const c = parseInt(cousinRemovedMatch[1], 10)
-    const r = parseInt(cousinRemovedMatch[2], 10)
-    return `${ordinal(c)} cousins ${r}× removed`
-  }
-
-  // cousins_N
-  const cousinMatch = key.match(/^cousins_(\d+)$/)
-  if (cousinMatch) {
-    const n = parseInt(cousinMatch[1], 10)
-    return `${ordinal(n)} cousins`
-  }
-
-  return 'Other relatives'
-}
-
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return n + (s[(v - 20) % 10] || s[v] || s[0])
+export function categoryLabelKey(key) {
+  return CATEGORY_LABEL_MAP[key] || 'Distant relatives'
 }
 
 /**
@@ -134,14 +85,13 @@ export function personMatchesFilter(person, query) {
  * @param {Array<{category_key: string, filteredPeople: Array}>} visibleGroups
  *   The same visibleGroups array that render() passes to _renderGroup().
  * @param {(key: string) => string} [labelFn]
- *   Optional label resolver.  When omitted the English CATEGORY_LABEL_MAP
- *   value (or categoryFallbackLabel) is returned as-is.
+ *   Optional label resolver.  When omitted the English i18n key string from
+ *   categoryLabelKey() is returned as-is.
  * @returns {Array<{key: string, label: string, count: number}>}
  */
 export function buildToc(visibleGroups, labelFn) {
   if (!Array.isArray(visibleGroups) || visibleGroups.length === 0) return []
-  const resolve =
-    labelFn || (k => CATEGORY_LABEL_MAP[k] || categoryFallbackLabel(k))
+  const resolve = labelFn || categoryLabelKey
   return visibleGroups.map(g => ({
     key: g.category_key,
     label: resolve(g.category_key),
@@ -371,9 +321,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   }
 
   _categoryLabel(key) {
-    const mapKey = CATEGORY_LABEL_MAP[key]
-    if (mapKey) return this._(mapKey)
-    return categoryFallbackLabel(key)
+    return this._(categoryLabelKey(key))
   }
 
   _handleClick(grampsId) {
