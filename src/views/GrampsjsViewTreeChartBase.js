@@ -88,7 +88,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     nAnc: 1,
     nDesc: 1,
     nMaxImages: 50,
-    nameDisplayFormat: chartNameDisplayFormat.surnameThenGiven,
+    nameDisplayFormat: chartNameDisplayFormat.surnameThenGivenPatronymic,
   }
 
   constructor() {

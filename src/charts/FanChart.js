@@ -398,13 +398,35 @@ export function FanChart(
       window.dispatchEvent(new CustomEvent('object:preview-hide'))
     })
 
-  cell
-    .append('title')
-    .text(d =>
-      nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-        ? '' + d.data.name_surname + ', ' + d.data.name_given
-        : '' + d.data.name_given + ' ' + d.data.name_surname
-    )
+  const surnameFirstFormat =
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven ||
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
+
+  const fanLine1 = d => {
+    if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven)
+      return d.data.name_surname || ''
+    if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic)
+      return d.data.name_family_surname || d.data.name_surname || ''
+    if (nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname)
+      return [d.data.name_given, d.data.name_patronymic]
+        .filter(Boolean)
+        .join(' ')
+    return d.data.name_given || ''
+  }
+
+  const fanLine2 = d => {
+    if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven)
+      return d.data.name_given || ''
+    if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic)
+      return [d.data.name_given, d.data.name_patronymic]
+        .filter(Boolean)
+        .join(' ')
+    if (nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname)
+      return d.data.name_family_surname || d.data.name_surname || ''
+    return d.data.name_surname || ''
+  }
+
+  cell.append('title').text(d => `${fanLine1(d)}, ${fanLine2(d)}`)
 
   const fontSize = d => Math.min(12, (((d.y0 + d.y1) / 2) * (d.x1 - d.x0)) / 10)
 
@@ -426,43 +448,17 @@ export function FanChart(
     .filter(d => d.depth === 0)
     .append('text')
     .style('fill', 'var(--grampsjs-body-font-color-70)')
-    .attr(
-      'font-weight',
-      nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-        ? '500'
-        : '300'
-    )
+    .attr('font-weight', surnameFirstFormat ? '500' : '300')
     .attr('dy', '-0.6em')
-    .text(d =>
-      clipString(
-        nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? d.data.name_surname
-          : d.data.name_given,
-        d,
-        true
-      )
-    )
+    .text(d => clipString(fanLine1(d), d, true))
 
   cell
     .filter(d => d.depth === 0)
     .append('text')
     .style('fill', 'var(--grampsjs-body-font-color-70)')
-    .attr(
-      'font-weight',
-      nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-        ? '300'
-        : '500'
-    )
+    .attr('font-weight', surnameFirstFormat ? '300' : '500')
     .attr('dy', '0.6em')
-    .text(d =>
-      clipString(
-        nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? d.data.name_given
-          : d.data.name_surname,
-        d,
-        true
-      )
-    )
+    .text(d => clipString(fanLine2(d), d, true))
 
   const startOffset = d =>
     d.x0 >= Math.PI
@@ -474,12 +470,7 @@ export function FanChart(
     .filter(d => ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
     .append('text')
     .style('fill', 'var(--grampsjs-body-font-color-70)')
-    .attr(
-      'font-weight',
-      nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-        ? '500'
-        : '300'
-    )
+    .attr('font-weight', surnameFirstFormat ? '500' : '300')
     .attr('font-size', fontSize)
     .attr('dy', d => (d.y1 - d.y0) / 2 - 7 + 3)
     // .attr("dx", (dx => 1)
@@ -491,26 +482,14 @@ export function FanChart(
     .style('letter-spacing', d =>
       d.x0 < Math.PI ? `${(1 / d.y1) * 20}em` : `-${(1 / d.y1) * 10}em`
     )
-    .text(d =>
-      clipString(
-        nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? d.data.name_surname || ''
-          : d.data.name_given || '',
-        d
-      )
-    )
+    .text(d => clipString(fanLine1(d), d))
 
   cell
     .filter(d => d.depth > 0)
     .filter(d => ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
     .append('text')
     .style('fill', 'var(--grampsjs-body-font-color-70)')
-    .attr(
-      'font-weight',
-      nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-        ? '300'
-        : '500'
-    )
+    .attr('font-weight', surnameFirstFormat ? '300' : '500')
     .attr('font-size', fontSize)
     .attr('dy', d => (d.y1 - d.y0) / 2 + 7 + 3)
     // .attr("dx", (dx => 1)
@@ -523,13 +502,7 @@ export function FanChart(
       d.x0 < Math.PI ? `${(1 / d.y1) * 40}em` : `-${(1 / d.y1) * 15}em`
     )
     .text(
-      d =>
-        clipString(
-          nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-            ? d.data.name_given || ''
-            : d.data.name_surname || '',
-          d
-        )
+      d => clipString(fanLine2(d), d)
       // .slice(0, Math.floor(d.y1 * (d.x1 - d.x0) / 10))
     )
 

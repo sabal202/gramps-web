@@ -863,6 +863,8 @@ export function stripHtml(input) {
 export const chartNameDisplayFormat = {
   surnameThenGiven: 'Surname First',
   givenThenSurname: 'Given Name First',
+  givenPatronymicThenSurname: 'Given Patronymic / Surname',
+  surnameThenGivenPatronymic: 'Surname / Given Patronymic',
 }
 
 export function apiVersionAtLeast(dbInfo, major, minor, patch = 0) {

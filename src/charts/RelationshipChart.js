@@ -445,6 +445,18 @@ const clipString = (s, length) => {
   return `${s.slice(0, nChar - 2)}…`
 }
 
+const getPatronymic = primaryName =>
+  (primaryName?.surname_list ?? [])
+    .filter(s => s.origintype === 'Patronymic')
+    .map(s => s.surname)
+    .join(' ')
+
+const getFamilySurname = primaryName =>
+  (primaryName?.surname_list ?? [])
+    .filter(s => s.origintype !== 'Patronymic')
+    .map(s => s.surname)
+    .join(' ')
+
 function clicked(event, d) {
   dispatchEvent(
     new CustomEvent('pedigree:person-selected', {
@@ -495,6 +507,7 @@ function remasterChart(
         xCoord: x - boxWidth / 2 + 4,
         yCoord: y - boxHeight / 2,
         profile: d.profile,
+        primaryName: d.data?.primary_name,
         imageUrl: imageCount > maxImages ? '' : imageUrl,
         handle: found.groups.handle,
       })
@@ -568,6 +581,14 @@ function remasterChart(
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
           ? `${d.profile?.name_surname},`
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.givenPatronymicThenSurname
+          ? [d.profile?.name_given, getPatronymic(d.primaryName)]
+              .filter(Boolean)
+              .join(' ')
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.surnameThenGivenPatronymic
+          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
           : d.profile?.name_given,
         boxWidthTotal(d)
       )
@@ -592,6 +613,14 @@ function remasterChart(
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
           ? d.profile?.name_given
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.givenPatronymicThenSurname
+          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
+          : nameDisplayFormat ===
+            chartNameDisplayFormat.surnameThenGivenPatronymic
+          ? [d.profile?.name_given, getPatronymic(d.primaryName)]
+              .filter(Boolean)
+              .join(' ')
           : d.profile?.name_surname,
         boxWidthTotal(d)
       )
