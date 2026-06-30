@@ -15,9 +15,14 @@ export const genderBorderColor = {
 export function renderPersonAvatar(extPerson, sex) {
   const handle = extPerson?.media_list?.[0]?.ref || ''
   const rect = extPerson?.media_list?.[0]?.rect || []
-  // box-shadow sits flush against the circular edge; works on both grampsjs-img and grampsjs-icon
+  // box-shadow sits flush against the circular edge; border-radius:50% ensures the ring
+  // follows the circle of the avatar, not the square corners of the host element.
   const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
-  const style = `box-shadow: 0 0 0 2px ${ringColor};`
+  const imgStyle = `border-radius: 50%; box-shadow: 0 0 0 2px ${ringColor};`
+  // The icon host (grampsjs-icon) defaults to 24×24px; match the 40px photo avatar size
+  // so the ring circle is visually consistent. inline-flex centering on :host keeps the
+  // SVG centred inside the enlarged host.
+  const iconStyle = `border-radius: 50%; width: 40px; height: 40px; box-shadow: 0 0 0 2px ${ringColor};`
   if (handle) {
     return html`<grampsjs-img
       handle="${handle}"
@@ -28,14 +33,14 @@ export function renderPersonAvatar(extPerson, sex) {
       .rect="${rect}"
       mime=""
       fallbackIcon="${objectIconPath.person}"
-      style="${style}"
+      style="${imgStyle}"
     ></grampsjs-img>`
   }
   return html`<grampsjs-icon
     slot="start"
     path="${mdiAccount}"
     color="var(--grampsjs-color-icon)"
-    style="${style}"
+    style="${iconStyle}"
   ></grampsjs-icon>`
 }
 

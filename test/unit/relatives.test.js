@@ -2,7 +2,7 @@ import {describe, it, expect, vi} from 'vitest'
 import {html} from 'lit'
 import {
   CATEGORY_LABEL_MAP,
-  categoryFallbackLabel,
+  categoryLabelKey,
   personMatchesFilter,
 } from '../../src/components/GrampsjsRelatives.js'
 import {renderPersonListItem} from '../../src/components/personListUtils.js'
@@ -33,7 +33,6 @@ describe('CATEGORY_LABEL_MAP', () => {
       'cousins_1_removed_1',
       'cousins_1_removed_2',
       'cousins_2_removed_1',
-      'inlaw',
     ]
     for (const key of required) {
       expect(CATEGORY_LABEL_MAP).toHaveProperty(key)
@@ -44,70 +43,48 @@ describe('CATEGORY_LABEL_MAP', () => {
     expect(CATEGORY_LABEL_MAP.parents).toBeTruthy()
   })
 
-  it('maps inlaw to a non-empty string', () => {
-    expect(CATEGORY_LABEL_MAP.inlaw).toBeTruthy()
+  it('does not contain the dead inlaw key', () => {
+    expect(CATEGORY_LABEL_MAP).not.toHaveProperty('inlaw')
   })
 })
 
 // ---------------------------------------------------------------------------
-// categoryFallbackLabel — dynamic key construction
+// categoryLabelKey — pure i18n key resolver
 // ---------------------------------------------------------------------------
 
-describe('categoryFallbackLabel', () => {
-  it('returns "Other relatives" for an empty key', () => {
-    expect(categoryFallbackLabel('')).toBe('Other relatives')
+describe('categoryLabelKey', () => {
+  it('returns the mapped English key for known categories', () => {
+    expect(categoryLabelKey('parents')).toBe('Parents')
+    expect(categoryLabelKey('siblings')).toBe('Siblings')
+    expect(categoryLabelKey('cousins_1')).toBe('First cousins')
+    expect(categoryLabelKey('cousins_2_removed_1')).toBe(
+      'Second cousins once removed'
+    )
+    expect(categoryLabelKey('great_uncle_aunt_1')).toBe(
+      'Great-uncles and great-aunts'
+    )
   })
 
-  it('returns "Other relatives" for null/undefined', () => {
-    expect(categoryFallbackLabel(null)).toBe('Other relatives')
-    expect(categoryFallbackLabel(undefined)).toBe('Other relatives')
+  it('returns "Distant relatives" for unmapped dynamic keys', () => {
+    expect(categoryLabelKey('cousins_4')).toBe('Distant relatives')
+    expect(categoryLabelKey('cousins_3_removed_2')).toBe('Distant relatives')
+    expect(categoryLabelKey('ancestors_5')).toBe('Distant relatives')
+    expect(categoryLabelKey('descendants_6')).toBe('Distant relatives')
+    expect(categoryLabelKey('great_uncle_aunt_3')).toBe('Distant relatives')
   })
 
-  it('handles ancestors_N', () => {
-    const label = categoryFallbackLabel('ancestors_5')
-    expect(label).toContain('ancestor')
-    expect(label).toContain('5')
+  it('returns "Distant relatives" for the dead inlaw key', () => {
+    expect(categoryLabelKey('inlaw')).toBe('Distant relatives')
   })
 
-  it('handles descendants_N', () => {
-    const label = categoryFallbackLabel('descendants_4')
-    expect(label).toContain('descendant')
-    expect(label).toContain('4')
+  it('returns "Distant relatives" for empty or unknown keys', () => {
+    expect(categoryLabelKey('')).toBe('Distant relatives')
+    expect(categoryLabelKey('some_unknown_key')).toBe('Distant relatives')
   })
 
-  it('handles great_uncle_aunt_N', () => {
-    const label = categoryFallbackLabel('great_uncle_aunt_3')
-    expect(label).toContain('great')
-    expect(label).toContain('3')
-  })
-
-  it('handles great_niece_nephew_N', () => {
-    const label = categoryFallbackLabel('great_niece_nephew_2')
-    expect(label).toContain('niece')
-    expect(label).toContain('2')
-  })
-
-  it('handles cousins_N', () => {
-    const label = categoryFallbackLabel('cousins_4')
-    expect(label).toContain('cousin')
-    expect(label).toContain('4')
-  })
-
-  it('handles cousins_N_removed_M', () => {
-    const label = categoryFallbackLabel('cousins_3_removed_2')
-    expect(label).toContain('cousin')
-    expect(label).toContain('3')
-    expect(label).toContain('2')
-    expect(label).toContain('removed')
-  })
-
-  it('returns "Other relatives" for unrecognised keys', () => {
-    expect(categoryFallbackLabel('some_unknown_key')).toBe('Other relatives')
-  })
-
-  it('does not return the raw key for any input', () => {
-    const key = 'some_unknown_key'
-    expect(categoryFallbackLabel(key)).not.toBe(key)
+  it('never returns the raw key', () => {
+    expect(categoryLabelKey('some_unknown_key')).not.toBe('some_unknown_key')
+    expect(categoryLabelKey('ancestors_5')).not.toBe('ancestors_5')
   })
 })
 
@@ -184,37 +161,56 @@ function applyFilter(groups, query) {
 }
 
 describe('group filtering logic', () => {
+  // New backend contract: no group-level kind; kind is per-person ('blood'|'inlaw').
+  // In-laws are folded into their matching blood-category group; the backend
+  // orders people blood-first then in-laws within each group.
   const groups = [
     {
       category_key: 'siblings',
-      kind: 'blood',
       count: 2,
       people: [
-        {name_given: 'Анна', name_surname: 'Иванова', relationship: 'сестра'},
-        {name_given: 'Пётр', name_surname: 'Иванов', relationship: 'брат'},
+        {
+          name_given: 'Анна',
+          name_surname: 'Иванова',
+          relationship: 'сестра',
+          kind: 'blood',
+        },
+        {
+          name_given: 'Пётр',
+          name_surname: 'Иванов',
+          relationship: 'брат',
+          kind: 'blood',
+        },
       ],
     },
     {
       category_key: 'cousins_1',
-      kind: 'blood',
       count: 1,
       people: [
         {
           name_given: 'Мария',
           name_surname: 'Смирнова',
           relationship: 'двоюродная сестра',
+          kind: 'blood',
         },
       ],
     },
     {
-      category_key: 'inlaw',
-      kind: 'inlaw',
-      count: 1,
+      // children group: one blood child + one in-law (зять folded in)
+      category_key: 'children',
+      count: 2,
       people: [
+        {
+          name_given: 'Ольга',
+          name_surname: 'Иванова',
+          relationship: 'дочь',
+          kind: 'blood',
+        },
         {
           name_given: 'Сергей',
           name_surname: 'Петров',
           relationship: 'зять',
+          kind: 'inlaw',
         },
       ],
     },
@@ -226,7 +222,7 @@ describe('group filtering logic', () => {
   })
 
   it('hides a group when none of its people match the filter', () => {
-    // 'Мария' matches only cousins_1; siblings should be hidden
+    // 'Мария' matches only cousins_1; siblings and children should be hidden
     const visible = applyFilter(groups, 'Мария')
     expect(visible).toHaveLength(1)
     expect(visible[0].category_key).toBe('cousins_1')
@@ -245,18 +241,15 @@ describe('group filtering logic', () => {
     expect(visible[0].filteredPeople[0].name_given).toBe('Анна')
   })
 
-  it('keeps inlaw group when its person matches', () => {
+  it('in-law person matches by relationship and surfaces in its blood-category group', () => {
+    // Сергей (зять, kind=inlaw) is folded into the children group.
+    // Filtering by 'зять' must surface the children group and that person.
     const visible = applyFilter(groups, 'зять')
     expect(visible).toHaveLength(1)
-    expect(visible[0].kind).toBe('inlaw')
-  })
-
-  it('blood groups appear before inlaw groups in source order', () => {
-    // The source groups array already puts blood first; filter preserves order.
-    const visible = applyFilter(groups, '')
-    const bloodIdx = visible.findIndex(g => g.kind === 'blood')
-    const inlawIdx = visible.findIndex(g => g.kind === 'inlaw')
-    expect(bloodIdx).toBeLessThan(inlawIdx)
+    expect(visible[0].category_key).toBe('children')
+    expect(visible[0].filteredPeople).toHaveLength(1)
+    expect(visible[0].filteredPeople[0].kind).toBe('inlaw')
+    expect(visible[0].filteredPeople[0].name_given).toBe('Сергей')
   })
 })
 

@@ -1,7 +1,10 @@
 import {css, html, LitElement} from 'lit'
+import {classMap} from 'lit/directives/class-map.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 import '@material/web/textfield/outlined-text-field.js'
+import '@material/web/select/outlined-select.js'
+import '@material/web/select/select-option.js'
 
 import {fireEvent} from '../util.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -13,10 +16,8 @@ import {sharedStyles} from '../SharedStyles.js'
  * for the group section header.  Keys are the English display strings from
  * lang/en.json — passed through this._() at render time.
  *
- * For keys NOT present in this map (e.g. dynamic ones like "ancestors_5" or
- * "cousins_3_removed_2") we fall back to _categoryFallback() which returns a
- * human-readable label constructed from the key segments so nothing ever
- * displays a raw machine key.
+ * For keys NOT present in this map the component falls back to the translatable
+ * "Distant relatives" label via categoryLabelKey().
  */
 export const CATEGORY_LABEL_MAP = {
   parents: 'Parents',
@@ -36,68 +37,21 @@ export const CATEGORY_LABEL_MAP = {
   cousins_1_removed_1: 'First cousins once removed',
   cousins_1_removed_2: 'First cousins twice removed',
   cousins_2_removed_1: 'Second cousins once removed',
-  inlaw: 'In-laws',
 }
 
 /**
- * Fallback label builder for category keys not in CATEGORY_LABEL_MAP.
+ * Return the i18n key string for a category_key.
  *
- * Strategy: parse the key by parts and produce a reasonable English phrase.
- * Examples:
- *   "ancestors_5"           → "5th ancestors"
- *   "descendants_4"         → "4th descendants"
- *   "great_uncle_aunt_3"    → "3× great-uncles and great-aunts"
- *   "cousins_3_removed_2"   → "3rd cousins 2× removed"
- *
- * If parsing yields nothing useful we return "Other relatives".
+ * Known categories return their mapped English key (from CATEGORY_LABEL_MAP).
+ * All unmapped categories — distant cousins, ancestors_N, etc. — return the
+ * single translatable key 'Distant relatives' so no English is ever constructed
+ * in JS.
  *
  * @param {string} key
  * @returns {string}
  */
-export function categoryFallbackLabel(key) {
-  if (!key) return 'Other relatives'
-
-  // ancestors_N / descendants_N
-  const ancestorMatch = key.match(/^(ancestors|descendants)_(\d+)$/)
-  if (ancestorMatch) {
-    const n = parseInt(ancestorMatch[2], 10)
-    const base = ancestorMatch[1] === 'ancestors' ? 'ancestors' : 'descendants'
-    return `${ordinal(n)} ${base}`
-  }
-
-  // great_uncle_aunt_N  /  great_niece_nephew_N
-  const greatUncleMatch = key.match(/^great_(uncle_aunt|niece_nephew)_(\d+)$/)
-  if (greatUncleMatch) {
-    const n = parseInt(greatUncleMatch[2], 10)
-    const base =
-      greatUncleMatch[1] === 'uncle_aunt'
-        ? 'great-uncles and great-aunts'
-        : 'great-nieces and great-nephews'
-    return `${n}× ${base}`
-  }
-
-  // cousins_N_removed_M
-  const cousinRemovedMatch = key.match(/^cousins_(\d+)_removed_(\d+)$/)
-  if (cousinRemovedMatch) {
-    const c = parseInt(cousinRemovedMatch[1], 10)
-    const r = parseInt(cousinRemovedMatch[2], 10)
-    return `${ordinal(c)} cousins ${r}× removed`
-  }
-
-  // cousins_N
-  const cousinMatch = key.match(/^cousins_(\d+)$/)
-  if (cousinMatch) {
-    const n = parseInt(cousinMatch[1], 10)
-    return `${ordinal(n)} cousins`
-  }
-
-  return 'Other relatives'
-}
-
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return n + (s[(v - 20) % 10] || s[v] || s[0])
+export function categoryLabelKey(key) {
+  return CATEGORY_LABEL_MAP[key] || 'Distant relatives'
 }
 
 /**
@@ -119,6 +73,45 @@ export function personMatchesFilter(person, query) {
   return name.includes(q) || rel.includes(q)
 }
 
+/**
+ * Build a table-of-contents entry list from the already-filtered visible
+ * groups.  Pure function with no side effects — safe to unit-test directly.
+ *
+ * Each entry contains:
+ *   key   {string}  — stable category_key, used as the scroll-target anchor id
+ *   label {string}  — localised display label (English fallback when no
+ *                     translation function is provided)
+ *   count {number}  — number of people after client-side filtering
+ *
+ * @param {Array<{category_key: string, filteredPeople: Array}>} visibleGroups
+ *   The same visibleGroups array that render() passes to _renderGroup().
+ * @param {(key: string) => string} [labelFn]
+ *   Optional label resolver.  When omitted the English i18n key string from
+ *   categoryLabelKey() is returned as-is.
+ * @returns {Array<{key: string, label: string, count: number}>}
+ */
+export function buildToc(visibleGroups, labelFn) {
+  if (!Array.isArray(visibleGroups) || visibleGroups.length === 0) return []
+  const resolve = labelFn || categoryLabelKey
+  return visibleGroups.map(g => ({
+    key: g.category_key,
+    label: resolve(g.category_key),
+    count: Array.isArray(g.filteredPeople) ? g.filteredPeople.length : 0,
+  }))
+}
+
+/**
+ * Estimated height per md-list-item row in pixels.
+ * md-list-item one-line height = 56 px, supporting-text (two-line) = 72 px.
+ * We use 72 px because relatives items show a relationship term below the name.
+ *
+ * Used as the intrinsic-size hint in `contain-intrinsic-size: auto <N>px`.
+ * The `auto` keyword lets the browser cache the last-rendered size and fall
+ * back to the estimate only for groups that have not yet been painted, so the
+ * scrollbar stays accurate after filter changes.
+ */
+const ROW_HEIGHT_PX = 72
+
 export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
     return [
@@ -126,6 +119,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
       css`
         :host {
           display: block;
+          container-type: inline-size;
         }
 
         .filter-row {
@@ -137,12 +131,111 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
           max-width: 420px;
         }
 
+        /* ------------------------------------------------------------------ */
+        /* Two-column layout: list (left) + TOC sidebar (right)                */
+        /* ------------------------------------------------------------------ */
+
+        .relatives-layout {
+          display: flex;
+          align-items: flex-start;
+          gap: 0;
+        }
+
+        .relatives-content {
+          flex: 1 1 0;
+          min-width: 0;
+        }
+
+        /* TOC sidebar — hidden on narrow screens, shown via @container below */
+        .toc-sidebar {
+          display: none;
+          width: 200px;
+          flex-shrink: 0;
+          margin-left: 32px;
+          position: sticky;
+          top: 100px;
+          height: fit-content;
+          overflow-x: hidden;
+        }
+
+        .toc-sidebar h3 {
+          margin: 0 0 8px 0;
+          font-size: 14px;
+          font-weight: 450;
+          opacity: 0.55;
+          font-family: var(--grampsjs-heading-font-family);
+        }
+
+        .toc-sidebar ul {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+
+        .toc-sidebar li {
+          margin: 0;
+          padding: 0;
+        }
+
+        .toc-sidebar button {
+          display: block;
+          width: 100%;
+          text-align: left;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 5px 8px;
+          font-size: 13px;
+          font-family: inherit;
+          color: var(--md-sys-color-on-surface-variant);
+          border-radius: 4px;
+          line-height: 1.3;
+          transition: background 0.1s;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .toc-sidebar button:hover {
+          background: var(--md-sys-color-surface-container-high);
+          color: var(--md-sys-color-on-surface);
+        }
+
+        .toc-count {
+          font-size: 0.85em;
+          opacity: 0.6;
+          margin-left: 4px;
+        }
+
+        /* Narrow-screen TOC: compact sticky jump-to selector */
+        .toc-select-row {
+          display: none;
+          position: sticky;
+          /* 64px = app-bar height; match top offset of the linear-progress bar */
+          top: 64px;
+          z-index: 1;
+          background: var(--md-sys-color-surface);
+          padding-bottom: 8px;
+          margin-bottom: 4px;
+        }
+
+        .toc-select-row md-outlined-select {
+          width: 100%;
+          max-width: 420px;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Group headers                                                        */
+        /* ------------------------------------------------------------------ */
+
         h3 {
           margin: 24px 0 4px 0;
           font-family: var(--grampsjs-heading-font-family);
           font-weight: 500;
           font-size: 1rem;
           color: var(--grampsjs-body-font-color-75, inherit);
+          /* leave room so sticky app-bar doesn't cover the heading */
+          scroll-margin-top: 100px;
         }
 
         .group-count {
@@ -152,11 +245,11 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
           margin-left: 6px;
         }
 
-        .inlaw-section h3 {
-          border-top: 1px solid
-            var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.12));
-          padding-top: 12px;
-          margin-top: 28px;
+        /* Relationship text for in-law people: muted + italic.           */
+        /* Applied to the <span slot="supporting-text"> inside the row.  */
+        .inlaw-rel {
+          opacity: 0.6;
+          font-style: italic;
         }
 
         .empty-message,
@@ -174,7 +267,31 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
           cursor: pointer;
         }
 
-        @media (max-width: 600px) {
+        /* ------------------------------------------------------------------ */
+        /* Responsive breakpoints via @container                               */
+        /* ------------------------------------------------------------------ */
+
+        /* Wide layout: show sidebar TOC, hide select */
+        @container (min-width: 750px) {
+          .toc-sidebar {
+            display: block;
+          }
+
+          .toc-select-row {
+            display: none;
+          }
+        }
+
+        /* Narrow layout: hide sidebar TOC, show select */
+        @container (max-width: 749px) {
+          .toc-sidebar {
+            display: none;
+          }
+
+          .toc-select-row {
+            display: block;
+          }
+
           md-outlined-text-field {
             max-width: 100%;
           }
@@ -205,9 +322,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   }
 
   _categoryLabel(key) {
-    const mapKey = CATEGORY_LABEL_MAP[key]
-    if (mapKey) return this._(mapKey)
-    return categoryFallbackLabel(key)
+    return this._(categoryLabelKey(key))
   }
 
   _handleClick(grampsId) {
@@ -218,6 +333,25 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
 
   _handleFilterInput(e) {
     this._filter = e.target.value
+  }
+
+  /** Scroll to the group header identified by category_key. */
+  _scrollToGroup(key) {
+    const target = this.shadowRoot?.getElementById(`group-${key}`)
+    if (target) {
+      target.scrollIntoView({behavior: 'smooth', block: 'start'})
+    }
+  }
+
+  /** Handle sidebar TOC button click. */
+  _handleTocClick(key) {
+    this._scrollToGroup(key)
+  }
+
+  /** Handle narrow-screen select change. */
+  _handleTocSelectChange(e) {
+    const key = e.target.value
+    if (key) this._scrollToGroup(key)
   }
 
   render() {
@@ -237,10 +371,9 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
       }))
       .filter(group => group.filteredPeople.length > 0)
 
-    const bloodGroups = visibleGroups.filter(g => g.kind !== 'inlaw')
-    const inlawGroups = visibleGroups.filter(g => g.kind === 'inlaw')
-
     const hasAny = this.groups.some(g => g.people.length > 0)
+
+    const tocEntries = buildToc(visibleGroups, k => this._categoryLabel(k))
 
     return html`
       <div class="filter-row">
@@ -252,6 +385,27 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
         ></md-outlined-text-field>
       </div>
 
+      ${tocEntries.length > 1
+        ? html`
+            <div class="toc-select-row">
+              <md-outlined-select
+                label="${this._('Table Of Contents')}"
+                @change="${this._handleTocSelectChange}"
+              >
+                ${tocEntries.map(
+                  entry => html`
+                    <md-select-option value="${entry.key}">
+                      <div slot="headline">
+                        ${entry.label}
+                        <span class="toc-count">(${entry.count})</span>
+                      </div>
+                    </md-select-option>
+                  `
+                )}
+              </md-outlined-select>
+            </div>
+          `
+        : ''}
       ${!hasAny
         ? html`<p class="empty-message">${this._('No relatives found.')}</p>`
         : ''}
@@ -260,21 +414,54 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
             ${this._('No relatives match the filter.')}
           </p>`
         : ''}
-      ${bloodGroups.map(group => this._renderGroup(group))}
-      ${inlawGroups.map(
-        group =>
-          html`<div class="inlaw-section">${this._renderGroup(group)}</div>`
-      )}
+
+      <div class="relatives-layout">
+        <div class="relatives-content">
+          ${visibleGroups.map(group => this._renderGroup(group))}
+        </div>
+
+        ${tocEntries.length > 1
+          ? html`
+              <nav
+                class="toc-sidebar"
+                aria-label="${this._('Table Of Contents')}"
+              >
+                <h3>${this._('Table Of Contents')}</h3>
+                <ul>
+                  ${tocEntries.map(
+                    entry => html`
+                      <li>
+                        <button
+                          @click="${() => this._handleTocClick(entry.key)}"
+                        >
+                          ${entry.label}
+                          <span class="toc-count">(${entry.count})</span>
+                        </button>
+                      </li>
+                    `
+                  )}
+                </ul>
+              </nav>
+            `
+          : ''}
+      </div>
     `
   }
 
   _renderGroup(group) {
+    // Estimated height for content-visibility contain-intrinsic-size.
+    // Gives the browser an accurate off-screen placeholder so the scrollbar
+    // does not jump when groups enter the viewport.
+    const estimatedHeightPx = group.filteredPeople.length * ROW_HEIGHT_PX
+
     return html`
-      <h3>
+      <h3 id="group-${group.category_key}">
         ${this._categoryLabel(group.category_key)}
         <span class="group-count">(${group.filteredPeople.length})</span>
       </h3>
-      <md-list>
+      <md-list
+        style="content-visibility: auto; contain-intrinsic-size: auto ${estimatedHeightPx}px;"
+      >
         ${group.filteredPeople.map(
           person => html`
             <md-list-item
@@ -285,7 +472,9 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
                 profile: person,
                 extPerson: person,
                 supportingText: person.relationship
-                  ? html`<span slot="supporting-text"
+                  ? html`<span
+                      slot="supporting-text"
+                      class=${classMap({'inlaw-rel': person.kind === 'inlaw'})}
                       >${person.relationship}</span
                     >`
                   : '',
