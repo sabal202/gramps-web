@@ -6,6 +6,9 @@ import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 import {selectParentFamilies, childRefStyle} from './familyHelpers.js'
 
+const DASHED_EDGE_CLASS = 'dashed_edge'
+const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge
+
 const sexColor = {
   F: 'var(--color-girl)',
   M: 'var(--color-boy)',
@@ -177,6 +180,8 @@ function createGraph(graph) {
     for (const f of parentFamiliesOf(p)) {
       const father = f.father_handle
       const mother = f.mother_handle
+      // OFF-gate must be a perfect no-op vs current behavior: no dashing at all when the
+      // toggle is off, even for a non-birth child in the primary family.
       const dashed = graph.showAllParents ? childRefStyle(f, me).dashed : false
       if (graph.known(father) && graph.known(mother)) {
         graph.addEdge(f.handle, false, me, dashed)
@@ -297,7 +302,7 @@ function generateDot(graph) {
   }
   // edges
   for (const e of graph.getEdges()) {
-    const dashedAttr = e.dashed ? ', class="dashed_edge"' : ''
+    const dashedAttr = e.dashed ? `, class="${DASHED_EDGE_CLASS}"` : ''
     for (const targetnode of graph.getNodesOfPerson(e.targetPerson)) {
       if (e.sourcePerson) {
         // one-person node as source
@@ -836,7 +841,7 @@ function remasterChart(
   // copy edges
   gvchartx.selectAll('.edge').each(function () {
     const group = select(this)
-    const dashed = group.attr('class')?.includes('dashed_edge')
+    const dashed = group.attr('class')?.includes(DASHED_EDGE_CLASS)
     const path = group.select('path')
     const pathData = path.attr('d')
     // extract points from path data
@@ -862,7 +867,7 @@ function remasterChart(
       .attr('fill', 'none')
       .attr('stroke', 'var(--grampsjs-body-font-color-40)')
       .attr('stroke-width', 1)
-      .attr('stroke-dasharray', dashed ? '5,3' : null)
+      .attr('stroke-dasharray', dashed ? DASH_CHILD_EDGE : null)
   })
   // edges.selectAll('path').attr('stroke-opacity', '0.4')
 

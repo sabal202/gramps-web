@@ -142,8 +142,9 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     return false
   }
 
+  // neutral stub; GrampsjsViewRelationshipChart sets the ON default via defaults
   get showAllParents() {
-    return true
+    return false
   }
 
   // Person-profile fetch level. The default avoids requesting family profiles;
