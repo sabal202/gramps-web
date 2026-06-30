@@ -75,7 +75,7 @@ export class GrampsjsPerson extends GrampsjsObject {
         : html`<p class="button-list">
             ${this._renderTreeBtn()} ${this._renderTimelineBtn()}
             ${this._renderMapBtn()} ${this._renderDnaBtn()}
-            ${this._renderExternalSearchBtn()}
+            ${this._renderExternalSearchBtn()} ${this._renderAllRelativesBtn()}
           </p>`}
     `
   }
@@ -156,17 +156,24 @@ export class GrampsjsPerson extends GrampsjsObject {
               to="${this.homePersonDetails.handle}"
               .appState="${this.appState}"
             ></grampsjs-common-ancestors>
-            <p class="button-list">
-              <md-outlined-button
-                @click="${() =>
-                  fireEvent(this, 'nav', {
-                    path: `relatives/${this.data.gramps_id}`,
-                  })}"
-              >
-                ${this._('All relatives')}
-              </md-outlined-button>
-            </p>
           `}
+    `
+  }
+
+  _renderAllRelativesBtn() {
+    // Show only when a home person is set and the page person is not the home person
+    if (!this.homePersonDetails.handle) return ''
+    const isSelf = this.homePersonDetails.handle === this.data.handle
+    if (isSelf) return ''
+    return html`
+      <md-outlined-button
+        @click="${() =>
+          fireEvent(this, 'nav', {
+            path: `relatives/${this.data.gramps_id}`,
+          })}"
+      >
+        ${this._('All relatives')}
+      </md-outlined-button>
     `
   }
 
