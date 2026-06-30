@@ -87,12 +87,9 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       return ''
     }
     const dataDescendants = this.descendants
-      ? getDescendantTree(
-          this.data,
-          handle,
-          this.nDesc,
-          this.showNonBirthChildren
-        )
+      ? getDescendantTree(this.data, handle, this.nDesc, {
+          includeNonBirth: this.showNonBirthChildren,
+        })
       : false
     const dataAncestors = this.ancestors
       ? getTree(this.data, handle, this.nAnc, false)
@@ -124,12 +121,11 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   _hasChildren() {
     const {handle} = getPersonByGrampsId(this.data, this.grampsId)
-    const data = getDescendantTree(
-      this.data,
-      handle,
-      2,
-      this.showNonBirthChildren
-    )
+    // Probe must use the same includeNonBirth filter as the rendered tree so the
+    // expand triangle stays consistent with what is actually drawn.
+    const data = getDescendantTree(this.data, handle, 2, {
+      includeNonBirth: this.showNonBirthChildren,
+    })
     if (data.children && data.children.length) {
       return true
     }
@@ -147,9 +143,13 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   renderChildrenMenu() {
     const {handle} = getPersonByGrampsId(this.data, this.grampsId)
+    // Probe must use the same includeNonBirth filter as the rendered tree so the
+    // children menu stays consistent with what is actually drawn.
     const data = this.descendants
       ? getTree(this.data, handle, 2, false)
-      : getDescendantTree(this.data, handle, 2, this.showNonBirthChildren)
+      : getDescendantTree(this.data, handle, 2, {
+          includeNonBirth: this.showNonBirthChildren,
+        })
     const {children} = data
     if (!children || !children.length) {
       return ''

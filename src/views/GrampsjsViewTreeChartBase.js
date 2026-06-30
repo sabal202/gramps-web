@@ -151,6 +151,8 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     return false
   }
 
+  // Shared across all descendant-showing tree charts (descendant + hourglass):
+  // one coherent "show non-birth children" preference rather than per-chart toggles.
   get showNonBirthChildren() {
     return (
       this.appState?.settings?.treeChartShowNonBirthChildren ??

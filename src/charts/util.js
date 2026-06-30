@@ -81,7 +81,7 @@ export const getDescendantTree = (
   data,
   handle,
   depth,
-  includeNonBirth = false,
+  {includeNonBirth = false} = {},
   i = 0,
   label = 'p'
 ) => {
@@ -127,11 +127,13 @@ export const getDescendantTree = (
   }
   tree.children = [...childRefMap.entries()].map(
     ([childHandle, dashed], childInd) => {
+      // depth >= 2 here (depth===1 returns early above), so depth-1 >= 1 and
+      // the depth===0 → {} branch is never reached from this recursion.
       const child = getDescendantTree(
         data,
         childHandle,
         depth - 1,
-        includeNonBirth,
+        {includeNonBirth},
         i + 1,
         `${label}c${childInd}`
       )

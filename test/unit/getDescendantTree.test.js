@@ -58,19 +58,19 @@ describe('getDescendantTree — includeNonBirth false (default)', () => {
   const data = buildScenario()
 
   it('only birth children appear when includeNonBirth is false', () => {
-    const tree = getDescendantTree(data, 'PARENT', 3, false)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: false})
     expect(tree.children).toHaveLength(1)
     expect(tree.children[0].person.handle).toBe('C1')
   })
 
   it('no child node has dashed:true when includeNonBirth is false', () => {
-    const tree = getDescendantTree(data, 'PARENT', 3, false)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: false})
     for (const child of tree.children) {
       expect(child.dashed).toBeFalsy()
     }
   })
 
-  it('default (no includeNonBirth arg) behaves like false', () => {
+  it('default (no options arg) behaves like {includeNonBirth: false}', () => {
     const tree = getDescendantTree(data, 'PARENT', 3)
     expect(tree.children).toHaveLength(1)
     expect(tree.children[0].person.handle).toBe('C1')
@@ -85,20 +85,20 @@ describe('getDescendantTree — includeNonBirth true', () => {
   const data = buildScenario()
 
   it('non-birth children appear when includeNonBirth is true', () => {
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     const handles = tree.children.map(c => c.person.handle)
     expect(handles).toContain('C1')
     expect(handles).toContain('C2')
   })
 
   it('birth child has dashed falsy', () => {
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     const c1 = tree.children.find(c => c.person.handle === 'C1')
     expect(c1.dashed).toBeFalsy()
   })
 
   it('non-birth child has dashed:true', () => {
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     const c2 = tree.children.find(c => c.person.handle === 'C2')
     expect(c2.dashed).toBe(true)
   })
@@ -125,7 +125,7 @@ describe('getDescendantTree — deduplication', () => {
 
   it('a child listed in two families appears only once', () => {
     const data = buildDedupScenario()
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     expect(tree.children).toHaveLength(1)
     expect(tree.children[0].person.handle).toBe('C1')
   })
@@ -145,7 +145,7 @@ describe('getDescendantTree — deduplication', () => {
 
   it('birth listing wins over non-birth when same child in two families', () => {
     const data = buildBirthPriorityScenario()
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     expect(tree.children).toHaveLength(1)
     // First-seen was birth (F1), so dashed should be false
     expect(tree.children[0].dashed).toBeFalsy()
@@ -166,7 +166,7 @@ describe('getDescendantTree — deduplication', () => {
 
   it('birth listing wins even when non-birth is seen first', () => {
     const data = buildNonBirthFirstScenario()
-    const tree = getDescendantTree(data, 'PARENT', 3, true)
+    const tree = getDescendantTree(data, 'PARENT', 3, {includeNonBirth: true})
     expect(tree.children).toHaveLength(1)
     // Second family had birth, so the final node should be solid
     expect(tree.children[0].dashed).toBeFalsy()
@@ -181,12 +181,12 @@ describe('getDescendantTree — early return guards', () => {
   const data = buildScenario()
 
   it('depth=0 returns empty object', () => {
-    const tree = getDescendantTree(data, 'PARENT', 0, true)
+    const tree = getDescendantTree(data, 'PARENT', 0, {includeNonBirth: true})
     expect(tree).toEqual({})
   })
 
   it('depth=1 returns node with no children', () => {
-    const tree = getDescendantTree(data, 'PARENT', 1, true)
+    const tree = getDescendantTree(data, 'PARENT', 1, {includeNonBirth: true})
     expect(tree.children).toBeUndefined()
     expect(tree.person.handle).toBe('PARENT')
   })
