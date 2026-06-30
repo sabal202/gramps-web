@@ -345,19 +345,19 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
   }
 
   /**
-   * Render a single person as a small circular avatar + name + years.
-   * Clickable unless noClick is true (e.g. for apex paired avatars handled separately).
+   * Build the circular gender-ringed avatar element for a person.
+   * Returns a grampsjs-img (when the person has a photo) or grampsjs-icon fallback.
+   *
+   * @param {object} person
+   * @returns {import('lit').TemplateResult}
    */
-  _renderPersonNode(person, {sublabel = '', noClick = false} = {}) {
-    const name = personName(person)
-    const years = lifeYears(person)
+  _buildAvatar(person) {
     const sex = person?.sex || 'U'
     const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
     const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
     const handle = person?.media_list?.[0]?.ref || ''
     const rect = person?.media_list?.[0]?.rect || []
-
-    const avatar = handle
+    return handle
       ? html`<grampsjs-img
           handle="${handle}"
           circle
@@ -372,11 +372,15 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
           color="var(--grampsjs-color-icon)"
           style="${avatarStyle}"
         ></grampsjs-icon>`
+  }
 
-    if (noClick) {
-      return html` <div class="node-avatar">${avatar}</div> `
-    }
-
+  /**
+   * Render a single person as a small circular avatar + name + years.
+   * Always clickable — navigates to the person page on click.
+   */
+  _renderPersonNode(person, {sublabel = ''} = {}) {
+    const name = personName(person)
+    const years = lifeYears(person)
     return html`
       <div
         class="breadcrumb-node"
@@ -388,7 +392,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
         }}"
         title="${name}"
       >
-        <div class="node-avatar">${avatar}</div>
+        <div class="node-avatar">${this._buildAvatar(person)}</div>
         <span class="node-name">${name}</span>
         ${years ? html`<span class="node-years">${years}</span>` : ''}
         ${sublabel ? html`<span class="node-sublabel">${sublabel}</span>` : ''}
@@ -398,7 +402,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
 
   /**
    * Render an apex node (1 or 2 common ancestors).
-   * Single ancestor: same layout as a regular node but with apex tint.
+   * Single ancestor: same layout as a regular node but with apex tint + cursor:pointer.
    * Paired apex: two avatars side by side in one tinted group.
    */
   _renderApexNode(persons) {
@@ -408,32 +412,12 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
       const p = persons[0]
       const name = personName(p)
       const years = lifeYears(p)
-      const sex = p?.sex || 'U'
-      const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
-      const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
-      const handle = p?.media_list?.[0]?.ref || ''
-      const rect = p?.media_list?.[0]?.rect || []
-      const avatar = handle
-        ? html`<grampsjs-img
-            handle="${handle}"
-            circle
-            square
-            size="36"
-            .rect="${rect}"
-            mime=""
-            style="${avatarStyle}"
-          ></grampsjs-img>`
-        : html`<grampsjs-icon
-            path="${mdiAccount}"
-            color="var(--grampsjs-color-icon)"
-            style="${avatarStyle}"
-          ></grampsjs-icon>`
-
       return html`
         <div
           class="breadcrumb-node"
           role="button"
           tabindex="0"
+          style="cursor: pointer;"
           @click="${() => this._navTo(p?.gramps_id)}"
           @keydown="${e => {
             if (e.key === 'Enter' || e.key === ' ') this._navTo(p?.gramps_id)
@@ -444,7 +428,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
             class="node-avatar"
             style="padding: 4px 6px; border-radius: 8px; background: var(--md-sys-color-secondary-container, rgba(0,0,0,0.08)); outline: 1.5px solid var(--md-sys-color-secondary, rgba(0,0,0,0.18));"
           >
-            ${avatar}
+            ${this._buildAvatar(p)}
           </div>
           <span class="node-name">${name}</span>
           ${years ? html`<span class="node-years">${years}</span>` : ''}
@@ -456,28 +440,8 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     return html`
       <div class="apex-node">
         <div class="apex-avatars">
-          ${persons.map(p => {
-            const sex = p?.sex || 'U'
-            const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
-            const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
-            const handle = p?.media_list?.[0]?.ref || ''
-            const rect = p?.media_list?.[0]?.rect || []
-            const avatar = handle
-              ? html`<grampsjs-img
-                  handle="${handle}"
-                  circle
-                  square
-                  size="36"
-                  .rect="${rect}"
-                  mime=""
-                  style="${avatarStyle}"
-                ></grampsjs-img>`
-              : html`<grampsjs-icon
-                  path="${mdiAccount}"
-                  color="var(--grampsjs-color-icon)"
-                  style="${avatarStyle}"
-                ></grampsjs-icon>`
-            return html`
+          ${persons.map(
+            p => html`
               <div
                 class="node-avatar"
                 role="button"
@@ -490,10 +454,10 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
                 title="${personName(p)}"
                 style="cursor: pointer;"
               >
-                ${avatar}
+                ${this._buildAvatar(p)}
               </div>
             `
-          })}
+          )}
         </div>
         <div class="apex-names">
           ${persons.map((p, i) => {
