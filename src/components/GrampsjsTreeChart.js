@@ -41,6 +41,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       gapX: {type: Number},
       nameDisplayFormat: {type: String},
       canEdit: {type: Boolean},
+      showNonBirthChildren: {type: Boolean},
     }
   }
 
@@ -86,7 +87,12 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       return ''
     }
     const dataDescendants = this.descendants
-      ? getDescendantTree(this.data, handle, this.nDesc)
+      ? getDescendantTree(
+          this.data,
+          handle,
+          this.nDesc,
+          this.showNonBirthChildren
+        )
       : false
     const dataAncestors = this.ancestors
       ? getTree(this.data, handle, this.nAnc, false)
@@ -118,7 +124,12 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   _hasChildren() {
     const {handle} = getPersonByGrampsId(this.data, this.grampsId)
-    const data = getDescendantTree(this.data, handle, 2)
+    const data = getDescendantTree(
+      this.data,
+      handle,
+      2,
+      this.showNonBirthChildren
+    )
     if (data.children && data.children.length) {
       return true
     }
@@ -138,7 +149,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     const {handle} = getPersonByGrampsId(this.data, this.grampsId)
     const data = this.descendants
       ? getTree(this.data, handle, 2, false)
-      : getDescendantTree(this.data, handle, 2)
+      : getDescendantTree(this.data, handle, 2, this.showNonBirthChildren)
     const {children} = data
     if (!children || !children.length) {
       return ''

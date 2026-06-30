@@ -76,12 +76,14 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
       nameDisplayFormat: {type: String},
       showUnionDates: {type: Boolean},
       showAllParents: {type: Boolean},
+      showNonBirthChildren: {type: Boolean},
       _data: {type: Array},
       _setAnc: {type: Boolean},
       _setDesc: {type: Boolean},
       _setMaxImages: {type: Boolean},
       _setShowUnionDates: {type: Boolean},
       _setShowAllParents: {type: Boolean},
+      _setShowNonBirthChildren: {type: Boolean},
       _editMode: {type: Boolean},
     }
   }
@@ -91,6 +93,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     nDesc: 1,
     nMaxImages: 50,
     nameDisplayFormat: chartNameDisplayFormat.surnameThenGivenPatronymic,
+    showNonBirthChildren: false,
   }
 
   constructor() {
@@ -105,6 +108,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     this._setMaxImages = false
     this._setShowUnionDates = false
     this._setShowAllParents = false
+    this._setShowNonBirthChildren = false
     this._editMode = false
     this._boundToggleEditMode = this._toggleEditMode.bind(this)
     this._boundDisableEditMode = this._disableEditMode.bind(this)
@@ -145,6 +149,17 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
   // neutral stub; GrampsjsViewRelationshipChart sets the ON default via defaults
   get showAllParents() {
     return false
+  }
+
+  get showNonBirthChildren() {
+    return (
+      this.appState?.settings?.treeChartShowNonBirthChildren ??
+      this.defaults.showNonBirthChildren
+    )
+  }
+
+  set showNonBirthChildren(value) {
+    this.appState.updateSettings({treeChartShowNonBirthChildren: value}, false)
   }
 
   // Person-profile fetch level. The default avoids requesting family profiles;
@@ -379,6 +394,22 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
                     `
                   : ''
               }
+              ${
+                this._setShowNonBirthChildren
+                  ? html`
+                      <tr>
+                        <td>${this._('Show non-birth children')}</td>
+                        <td>
+                          <md-switch
+                            aria-label=${this._('Show non-birth children')}
+                            ?selected=${this.showNonBirthChildren}
+                            @change=${this._handleChangeShowNonBirthChildren}
+                          ></md-switch>
+                        </td>
+                      </tr>
+                    `
+                  : ''
+              }
             </table>
           </div>
           <div slot="actions">
@@ -486,6 +517,10 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
 
   _handleChangeShowAllParents(e) {
     this.showAllParents = e.target.selected
+  }
+
+  _handleChangeShowNonBirthChildren(e) {
+    this.showNonBirthChildren = e.target.selected
   }
 
   _openMenuControls() {

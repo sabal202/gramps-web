@@ -6,6 +6,7 @@ import {scaleSequential} from 'd3-scale'
 import {interpolateWarm} from 'd3-scale-chromatic'
 import {getThumbnailUrl, getThumbnailUrlCropped} from '../api.js'
 import {normalizeRect} from '../util.js'
+import {descendantChildRefs} from './familyHelpers.js'
 
 export const getPerson = (data, handle) =>
   data.find(person => person.handle === handle) || {}
@@ -76,7 +77,14 @@ export const getTree = (
   return tree
 }
 
-export const getDescendantTree = (data, handle, depth, i = 0, label = 'p') => {
+export const getDescendantTree = (
+  data,
+  handle,
+  depth,
+  includeNonBirth = false,
+  i = 0,
+  label = 'p'
+) => {
   if (depth === 0) {
     return {}
   }
@@ -102,27 +110,34 @@ export const getDescendantTree = (data, handle, depth, i = 0, label = 'p') => {
   if (depth === 1) {
     return tree
   }
-  const childHandles =
-    (person?.extended?.families || []).flatMap(fam => {
-      const isFather = fam.father_handle === person.handle
-      const isMother = fam.mother_handle === person.handle
-      if (!isFather && !isMother) {
-        return []
+  // Collect children across all families where this person is a parent, deduplicating
+  // by child handle. A child wrongly listed in two families would otherwise appear
+  // twice. Birth relationship takes priority for the dashed flag.
+  const childRefMap = new Map() // childHandle -> dashed
+  for (const fam of person?.extended?.families || []) {
+    for (const {ref, dashed} of descendantChildRefs(fam, person.handle, {
+      includeNonBirth,
+    })) {
+      if (!childRefMap.has(ref)) {
+        childRefMap.set(ref, dashed)
+      } else if (childRefMap.get(ref) && !dashed) {
+        childRefMap.set(ref, false) // prefer the birth (solid) relationship
       }
-      const relationKey = isFather ? 'frel' : 'mrel'
-
-      return (fam.child_ref_list || [])
-        .filter(childRef => childRef[relationKey] === 'Birth')
-        .map(cref => cref.ref)
-    }) ?? []
-  tree.children = childHandles.map((childHandle, childInd) =>
-    getDescendantTree(
-      data,
-      childHandle,
-      depth - 1,
-      i + 1,
-      `${label}c${childInd}`
-    )
+    }
+  }
+  tree.children = [...childRefMap.entries()].map(
+    ([childHandle, dashed], childInd) => {
+      const child = getDescendantTree(
+        data,
+        childHandle,
+        depth - 1,
+        includeNonBirth,
+        i + 1,
+        `${label}c${childInd}`
+      )
+      child.dashed = dashed
+      return child
+    }
   )
   return tree
 }

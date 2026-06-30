@@ -8,6 +8,8 @@ export class GrampsjsViewDescendantChart extends GrampsjsViewTreeChartBase {
   constructor() {
     super()
     this._setDesc = true
+    this._setShowNonBirthChildren = true
+    this.defaults.showNonBirthChildren = true
   }
 
   get nDesc() {
@@ -35,6 +37,7 @@ export class GrampsjsViewDescendantChart extends GrampsjsViewTreeChartBase {
   _resetLevels() {
     this.nDesc = this.defaults.nDesc
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
+    this.showNonBirthChildren = this.defaults.showNonBirthChildren
   }
 
   renderChart() {
@@ -50,6 +53,7 @@ export class GrampsjsViewDescendantChart extends GrampsjsViewTreeChartBase {
           .data=${this._data}
           gapX="60"
           .appState="${this.appState}"
+          ?showNonBirthChildren=${this.showNonBirthChildren}
         >
         </grampsjs-tree-chart>
       </div>

@@ -10,6 +10,8 @@ export class GrampsjsViewHourglassChart extends GrampsjsViewTreeChartBase {
     this._setAnc = true
     this._setDesc = true
     this.defaults.nAnc = 2
+    this._setShowNonBirthChildren = true
+    this.defaults.showNonBirthChildren = true
   }
 
   get nAnc() {
@@ -46,6 +48,7 @@ export class GrampsjsViewHourglassChart extends GrampsjsViewTreeChartBase {
     this.nAnc = this.defaults.nAnc
     this.nDesc = this.defaults.nDesc
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
+    this.showNonBirthChildren = this.defaults.showNonBirthChildren
   }
 
   renderChart() {
@@ -62,6 +65,7 @@ export class GrampsjsViewHourglassChart extends GrampsjsViewTreeChartBase {
           .data=${this._data}
           gapX="60"
           .appState="${this.appState}"
+          ?showNonBirthChildren=${this.showNonBirthChildren}
         >
         </grampsjs-tree-chart>
       </div>
