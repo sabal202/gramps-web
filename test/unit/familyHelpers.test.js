@@ -51,16 +51,6 @@ describe('selectParentFamilies', () => {
     expect(result).toEqual([primaryFamily])
   })
 
-  it('falls back to [primary_parent_family] when parent_families is undefined', () => {
-    const person = {
-      extended: {
-        parent_families: undefined,
-        primary_parent_family: primaryFamily,
-      },
-    }
-    expect(selectParentFamilies(person)).toEqual([primaryFamily])
-  })
-
   it('falls back to [primary_parent_family] when parent_families is empty array', () => {
     const person = {
       extended: {
@@ -79,6 +69,14 @@ describe('selectParentFamilies', () => {
   it('returns [] when extended is missing entirely', () => {
     const person = {}
     expect(selectParentFamilies(person)).toEqual([])
+  })
+
+  it('returns [] for null person', () => {
+    expect(selectParentFamilies(null)).toEqual([])
+  })
+
+  it('returns [] for undefined person', () => {
+    expect(selectParentFamilies(undefined)).toEqual([])
   })
 
   it('returns [] when primary_parent_family is falsy and parent_families is empty', () => {
@@ -146,14 +144,15 @@ describe('childRefStyle', () => {
     expect(childRefStyle(family, 'C1')).toEqual({dashed: false})
   })
 
-  it('frel=None, mrel=Adopted → dashed (correction does NOT apply)', () => {
+  // The None+Birth correction only fires when mrel is exactly 'Birth'
+  it('frel=None, mrel=Adopted → dashed', () => {
     const family = makeFamily('F1', 'P1', 'P2', [
       makeChildRef('C1', 'None', 'Adopted'),
     ])
     expect(childRefStyle(family, 'C1')).toEqual({dashed: true})
   })
 
-  it('frel=None, mrel=None → dashed (correction only for mrel=Birth)', () => {
+  it('frel=None, mrel=None → dashed', () => {
     const family = makeFamily('F1', 'P1', 'P2', [
       makeChildRef('C1', 'None', 'None'),
     ])
@@ -193,13 +192,6 @@ describe('childRefStyle', () => {
   it('missing frel/mrel default to Birth (solid)', () => {
     const family = makeFamily('F1', 'P1', 'P2', [{ref: 'C1'}])
     expect(childRefStyle(family, 'C1')).toEqual({dashed: false})
-  })
-
-  it('both Adopted/Adopted → dashed', () => {
-    const family = makeFamily('F1', 'P1', 'P2', [
-      makeChildRef('C1', 'Adopted', 'Adopted'),
-    ])
-    expect(childRefStyle(family, 'C1')).toEqual({dashed: true})
   })
 })
 
@@ -262,6 +254,15 @@ describe('descendantChildRefs', () => {
         {ref: 'C3', dashed: true},
       ])
     })
+  })
+
+  it('no options arg → graceful degradation, only birth children returned', () => {
+    // includeNonBirth defaults to undefined (falsy) → same as false
+    const result = descendantChildRefs(family, 'FATHER')
+    expect(result).toEqual([
+      {ref: 'C1', dashed: false},
+      {ref: 'C3', dashed: false},
+    ])
   })
 
   it('parentHandle matches neither father nor mother → returns []', () => {

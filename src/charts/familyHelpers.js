@@ -10,7 +10,7 @@
  *   primary family.
  * - Returns [] when neither is present.
  *
- * @param {object} person
+ * @param {object|null|undefined} person
  * @returns {object[]} Array of Family objects (may be empty).
  */
 export const selectParentFamilies = person => {
@@ -43,10 +43,10 @@ export const childRefStyle = (family, personHandle) => {
   if (!childRef) return {dashed: false}
   const frel = childRef.frel ?? 'Birth'
   const mrel = childRef.mrel ?? 'Birth'
-  let adopted = frel !== 'Birth' || mrel !== 'Birth'
+  let nonBirth = frel !== 'Birth' || mrel !== 'Birth'
   // Desktop correction: no-father + birth-mother is treated as solid
-  if (frel === 'None' && mrel === 'Birth') adopted = false
-  return {dashed: adopted}
+  if (frel === 'None' && mrel === 'Birth') nonBirth = false
+  return {dashed: nonBirth}
 }
 
 /**
@@ -67,7 +67,7 @@ export const childRefStyle = (family, personHandle) => {
 export const descendantChildRefs = (
   family,
   parentHandle,
-  {includeNonBirth}
+  {includeNonBirth} = {}
 ) => {
   if (!family || !Array.isArray(family.child_ref_list)) return []
   let relationKey
@@ -81,10 +81,9 @@ export const descendantChildRefs = (
   const result = []
   for (const childRef of family.child_ref_list) {
     const rel = childRef[relationKey] ?? 'Birth'
-    if (includeNonBirth) {
-      result.push({ref: childRef.ref, dashed: rel !== 'Birth'})
-    } else if (rel === 'Birth') {
-      result.push({ref: childRef.ref, dashed: false})
+    const dashed = rel !== 'Birth'
+    if (includeNonBirth || !dashed) {
+      result.push({ref: childRef.ref, dashed})
     }
   }
   return result
