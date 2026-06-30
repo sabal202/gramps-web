@@ -105,6 +105,7 @@ const PAGE_TITLES = {
   search: 'Search',
   settings: 'Settings',
   anniversaries: 'Anniversaries',
+  relatives: 'Relatives',
 }
 
 export class GrampsJs extends LitElement {
