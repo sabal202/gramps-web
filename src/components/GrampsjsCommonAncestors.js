@@ -203,6 +203,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
   static get properties() {
     return {
       handle: {type: String},
+      to: {type: String},
       _relationship: {type: String},
       _ancestors: {type: Array},
       _loading: {type: Boolean},
@@ -213,6 +214,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
   constructor() {
     super()
     this.handle = ''
+    this.to = ''
     this._relationship = null
     this._ancestors = []
     this._loading = true
@@ -230,13 +232,17 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
   updated(changed) {
     super.updated(changed)
     const handleChanged = changed.has('handle')
+    const toChanged = changed.has('to')
     const appStateChanged = changed.has('appState')
     // Also re-fetch when the locale changes inside appState
     const langChanged =
       appStateChanged &&
       changed.get('appState')?.i18n?.lang !== this.appState?.i18n?.lang
 
-    if ((handleChanged || appStateChanged || langChanged) && this._canFetch()) {
+    if (
+      (handleChanged || toChanged || appStateChanged || langChanged) &&
+      this._canFetch()
+    ) {
       this._fetchData()
     }
   }
@@ -257,7 +263,8 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     this._loading = true
     this._error = false
     const lang = this.appState?.i18n?.lang || 'en'
-    const url = `/api/people/${handle}/common-ancestors?locale=${lang}`
+    const toParam = this.to ? `&to=${encodeURIComponent(this.to)}` : ''
+    const url = `/api/people/${handle}/common-ancestors?locale=${lang}${toParam}`
     const result = await this.appState.apiGet(url)
     // Guard against stale responses if handle changed mid-flight
     if (handle !== this.handle) return

@@ -488,3 +488,57 @@ describe('GrampsjsCommonAncestors._canFetch — appState timing guard', () => {
     expect(el._loading).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// GrampsjsCommonAncestors — `to` property: URL construction
+// ---------------------------------------------------------------------------
+
+describe('GrampsjsCommonAncestors — to property in fetch URL', () => {
+  it('includes ?to=<value> in the URL when to is set', async () => {
+    const apiGet = vi.fn().mockResolvedValue({data: mockApiResponse})
+    const el = makeComponent({
+      appState: {i18n: {lang: 'en', strings: {}}, apiGet},
+    })
+    el.handle = 'handle_subject'
+    el.to = 'handle_home'
+    await el._fetchData()
+    expect(apiGet).toHaveBeenCalledOnce()
+    const url = apiGet.mock.calls[0][0]
+    expect(url).toContain('?locale=en')
+    expect(url).toContain('&to=handle_home')
+  })
+
+  it('omits to param from the URL when to is empty', async () => {
+    const apiGet = vi.fn().mockResolvedValue({data: mockApiResponse})
+    const el = makeComponent({
+      appState: {i18n: {lang: 'en', strings: {}}, apiGet},
+    })
+    el.handle = 'handle_subject'
+    el.to = ''
+    await el._fetchData()
+    expect(apiGet).toHaveBeenCalledOnce()
+    const url = apiGet.mock.calls[0][0]
+    expect(url).not.toContain('to=')
+  })
+
+  it('URI-encodes the to value', async () => {
+    const apiGet = vi.fn().mockResolvedValue({data: mockApiResponse})
+    const el = makeComponent({
+      appState: {i18n: {lang: 'en', strings: {}}, apiGet},
+    })
+    el.handle = 'handle_subject'
+    el.to = 'handle with spaces'
+    await el._fetchData()
+    const url = apiGet.mock.calls[0][0]
+    // encodeURIComponent encodes spaces as %20
+    expect(url).toContain('handle%20with%20spaces')
+  })
+
+  it('_canFetch still requires handle (to alone is not enough)', () => {
+    const el = new GrampsjsCommonAncestors()
+    el.handle = ''
+    el.to = 'handle_home'
+    el.appState = {i18n: {lang: 'en', strings: {}}, apiGet: vi.fn()}
+    expect(el._canFetch()).toBe(false)
+  })
+})
