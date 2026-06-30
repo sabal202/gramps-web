@@ -396,5 +396,8 @@
     "First cousins twice removed": "Двоюродные братья/сёстры, дважды удалённые",
     "Second cousins once removed": "Троюродные братья/сёстры, раз удалённые",
     "In-laws": "Свойственники",
-    "Other relatives": "Прочие родственники"
+    "Other relatives": "Прочие родственники",
+    "All relatives": "Все родственники",
+    "Subject": "Субъект",
+    "Home person": "Домашний человек"
 }

@@ -396,5 +396,8 @@
   "First cousins twice removed": "First cousins twice removed",
   "Second cousins once removed": "Second cousins once removed",
   "In-laws": "In-laws",
-  "Other relatives": "Other relatives"
+  "Other relatives": "Other relatives",
+  "All relatives": "All relatives",
+  "Subject": "Subject",
+  "Home person": "Home person"
 }

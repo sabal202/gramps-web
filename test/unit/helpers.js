@@ -9,12 +9,19 @@
  * TemplateResult tree satisfies the predicate.  Element names and fixed
  * attribute names live in `strings`, not in `values`.
  *
- * @param {import('lit').TemplateResult|*} templateResult
+ * Handles Arrays of TemplateResults (produced by `.map()` inside a Lit
+ * template) by recursing into each element.
+ *
+ * @param {import('lit').TemplateResult|Array|*} templateResult
  * @param {(s: string) => boolean} pred
  * @returns {boolean}
  */
 export function hasString(templateResult, pred) {
   if (!templateResult || typeof templateResult !== 'object') return false
+  // Handle arrays (e.g. result of .map() inside a template)
+  if (Array.isArray(templateResult)) {
+    return templateResult.some(item => hasString(item, pred))
+  }
   const strs = templateResult.strings
   if (Array.isArray(strs) && strs.some(s => typeof s === 'string' && pred(s)))
     return true
@@ -28,12 +35,19 @@ export function hasString(templateResult, pred) {
  * predicate.  Interpolated expressions (attribute values, property bindings)
  * live in `values`.
  *
- * @param {import('lit').TemplateResult|*} templateResult
+ * Handles Arrays of TemplateResults (produced by `.map()` inside a Lit
+ * template) by recursing into each element.
+ *
+ * @param {import('lit').TemplateResult|Array|*} templateResult
  * @param {(v: *) => boolean} pred
  * @returns {boolean}
  */
 export function hasValue(templateResult, pred) {
   if (!templateResult || typeof templateResult !== 'object') return false
+  // Handle arrays (e.g. result of .map() inside a template)
+  if (Array.isArray(templateResult)) {
+    return templateResult.some(item => hasValue(item, pred))
+  }
   const vals = templateResult.values
   if (!Array.isArray(vals)) return false
   for (const v of vals) {
