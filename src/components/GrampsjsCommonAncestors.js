@@ -64,18 +64,12 @@ export function lifeYears(person) {
 }
 
 /**
- * Build the "chain" segments for rendering the path from an endpoint person to
- * a common ancestor.  Returns an array of person objects (endpoint first,
- * ancestor last) that should be rendered as clickable links separated by arrows.
+ * Build the "chain" segments for rendering the path from an endpoint to a
+ * common ancestor.  Returns an ordered array: [intermediate, …, ancestor].
  *
- * The endpoint is the subject (path_a) or home person (path_b) — not included
- * in `intermediates`, so we prepend a synthetic placeholder for it if we have
- * enough info.  For simplicity we only render the intermediates and ancestor;
- * the caller supplies the leading label.
- *
- * @param {object[]} intermediates  - path_a or path_b (may be empty)
- * @param {object}   ancestor       - the common ancestor
- * @returns {object[]}  ordered list: [intermediate, …, ancestor]
+ * @param {object[]|null|undefined} intermediates  - path_a or path_b (may be empty)
+ * @param {object|null}             ancestor       - the common ancestor
+ * @returns {object[]}
  */
 export function buildChainSegments(intermediates, ancestor) {
   const segs = []
@@ -223,18 +217,33 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     this._ancestors = []
     this._loading = true
     this._error = false
-    this._fetchedHandle = ''
   }
 
+  /**
+   * Trigger fetch when handle OR appState becomes available / changes.
+   *
+   * handle is an attribute binding (arrives in the first update cycle);
+   * appState is a property binding (may arrive one cycle later).  We must
+   * react to both so neither ordering causes a permanent blank state.
+   * We only set _loading=true once an actual fetch is about to start.
+   */
   updated(changed) {
     super.updated(changed)
-    // Re-fetch whenever handle or appState.i18n.lang changes
+    const handleChanged = changed.has('handle')
+    const appStateChanged = changed.has('appState')
+    // Also re-fetch when the locale changes inside appState
     const langChanged =
-      changed.has('appState') &&
+      appStateChanged &&
       changed.get('appState')?.i18n?.lang !== this.appState?.i18n?.lang
-    if (changed.has('handle') || langChanged) {
+
+    if ((handleChanged || appStateChanged || langChanged) && this._canFetch()) {
       this._fetchData()
     }
+  }
+
+  /** Returns true once both handle and appState.apiGet are present. */
+  _canFetch() {
+    return Boolean(this.handle && this.appState?.apiGet)
   }
 
   async _fetchData() {
@@ -242,6 +251,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     if (!handle) {
       this._relationship = null
       this._ancestors = []
+      this._loading = false
       return
     }
     this._loading = true
@@ -273,6 +283,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     const years = lifeYears(ancestor)
     return html`
       <button
+        type="button"
         class="ancestor-chip"
         @click="${() => this._navTo(ancestor.gramps_id)}"
         title="${name} ${years}"
@@ -284,142 +295,68 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     `
   }
 
-  _renderChain(endpointLabel, intermediates, ancestor) {
+  /**
+   * Render a single path chain: endpointLabel ← intermediate ← … ← ancestor.
+   *
+   * When intermediates is empty and ancestor is null (both paths truly empty),
+   * returns '' — nothing to show.  When there's at least an ancestor (even with
+   * an empty intermediate path, i.e. the subject is a direct child of the
+   * ancestor), we render: label ← ancestor-link.
+   *
+   * @param {string}          endpointLabel  - translated label for the chain start
+   * @param {object[]|null}   intermediates  - path_a or path_b from the API
+   * @param {object|null}     ancestor       - the common ancestor for this chain
+   * @returns {import('lit').TemplateResult|string}
+   */
+  _buildChainHtml(endpointLabel, intermediates, ancestor) {
     const segments = buildChainSegments(intermediates, ancestor)
-    if (segments.length === 0) {
-      // Direct relationship (empty path: subject IS child of ancestor, or
-      // the ancestor IS the home person, etc.) — nothing to show
-      return html`<span class="path-endpoint">${endpointLabel}</span>`
-    }
-    const parts = []
-    // Leading endpoint label
-    parts.push(
-      html`<span class="path-endpoint">${endpointLabel}</span
-        ><span class="path-arrow">←</span>`
-    )
-    // Intermediate + ancestor
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      const segName = personName(seg)
-      parts.push(
-        html`<button
-          class="path-person-link"
-          @click="${() => this._navTo(seg.gramps_id)}"
-        >
-          ${segName}
-        </button>`
-      )
-      if (i < segments.length - 1) {
-        parts.push(html`<span class="path-arrow">←</span>`)
-      }
-    }
-    return html`<div class="path-chain">${parts}</div>`
+    if (segments.length === 0) return ''
+    return html`<div class="path-chain">
+      <span class="path-endpoint">${endpointLabel}</span>
+      <span class="path-arrow">←</span>
+      ${segments.map(
+        (seg, i) =>
+          html`<button
+              type="button"
+              class="path-person-link"
+              @click="${() => this._navTo(seg.gramps_id)}"
+            >
+              ${personName(seg)}</button
+            >${i < segments.length - 1
+              ? html`<span class="path-arrow">←</span>`
+              : ''}`
+      )}
+    </div>`
   }
 
   _renderEntry(entry) {
     // eslint-disable-next-line camelcase
     const {common_ancestors: ancestors, path_a: pathA, path_b: pathB} = entry
     const ancestorList = ancestors || []
+    const firstAncestor = ancestorList[0] || null
+    // Second ancestor only occurs in the double-cousin case (non-empty paths to
+    // two distinct common ancestors).  The sibling case has two ancestors but
+    // empty paths — both are shown as chips and the chains are empty.
+    const secondAncestor = ancestorList[1] || null
+
+    const subjectLabel = this._('Subject')
+    const homeLabel = this._('Home person')
+
     const chips = html`<div class="ancestor-chips">
       ${ancestorList.map(a => this._renderAncestorChip(a))}
     </div>`
 
-    // For path rendering, use the first ancestor for each chain
-    // (in the sibling case there are 2 ancestors — one per parent;
-    // each parent's path is reflected in their respective chain leading to them)
-    // We show one chain per ancestor grouping the common data.
-    const firstAncestor = ancestorList[0] || null
-    // Determine the last ancestor if there are two (sibling case)
-    const secondAncestor = ancestorList[1] || null
-
-    // If two ancestors (parents pair for siblings), path_a goes to both.
-    // We display one path block: subject → … → ancestor(s), home → … → ancestor(s)
-    const subjectLabel = this._('Subject')
-    const homeLabel = this._('Home person')
-
-    const pathASegments = buildChainSegments(pathA, firstAncestor)
-    const pathBSegments = buildChainSegments(pathB, firstAncestor)
-
-    // For the two-ancestor (sibling) case, also render up to secondAncestor
-    // But since both parents are shown as chips, path_a/path_b are typically empty
-    // (direct parent → sibling is 1 hop). We just show the chips.
-
-    const chainA =
-      pathASegments.length > 0
-        ? html`<div class="path-chain">
-            <span class="path-endpoint">${subjectLabel}</span>
-            <span class="path-arrow">←</span>
-            ${pathASegments.map(
-              (seg, i) =>
-                html`<button
-                    class="path-person-link"
-                    @click="${() => this._navTo(seg.gramps_id)}"
-                  >
-                    ${personName(seg)}</button
-                  >${i < pathASegments.length - 1
-                    ? html`<span class="path-arrow">←</span>`
-                    : ''}`
-            )}
-          </div>`
-        : ''
-
-    const chainB =
-      pathBSegments.length > 0
-        ? html`<div class="path-chain">
-            <span class="path-endpoint">${homeLabel}</span>
-            <span class="path-arrow">←</span>
-            ${pathBSegments.map(
-              (seg, i) =>
-                html`<button
-                    class="path-person-link"
-                    @click="${() => this._navTo(seg.gramps_id)}"
-                  >
-                    ${personName(seg)}</button
-                  >${i < pathBSegments.length - 1
-                    ? html`<span class="path-arrow">←</span>`
-                    : ''}`
-            )}
-          </div>`
-        : ''
-
-    // Second ancestor chains (sibling / double-cousin case)
-    const chainA2 =
-      secondAncestor && pathA?.length
-        ? html`<div class="path-chain">
-            <span class="path-endpoint">${subjectLabel}</span>
-            <span class="path-arrow">←</span>
-            ${buildChainSegments(pathA, secondAncestor).map(
-              (seg, i, arr) =>
-                html`<button
-                    class="path-person-link"
-                    @click="${() => this._navTo(seg.gramps_id)}"
-                  >
-                    ${personName(seg)}</button
-                  >${i < arr.length - 1
-                    ? html`<span class="path-arrow">←</span>`
-                    : ''}`
-            )}
-          </div>`
-        : ''
-
-    const chainB2 =
-      secondAncestor && pathB?.length
-        ? html`<div class="path-chain">
-            <span class="path-endpoint">${homeLabel}</span>
-            <span class="path-arrow">←</span>
-            ${buildChainSegments(pathB, secondAncestor).map(
-              (seg, i, arr) =>
-                html`<button
-                    class="path-person-link"
-                    @click="${() => this._navTo(seg.gramps_id)}"
-                  >
-                    ${personName(seg)}</button
-                  >${i < arr.length - 1
-                    ? html`<span class="path-arrow">←</span>`
-                    : ''}`
-            )}
-          </div>`
-        : ''
+    const chainA = this._buildChainHtml(subjectLabel, pathA, firstAncestor)
+    const chainB = this._buildChainHtml(homeLabel, pathB, firstAncestor)
+    // These only render when there is a second ancestor AND non-empty paths,
+    // which is the double-cousin case (two distinct common ancestors each with
+    // their own intermediate chain).
+    const chainA2 = secondAncestor
+      ? this._buildChainHtml(subjectLabel, pathA, secondAncestor)
+      : ''
+    const chainB2 = secondAncestor
+      ? this._buildChainHtml(homeLabel, pathB, secondAncestor)
+      : ''
 
     return html`
       <div class="entry">

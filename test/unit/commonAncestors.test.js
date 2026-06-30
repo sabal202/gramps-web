@@ -120,8 +120,14 @@ describe('buildChainSegments', () => {
     expect(segs[1]).toBe(ancestorPerson)
   })
 
-  it('returns only ancestor when intermediates is null/undefined', () => {
+  it('returns only ancestor when intermediates is null', () => {
     const segs = buildChainSegments(null, ancestorPerson)
+    expect(segs).toHaveLength(1)
+    expect(segs[0]).toBe(ancestorPerson)
+  })
+
+  it('returns only ancestor when intermediates is undefined', () => {
+    const segs = buildChainSegments(undefined, ancestorPerson)
     expect(segs).toHaveLength(1)
     expect(segs[0]).toBe(ancestorPerson)
   })
@@ -285,6 +291,12 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     // Path chains include '←' arrows — the arrow is a static text node (in strings)
     expect(hasString(result, s => s.includes('←'))).toBe(true)
   })
+
+  it('path-link buttons have type="button"', () => {
+    // Verify type="button" appears in the static template strings of chain buttons
+    const result = el.render()
+    expect(hasString(result, s => s.includes('type="button"'))).toBe(true)
+  })
 })
 
 describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () => {
@@ -324,6 +336,51 @@ describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () =
     ).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// _buildChainHtml — unit test for the deduplicated chain helper
+// ---------------------------------------------------------------------------
+
+describe('GrampsjsCommonAncestors._buildChainHtml', () => {
+  let el
+
+  beforeEach(() => {
+    el = makeComponent()
+  })
+
+  it('returns empty string when segments is empty (both paths null, no ancestor)', () => {
+    const result = el._buildChainHtml('Subject', [], null)
+    expect(result).toBe('')
+  })
+
+  it('renders endpoint label and ancestor when path is empty (direct child)', () => {
+    // path_a=[], ancestor present → Subject ← ancestor
+    const result = el._buildChainHtml('Subject', [], ancestorPerson)
+    expect(hasValue(result, v => v === 'Subject')).toBe(true)
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Иван'))
+    ).toBe(true)
+    expect(hasString(result, s => s.includes('←'))).toBe(true)
+  })
+
+  it('includes the intermediate person in the chain', () => {
+    const result = el._buildChainHtml(
+      'Subject',
+      [intermediatePerson],
+      ancestorPerson
+    )
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Пётр'))
+    ).toBe(true)
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Иван'))
+    ).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GrampsjsCommonAncestors._fetchData — apiGet mock
+// ---------------------------------------------------------------------------
 
 describe('GrampsjsCommonAncestors._fetchData — apiGet mock', () => {
   it('sets _relationship and _ancestors from a successful response', async () => {
@@ -378,5 +435,56 @@ describe('GrampsjsCommonAncestors._fetchData — apiGet mock', () => {
     el._loading = false
     const result = el.render()
     expect(hasString(result, s => s.trim().length > 0)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// I3 — appState timing: fetch still fires when appState arrives after handle
+// ---------------------------------------------------------------------------
+
+describe('GrampsjsCommonAncestors._canFetch — appState timing guard', () => {
+  it('returns false when handle is set but appState has no apiGet', () => {
+    const el = new GrampsjsCommonAncestors()
+    el.handle = 'handle_subject'
+    // appState is the default {} from the mixin constructor
+    expect(el._canFetch()).toBe(false)
+  })
+
+  it('returns false when appState.apiGet is present but handle is empty', () => {
+    const el = new GrampsjsCommonAncestors()
+    el.handle = ''
+    el.appState = {
+      i18n: {lang: 'en', strings: {}},
+      apiGet: vi.fn(),
+    }
+    expect(el._canFetch()).toBe(false)
+  })
+
+  it('returns true when both handle and appState.apiGet are set', () => {
+    const el = new GrampsjsCommonAncestors()
+    el.handle = 'handle_subject'
+    el.appState = {
+      i18n: {lang: 'en', strings: {}},
+      apiGet: vi.fn(),
+    }
+    expect(el._canFetch()).toBe(true)
+  })
+
+  it('fetches successfully when appState arrives after handle', async () => {
+    // Simulate: handle set first, then appState arrives
+    const apiGet = vi.fn().mockResolvedValue({data: mockApiResponse})
+    const el = new GrampsjsCommonAncestors()
+    el.handle = 'handle_subject'
+    // At this point _canFetch() is false → no fetch yet
+
+    // Now appState arrives
+    el.appState = {i18n: {lang: 'en', strings: {}}, apiGet}
+    // Manually call _fetchData (simulates what updated() does after appState change)
+    await el._fetchData()
+
+    expect(apiGet).toHaveBeenCalledOnce()
+    expect(el._relationship).toBe('второй кузен')
+    expect(el._ancestors).toHaveLength(1)
+    expect(el._loading).toBe(false)
   })
 })
