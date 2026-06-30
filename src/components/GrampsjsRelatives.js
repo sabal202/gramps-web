@@ -1,4 +1,5 @@
 import {css, html, LitElement} from 'lit'
+import {classMap} from 'lit/directives/class-map.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 import '@material/web/textfield/outlined-text-field.js'
@@ -473,7 +474,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
                 supportingText: person.relationship
                   ? html`<span
                       slot="supporting-text"
-                      class="${person.kind === 'inlaw' ? 'inlaw-rel' : ''}"
+                      class=${classMap({'inlaw-rel': person.kind === 'inlaw'})}
                       >${person.relationship}</span
                     >`
                   : '',

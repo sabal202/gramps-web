@@ -161,37 +161,56 @@ function applyFilter(groups, query) {
 }
 
 describe('group filtering logic', () => {
+  // New backend contract: no group-level kind; kind is per-person ('blood'|'inlaw').
+  // In-laws are folded into their matching blood-category group; the backend
+  // orders people blood-first then in-laws within each group.
   const groups = [
     {
       category_key: 'siblings',
-      kind: 'blood',
       count: 2,
       people: [
-        {name_given: 'Анна', name_surname: 'Иванова', relationship: 'сестра'},
-        {name_given: 'Пётр', name_surname: 'Иванов', relationship: 'брат'},
+        {
+          name_given: 'Анна',
+          name_surname: 'Иванова',
+          relationship: 'сестра',
+          kind: 'blood',
+        },
+        {
+          name_given: 'Пётр',
+          name_surname: 'Иванов',
+          relationship: 'брат',
+          kind: 'blood',
+        },
       ],
     },
     {
       category_key: 'cousins_1',
-      kind: 'blood',
       count: 1,
       people: [
         {
           name_given: 'Мария',
           name_surname: 'Смирнова',
           relationship: 'двоюродная сестра',
+          kind: 'blood',
         },
       ],
     },
     {
-      category_key: 'inlaw',
-      kind: 'inlaw',
-      count: 1,
+      // children group: one blood child + one in-law (зять folded in)
+      category_key: 'children',
+      count: 2,
       people: [
+        {
+          name_given: 'Ольга',
+          name_surname: 'Иванова',
+          relationship: 'дочь',
+          kind: 'blood',
+        },
         {
           name_given: 'Сергей',
           name_surname: 'Петров',
           relationship: 'зять',
+          kind: 'inlaw',
         },
       ],
     },
@@ -203,7 +222,7 @@ describe('group filtering logic', () => {
   })
 
   it('hides a group when none of its people match the filter', () => {
-    // 'Мария' matches only cousins_1; siblings should be hidden
+    // 'Мария' matches only cousins_1; siblings and children should be hidden
     const visible = applyFilter(groups, 'Мария')
     expect(visible).toHaveLength(1)
     expect(visible[0].category_key).toBe('cousins_1')
@@ -222,18 +241,15 @@ describe('group filtering logic', () => {
     expect(visible[0].filteredPeople[0].name_given).toBe('Анна')
   })
 
-  it('keeps inlaw group when its person matches', () => {
+  it('in-law person matches by relationship and surfaces in its blood-category group', () => {
+    // Сергей (зять, kind=inlaw) is folded into the children group.
+    // Filtering by 'зять' must surface the children group and that person.
     const visible = applyFilter(groups, 'зять')
     expect(visible).toHaveLength(1)
-    expect(visible[0].kind).toBe('inlaw')
-  })
-
-  it('blood groups appear before inlaw groups in source order', () => {
-    // The source groups array already puts blood first; filter preserves order.
-    const visible = applyFilter(groups, '')
-    const bloodIdx = visible.findIndex(g => g.kind === 'blood')
-    const inlawIdx = visible.findIndex(g => g.kind === 'inlaw')
-    expect(bloodIdx).toBeLessThan(inlawIdx)
+    expect(visible[0].category_key).toBe('children')
+    expect(visible[0].filteredPeople).toHaveLength(1)
+    expect(visible[0].filteredPeople[0].kind).toBe('inlaw')
+    expect(visible[0].filteredPeople[0].name_given).toBe('Сергей')
   })
 })
 
