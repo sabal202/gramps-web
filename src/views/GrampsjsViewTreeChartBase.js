@@ -146,7 +146,10 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     return false
   }
 
-  // neutral stub; GrampsjsViewRelationshipChart sets the ON default via defaults
+  // Neutral stub; GrampsjsViewRelationshipChart provides the real getter/setter
+  // and the ON default via defaults. A subclass that shows this toggle
+  // (_setShowAllParents = true) must also define `set showAllParents(value)`,
+  // otherwise _handleChangeShowAllParents below silently swallows the input.
   get showAllParents() {
     return false
   }

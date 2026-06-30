@@ -7,7 +7,7 @@ import {appendAddPersonButton} from './addPersonButton.js'
 import {selectParentFamilies, childRefStyle} from './familyHelpers.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
-const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge
+const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
 
 const sexColor = {
   F: 'var(--color-girl)',

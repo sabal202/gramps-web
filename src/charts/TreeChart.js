@@ -6,6 +6,7 @@ import {zoom} from 'd3-zoom'
 import {chartNameDisplayFormat, fireEvent} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 
+// Dash pattern for non-birth child links; kept in sync with DASH_CHILD_EDGE in RelationshipChart.js
 const DASH_NON_BIRTH = '5,3'
 
 const genderColor = {
