@@ -21,9 +21,11 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this._setSep = true
     this._setMaxImages = true
     this._setShowUnionDates = true
+    this._setShowAllParents = true
     this.color = ''
     this.defaults.nAnc = 2
     this.defaults.showUnionDates = false
+    this.defaults.showAllParents = true
   }
 
   get nAnc() {
@@ -72,6 +74,26 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     return 'self,families'
   }
 
+  // Also fetch parent_family_list so extended.parent_families is populated,
+  // enabling the "show all parent families" feature.
+  get _extendParam() {
+    return 'event_ref_list,primary_parent_family,family_list,parent_family_list'
+  }
+
+  get showAllParents() {
+    return (
+      this.appState?.settings?.relationshipChartShowAllParents ??
+      this.defaults.showAllParents
+    )
+  }
+
+  set showAllParents(value) {
+    this.appState.updateSettings(
+      {relationshipChartShowAllParents: value},
+      false
+    )
+  }
+
   set showUnionDates(value) {
     this.appState.updateSettings(
       {relationshipChartShowUnionDates: value},
@@ -84,6 +106,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this.nMaxImages = this.defaults.nMaxImages
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
     this.showUnionDates = this.defaults.showUnionDates
+    this.showAllParents = this.defaults.showAllParents
   }
 
   _getPersonRules(grampsId) {
@@ -107,6 +130,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
           nMaxImages=${this.nMaxImages}
           nameDisplayFormat=${this.nameDisplayFormat}
           ?showUnionDates=${this.showUnionDates}
+          ?showAllParents=${this.showAllParents}
           ?canEdit="${this._editMode}"
           .data=${this._data}
         >

@@ -6,6 +6,9 @@ import {zoom} from 'd3-zoom'
 import {chartNameDisplayFormat, fireEvent} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 
+// Dash pattern for non-birth child links; kept in sync with DASH_CHILD_EDGE in RelationshipChart.js
+const DASH_NON_BIRTH = '5,3'
+
 const genderColor = {
   0: 'var(--color-girl)',
   1: 'var(--color-boy)',
@@ -130,6 +133,9 @@ function TreeChartCore(
         target: {x: targetX, y: targetY},
       })
     })
+    .attr('stroke-dasharray', d =>
+      d.target.data.dashed ? DASH_NON_BIRTH : null
+    )
 
   const node = chart
     .append('g')
