@@ -1,6 +1,6 @@
 /*
  * Component showing the closest common ancestor(s) between a subject person
- * and the home person, with both path chains and the relationship label.
+ * and the home person, as a horizontal breadcrumb path.
  *
  * Fetches GET /api/people/<handle>/common-ancestors.
  * Renders nothing when:
@@ -10,13 +10,12 @@
  */
 
 import {css, html, LitElement} from 'lit'
-import '@material/web/list/list.js'
-import '@material/web/list/list-item.js'
+import {mdiAccount} from '@mdi/js'
 
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {sharedStyles} from '../SharedStyles.js'
 import {fireEvent} from '../util.js'
-import {renderPersonAvatar} from './personListUtils.js'
+import {genderBorderColor} from './personListUtils.js'
 import './GrampsjsImg.js'
 import './GrampsjsIcon.js'
 
@@ -64,22 +63,53 @@ export function lifeYears(person) {
 }
 
 /**
- * Build the "chain" segments for rendering the path from an endpoint to a
- * common ancestor.  Returns an ordered array: [intermediate, …, ancestor].
+ * Build an ordered list of node descriptors for a breadcrumb path chain.
  *
- * @param {object[]|null|undefined} intermediates  - path_a or path_b (may be empty)
- * @param {object|null}             ancestor       - the common ancestor
- * @returns {object[]}
+ * Reads: subject → up pathA → apex(common ancestors) → down reverse(pathB) → home.
+ *
+ * Each node descriptor:
+ *   { role: 'subject'|'path'|'apex'|'home', persons: [person, ...] }
+ *
+ * - role 'subject': the page person (single person).
+ * - role 'path': an intermediate person on one side of the chain (single person).
+ * - role 'apex': the shared common ancestor(s); two persons for sibling/paired-apex case.
+ * - role 'home': the home/base person (single person); omitted when home is null.
+ *
+ * @param {object|null}   subject    - the page person
+ * @param {object[]}      pathA      - intermediates subject→ancestor (excludes endpoints)
+ * @param {object[]}      ancestors  - common ancestors (1 or 2 persons)
+ * @param {object[]}      pathB      - intermediates home→ancestor (excludes endpoints)
+ * @param {object|null}   home       - home person; omit (null) to skip the home node
+ * @returns {{ role: string, persons: object[] }[]}
  */
-export function buildChainSegments(intermediates, ancestor) {
-  const segs = []
-  if (Array.isArray(intermediates)) {
-    segs.push(...intermediates)
+export function buildChain(subject, pathA, ancestors, pathB, home) {
+  const nodes = []
+
+  if (subject) {
+    nodes.push({role: 'subject', persons: [subject]})
   }
-  if (ancestor) {
-    segs.push(ancestor)
+
+  const safePathA = Array.isArray(pathA) ? pathA : []
+  for (const p of safePathA) {
+    nodes.push({role: 'path', persons: [p]})
   }
-  return segs
+
+  const safeAncestors = Array.isArray(ancestors) ? ancestors : []
+  if (safeAncestors.length > 0) {
+    nodes.push({role: 'apex', persons: safeAncestors})
+  }
+
+  // pathB is traversed home→ancestor, so reverse it for ancestor→home direction
+  const safePathB = Array.isArray(pathB) ? pathB : []
+  for (const p of [...safePathB].reverse()) {
+    nodes.push({role: 'path', persons: [p]})
+  }
+
+  if (home) {
+    nodes.push({role: 'home', persons: [home]})
+  }
+
+  return nodes
 }
 
 export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
@@ -95,105 +125,124 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
           margin-top: 8px;
         }
 
-        .relationship-label {
-          font-style: italic;
+        .section-heading {
+          font-size: 0.85rem;
+          font-weight: 500;
           color: var(--grampsjs-body-font-color-75, inherit);
-          margin-bottom: 8px;
+          margin: 0 0 8px 0;
         }
 
-        .entry {
-          margin-bottom: 16px;
-        }
-
-        .ancestor-chips {
+        .breadcrumb-entry {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-bottom: 8px;
+          align-items: flex-start;
+          gap: 4px;
+          margin-bottom: 12px;
         }
 
-        .ancestor-chip {
-          display: inline-flex;
+        .breadcrumb-node {
+          display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 6px;
           cursor: pointer;
-          padding: 4px 10px 4px 4px;
-          border-radius: 20px;
+          text-align: center;
+          min-width: 48px;
+          max-width: 72px;
+        }
+
+        .breadcrumb-node:hover .node-name {
+          text-decoration: underline;
+        }
+
+        .node-avatar {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 4px;
+        }
+
+        .node-avatar grampsjs-img,
+        .node-avatar grampsjs-icon {
+          display: block;
+        }
+
+        .apex-node {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          cursor: default;
+          text-align: center;
+          max-width: 120px;
+        }
+
+        .apex-avatars {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: 4px 6px;
+          border-radius: 8px;
           background: var(
             --md-sys-color-secondary-container,
             rgba(0, 0, 0, 0.08)
           );
-          color: var(--md-sys-color-on-secondary-container, inherit);
-          text-decoration: none;
-          font-size: 0.9rem;
-          border: none;
-          font-family: inherit;
+          outline: 1.5px solid
+            var(--md-sys-color-secondary, rgba(0, 0, 0, 0.18));
+          margin-bottom: 4px;
         }
 
-        .ancestor-chip:hover {
-          background: var(
-            --md-sys-color-secondary-container,
-            rgba(0, 0, 0, 0.14)
-          );
-          text-decoration: underline;
-        }
-
-        .chip-name {
-          font-weight: 500;
-        }
-
-        .chip-years {
-          font-size: 0.8em;
-          opacity: 0.75;
-        }
-
-        .path-chain {
-          font-size: 0.85rem;
-          color: var(--grampsjs-body-font-color-75, inherit);
-          margin: 2px 0;
-          line-height: 1.5;
-          flex-wrap: wrap;
-          display: flex;
-          align-items: baseline;
-          gap: 2px;
-        }
-
-        .path-arrow {
-          margin: 0 2px;
-          opacity: 0.5;
-        }
-
-        .path-person-link {
+        .apex-avatars .node-avatar {
+          margin-bottom: 0;
           cursor: pointer;
-          color: var(--mdc-theme-primary, inherit);
-          text-decoration: underline;
-          background: none;
-          border: none;
-          padding: 0;
-          font: inherit;
-          font-size: 0.85rem;
         }
 
-        .path-person-link:hover {
-          opacity: 0.8;
+        .apex-names {
+          font-size: 0.75rem;
+          color: var(--grampsjs-body-font-color-75, inherit);
+          line-height: 1.3;
+          word-break: break-word;
         }
 
-        .path-endpoint {
-          font-weight: 500;
-          font-size: 0.85rem;
+        .node-name {
+          font-size: 0.75rem;
+          line-height: 1.3;
+          word-break: break-word;
+          color: inherit;
         }
 
-        .chains {
-          margin-top: 4px;
+        .node-years {
+          font-size: 0.68rem;
+          opacity: 0.65;
+          line-height: 1.2;
+        }
+
+        .node-sublabel {
+          font-size: 0.68rem;
+          opacity: 0.65;
+          line-height: 1.2;
+          font-style: italic;
+        }
+
+        .breadcrumb-connector {
+          display: flex;
+          align-items: center;
+          padding-top: 10px;
+          opacity: 0.45;
+          font-size: 0.9rem;
+          flex-shrink: 0;
+          align-self: flex-start;
         }
 
         @media (max-width: 600px) {
-          .ancestor-chip {
-            font-size: 0.85rem;
+          .node-name,
+          .apex-names {
+            font-size: 0.7rem;
           }
 
-          .path-chain {
-            font-size: 0.8rem;
+          .node-years,
+          .node-sublabel {
+            font-size: 0.65rem;
           }
         }
       `,
@@ -206,6 +255,8 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
       to: {type: String},
       _relationship: {type: String},
       _ancestors: {type: Array},
+      _subject: {type: Object},
+      _home: {type: Object},
       _loading: {type: Boolean},
       _error: {type: Boolean},
     }
@@ -217,6 +268,8 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     this.to = ''
     this._relationship = null
     this._ancestors = []
+    this._subject = null
+    this._home = null
     this._loading = true
     this._error = false
   }
@@ -257,6 +310,8 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     if (!handle) {
       this._relationship = null
       this._ancestors = []
+      this._subject = null
+      this._home = null
       this._loading = false
       return
     }
@@ -271,10 +326,14 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     if ('data' in result) {
       this._relationship = result.data.relationship ?? null
       this._ancestors = result.data.ancestors ?? []
+      this._subject = result.data.subject ?? null
+      this._home = result.data.home ?? null
     } else {
       this._error = true
       this._relationship = null
       this._ancestors = []
+      this._subject = null
+      this._home = null
     }
     this._loading = false
   }
@@ -285,92 +344,195 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     }
   }
 
-  _renderAncestorChip(ancestor) {
-    const name = personName(ancestor)
-    const years = lifeYears(ancestor)
+  /**
+   * Render a single person as a small circular avatar + name + years.
+   * Clickable unless noClick is true (e.g. for apex paired avatars handled separately).
+   */
+  _renderPersonNode(person, {sublabel = '', noClick = false} = {}) {
+    const name = personName(person)
+    const years = lifeYears(person)
+    const sex = person?.sex || 'U'
+    const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
+    const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
+    const handle = person?.media_list?.[0]?.ref || ''
+    const rect = person?.media_list?.[0]?.rect || []
+
+    const avatar = handle
+      ? html`<grampsjs-img
+          handle="${handle}"
+          circle
+          square
+          size="36"
+          .rect="${rect}"
+          mime=""
+          style="${avatarStyle}"
+        ></grampsjs-img>`
+      : html`<grampsjs-icon
+          path="${mdiAccount}"
+          color="var(--grampsjs-color-icon)"
+          style="${avatarStyle}"
+        ></grampsjs-icon>`
+
+    if (noClick) {
+      return html` <div class="node-avatar">${avatar}</div> `
+    }
+
     return html`
-      <button
-        type="button"
-        class="ancestor-chip"
-        @click="${() => this._navTo(ancestor.gramps_id)}"
-        title="${name} ${years}"
+      <div
+        class="breadcrumb-node"
+        role="button"
+        tabindex="0"
+        @click="${() => this._navTo(person?.gramps_id)}"
+        @keydown="${e => {
+          if (e.key === 'Enter' || e.key === ' ') this._navTo(person?.gramps_id)
+        }}"
+        title="${name}"
       >
-        ${renderPersonAvatar(ancestor, ancestor.sex)}
-        <span class="chip-name">${name}</span>
-        ${years ? html`<span class="chip-years">${years}</span>` : ''}
-      </button>
+        <div class="node-avatar">${avatar}</div>
+        <span class="node-name">${name}</span>
+        ${years ? html`<span class="node-years">${years}</span>` : ''}
+        ${sublabel ? html`<span class="node-sublabel">${sublabel}</span>` : ''}
+      </div>
     `
   }
 
   /**
-   * Render a single path chain: endpointLabel ← intermediate ← … ← ancestor.
-   *
-   * When intermediates is empty and ancestor is null (both paths truly empty),
-   * returns '' — nothing to show.  When there's at least an ancestor (even with
-   * an empty intermediate path, i.e. the subject is a direct child of the
-   * ancestor), we render: label ← ancestor-link.
-   *
-   * @param {string}          endpointLabel  - translated label for the chain start
-   * @param {object[]|null}   intermediates  - path_a or path_b from the API
-   * @param {object|null}     ancestor       - the common ancestor for this chain
-   * @returns {import('lit').TemplateResult|string}
+   * Render an apex node (1 or 2 common ancestors).
+   * Single ancestor: same layout as a regular node but with apex tint.
+   * Paired apex: two avatars side by side in one tinted group.
    */
-  _buildChainHtml(endpointLabel, intermediates, ancestor) {
-    const segments = buildChainSegments(intermediates, ancestor)
-    if (segments.length === 0) return ''
-    return html`<div class="path-chain">
-      <span class="path-endpoint">${endpointLabel}</span>
-      <span class="path-arrow">←</span>
-      ${segments.map(
-        (seg, i) =>
-          html`<button
-              type="button"
-              class="path-person-link"
-              @click="${() => this._navTo(seg.gramps_id)}"
-            >
-              ${personName(seg)}</button
-            >${i < segments.length - 1
-              ? html`<span class="path-arrow">←</span>`
+  _renderApexNode(persons) {
+    if (!persons || persons.length === 0) return ''
+
+    if (persons.length === 1) {
+      const p = persons[0]
+      const name = personName(p)
+      const years = lifeYears(p)
+      const sex = p?.sex || 'U'
+      const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
+      const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
+      const handle = p?.media_list?.[0]?.ref || ''
+      const rect = p?.media_list?.[0]?.rect || []
+      const avatar = handle
+        ? html`<grampsjs-img
+            handle="${handle}"
+            circle
+            square
+            size="36"
+            .rect="${rect}"
+            mime=""
+            style="${avatarStyle}"
+          ></grampsjs-img>`
+        : html`<grampsjs-icon
+            path="${mdiAccount}"
+            color="var(--grampsjs-color-icon)"
+            style="${avatarStyle}"
+          ></grampsjs-icon>`
+
+      return html`
+        <div
+          class="breadcrumb-node"
+          role="button"
+          tabindex="0"
+          @click="${() => this._navTo(p?.gramps_id)}"
+          @keydown="${e => {
+            if (e.key === 'Enter' || e.key === ' ') this._navTo(p?.gramps_id)
+          }}"
+          title="${name}"
+        >
+          <div
+            class="node-avatar"
+            style="padding: 4px 6px; border-radius: 8px; background: var(--md-sys-color-secondary-container, rgba(0,0,0,0.08)); outline: 1.5px solid var(--md-sys-color-secondary, rgba(0,0,0,0.18));"
+          >
+            ${avatar}
+          </div>
+          <span class="node-name">${name}</span>
+          ${years ? html`<span class="node-years">${years}</span>` : ''}
+        </div>
+      `
+    }
+
+    // Paired apex: two persons (sibling/full-cousin case — shared parents)
+    return html`
+      <div class="apex-node">
+        <div class="apex-avatars">
+          ${persons.map(p => {
+            const sex = p?.sex || 'U'
+            const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
+            const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
+            const handle = p?.media_list?.[0]?.ref || ''
+            const rect = p?.media_list?.[0]?.rect || []
+            const avatar = handle
+              ? html`<grampsjs-img
+                  handle="${handle}"
+                  circle
+                  square
+                  size="36"
+                  .rect="${rect}"
+                  mime=""
+                  style="${avatarStyle}"
+                ></grampsjs-img>`
+              : html`<grampsjs-icon
+                  path="${mdiAccount}"
+                  color="var(--grampsjs-color-icon)"
+                  style="${avatarStyle}"
+                ></grampsjs-icon>`
+            return html`
+              <div
+                class="node-avatar"
+                role="button"
+                tabindex="0"
+                @click="${() => this._navTo(p?.gramps_id)}"
+                @keydown="${e => {
+                  if (e.key === 'Enter' || e.key === ' ')
+                    this._navTo(p?.gramps_id)
+                }}"
+                title="${personName(p)}"
+                style="cursor: pointer;"
+              >
+                ${avatar}
+              </div>
+            `
+          })}
+        </div>
+        <div class="apex-names">
+          ${persons.map((p, i) => {
+            const name = personName(p)
+            const years = lifeYears(p)
+            return html`${i > 0 ? html`<br />` : ''}${name}${years
+              ? html`&nbsp;<span class="node-years">${years}</span>`
               : ''}`
-      )}
-    </div>`
+          })}
+        </div>
+      </div>
+    `
   }
 
   _renderEntry(entry) {
     // eslint-disable-next-line camelcase
     const {common_ancestors: ancestors, path_a: pathA, path_b: pathB} = entry
-    const ancestorList = ancestors || []
-    const firstAncestor = ancestorList[0] || null
-    // Second ancestor only occurs in the double-cousin case (non-empty paths to
-    // two distinct common ancestors).  The sibling case has two ancestors but
-    // empty paths — both are shown as chips and the chains are empty.
-    const secondAncestor = ancestorList[1] || null
+    const nodes = buildChain(this._subject, pathA, ancestors, pathB, this._home)
+    if (nodes.length === 0) return ''
 
-    const subjectLabel = this._('Subject')
     const homeLabel = this._('Home person')
 
-    const chips = html`<div class="ancestor-chips">
-      ${ancestorList.map(a => this._renderAncestorChip(a))}
-    </div>`
+    const parts = []
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i]
+      if (i > 0) {
+        parts.push(
+          html`<span class="breadcrumb-connector" aria-hidden="true">›</span>`
+        )
+      }
+      if (node.role === 'apex') {
+        parts.push(this._renderApexNode(node.persons))
+      } else {
+        const sublabel = node.role === 'home' ? homeLabel : ''
+        parts.push(this._renderPersonNode(node.persons[0], {sublabel}))
+      }
+    }
 
-    const chainA = this._buildChainHtml(subjectLabel, pathA, firstAncestor)
-    const chainB = this._buildChainHtml(homeLabel, pathB, firstAncestor)
-    // These only render when there is a second ancestor AND non-empty paths,
-    // which is the double-cousin case (two distinct common ancestors each with
-    // their own intermediate chain).
-    const chainA2 = secondAncestor
-      ? this._buildChainHtml(subjectLabel, pathA, secondAncestor)
-      : ''
-    const chainB2 = secondAncestor
-      ? this._buildChainHtml(homeLabel, pathB, secondAncestor)
-      : ''
-
-    return html`
-      <div class="entry">
-        ${chips}
-        <div class="chains">${chainA} ${chainB} ${chainA2} ${chainB2}</div>
-      </div>
-    `
+    return html`<div class="breadcrumb-entry">${parts}</div>`
   }
 
   render() {
@@ -380,7 +542,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
 
     return html`
       <div class="common-ancestors-block">
-        <p class="relationship-label">${this._relationship}</p>
+        <p class="section-heading">${this._('Common ancestors')}</p>
         ${this._ancestors.map(entry => this._renderEntry(entry))}
       </div>
     `

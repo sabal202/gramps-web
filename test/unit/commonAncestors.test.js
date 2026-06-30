@@ -2,7 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {
   personName,
   lifeYears,
-  buildChainSegments,
+  buildChain,
   GrampsjsCommonAncestors,
 } from '../../src/components/GrampsjsCommonAncestors.js'
 import {hasString, hasValue} from './helpers.js'
@@ -33,8 +33,32 @@ const intermediatePerson = {
   media_list: [],
 }
 
+const subjectPerson = {
+  handle: 'handle_subject',
+  gramps_id: 'I0001',
+  name_given: 'Алексей',
+  name_surname: 'Иванов',
+  sex: 'M',
+  birth: {date: '1960'},
+  death: {},
+  media_list: [],
+}
+
+const homePerson = {
+  handle: 'handle_home',
+  gramps_id: 'I0002',
+  name_given: 'Ольга',
+  name_surname: 'Иванова',
+  sex: 'F',
+  birth: {date: '1958'},
+  death: {},
+  media_list: [],
+}
+
 const mockApiResponse = {
   relationship: 'второй кузен',
+  subject: subjectPerson,
+  home: homePerson,
   ancestors: [
     {
       common_ancestors: [ancestorPerson],
@@ -46,6 +70,8 @@ const mockApiResponse = {
 
 const emptyApiResponse = {
   relationship: null,
+  subject: subjectPerson,
+  home: homePerson,
   ancestors: [],
 }
 
@@ -106,43 +132,134 @@ describe('lifeYears', () => {
   })
 })
 
-describe('buildChainSegments', () => {
-  it('returns only ancestor when intermediates is empty', () => {
-    const segs = buildChainSegments([], ancestorPerson)
-    expect(segs).toHaveLength(1)
-    expect(segs[0]).toBe(ancestorPerson)
+// ---------------------------------------------------------------------------
+// buildChain — pure helper unit tests
+// ---------------------------------------------------------------------------
+
+describe('buildChain', () => {
+  it('returns subject + apex + home for a direct child (empty paths)', () => {
+    const nodes = buildChain(
+      subjectPerson,
+      [],
+      [ancestorPerson],
+      [],
+      homePerson
+    )
+    expect(nodes).toHaveLength(3)
+    expect(nodes[0]).toEqual({role: 'subject', persons: [subjectPerson]})
+    expect(nodes[1]).toEqual({role: 'apex', persons: [ancestorPerson]})
+    expect(nodes[2]).toEqual({role: 'home', persons: [homePerson]})
   })
 
-  it('returns intermediates followed by ancestor', () => {
-    const segs = buildChainSegments([intermediatePerson], ancestorPerson)
-    expect(segs).toHaveLength(2)
-    expect(segs[0]).toBe(intermediatePerson)
-    expect(segs[1]).toBe(ancestorPerson)
+  it('inserts path intermediates between subject and apex', () => {
+    const mid1 = {...intermediatePerson, gramps_id: 'I0021'}
+    const nodes = buildChain(
+      subjectPerson,
+      [intermediatePerson, mid1],
+      [ancestorPerson],
+      [],
+      homePerson
+    )
+    expect(nodes).toHaveLength(5)
+    expect(nodes[0].role).toBe('subject')
+    expect(nodes[1]).toEqual({role: 'path', persons: [intermediatePerson]})
+    expect(nodes[2]).toEqual({role: 'path', persons: [mid1]})
+    expect(nodes[3].role).toBe('apex')
+    expect(nodes[4].role).toBe('home')
   })
 
-  it('returns only ancestor when intermediates is null', () => {
-    const segs = buildChainSegments(null, ancestorPerson)
-    expect(segs).toHaveLength(1)
-    expect(segs[0]).toBe(ancestorPerson)
+  it('reverses pathB in the chain (ancestor→home direction)', () => {
+    const midB1 = {...intermediatePerson, gramps_id: 'IB01'}
+    const midB2 = {...intermediatePerson, gramps_id: 'IB02'}
+    // pathB = [midB1, midB2] (home→ancestor order from API)
+    // in chain it should appear reversed: midB2 first (closest to apex), midB1 last (closest to home)
+    const nodes = buildChain(
+      subjectPerson,
+      [],
+      [ancestorPerson],
+      [midB1, midB2],
+      homePerson
+    )
+    // subject, apex, midB2, midB1, home
+    expect(nodes).toHaveLength(5)
+    expect(nodes[0].role).toBe('subject')
+    expect(nodes[1].role).toBe('apex')
+    expect(nodes[2]).toEqual({role: 'path', persons: [midB2]})
+    expect(nodes[3]).toEqual({role: 'path', persons: [midB1]})
+    expect(nodes[4].role).toBe('home')
   })
 
-  it('returns only ancestor when intermediates is undefined', () => {
-    const segs = buildChainSegments(undefined, ancestorPerson)
-    expect(segs).toHaveLength(1)
-    expect(segs[0]).toBe(ancestorPerson)
+  it('omits the home node when home is null', () => {
+    const nodes = buildChain(subjectPerson, [], [ancestorPerson], [], null)
+    expect(nodes).toHaveLength(2)
+    expect(nodes[0].role).toBe('subject')
+    expect(nodes[1].role).toBe('apex')
+    expect(nodes.every(n => n.role !== 'home')).toBe(true)
   })
 
-  it('returns empty array when both args are absent', () => {
-    const segs = buildChainSegments([], null)
-    expect(segs).toHaveLength(0)
+  it('handles sibling paired-apex (2 common_ancestors, empty paths)', () => {
+    const father = {
+      ...ancestorPerson,
+      handle: 'h_father',
+      gramps_id: 'I0050',
+      name_given: 'Алексей',
+      sex: 'M',
+    }
+    const mother = {
+      ...ancestorPerson,
+      handle: 'h_mother',
+      gramps_id: 'I0051',
+      name_given: 'Нина',
+      name_surname: 'Иванова',
+      sex: 'F',
+    }
+    const nodes = buildChain(
+      subjectPerson,
+      [],
+      [father, mother],
+      [],
+      homePerson
+    )
+    expect(nodes).toHaveLength(3)
+    expect(nodes[1].role).toBe('apex')
+    expect(nodes[1].persons).toHaveLength(2)
+    expect(nodes[1].persons[0]).toBe(father)
+    expect(nodes[1].persons[1]).toBe(mother)
   })
 
-  it('preserves order of multiple intermediates', () => {
-    const mid2 = {...intermediatePerson, gramps_id: 'I0021'}
-    const segs = buildChainSegments([intermediatePerson, mid2], ancestorPerson)
-    expect(segs[0]).toBe(intermediatePerson)
-    expect(segs[1]).toBe(mid2)
-    expect(segs[2]).toBe(ancestorPerson)
+  it('handles multiple entries independently (called per entry)', () => {
+    // Two separate buildChain calls simulating two ancestors[] entries
+    const nodes1 = buildChain(
+      subjectPerson,
+      [],
+      [ancestorPerson],
+      [],
+      homePerson
+    )
+    const mid2 = {...intermediatePerson, gramps_id: 'I0099'}
+    const anc2 = {...ancestorPerson, gramps_id: 'I0098'}
+    const nodes2 = buildChain(subjectPerson, [mid2], [anc2], [], homePerson)
+    expect(nodes1).not.toBe(nodes2)
+    expect(nodes1).toHaveLength(3)
+    expect(nodes2).toHaveLength(4)
+  })
+
+  it('gracefully handles null/undefined paths (treats as empty)', () => {
+    const nodes = buildChain(
+      subjectPerson,
+      null,
+      [ancestorPerson],
+      undefined,
+      homePerson
+    )
+    expect(nodes).toHaveLength(3)
+    expect(nodes[1].role).toBe('apex')
+  })
+
+  it('returns only subject when ancestors is empty and home is null', () => {
+    const nodes = buildChain(subjectPerson, [], [], [], null)
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].role).toBe('subject')
   })
 })
 
@@ -221,6 +338,8 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     el._loading = false
     el._error = false
     el._relationship = 'второй кузен'
+    el._subject = subjectPerson
+    el._home = homePerson
     el._ancestors = [
       {
         common_ancestors: [ancestorPerson],
@@ -230,14 +349,26 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     ]
   })
 
-  it('includes the relationship label in the output', () => {
+  it('includes the "Common ancestors" heading in the output', () => {
     const result = el.render()
-    expect(hasValue(result, v => v === 'второй кузен')).toBe(true)
+    // The heading text comes from _(key) which is a dynamic value (not a static string)
+    expect(
+      hasValue(
+        result,
+        v => typeof v === 'string' && v.includes('Common ancestors')
+      )
+    ).toBe(true)
+  })
+
+  it('does NOT include the relationship label as a paragraph', () => {
+    // The relationship label was removed from the breadcrumb render
+    const result = el.render()
+    // 'второй кузен' should NOT appear (it was the removed <p class="relationship-label">)
+    expect(hasValue(result, v => v === 'второй кузен')).toBe(false)
   })
 
   it('includes the ancestor name in the rendered output', () => {
     const result = el.render()
-    // ancestor name appears via personName() call in _renderAncestorChip and chain
     expect(
       hasValue(result, v => typeof v === 'string' && v.includes('Иван'))
     ).toBe(true)
@@ -250,7 +381,7 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     ).toBe(true)
   })
 
-  it('includes life years for the ancestor chip', () => {
+  it('includes life years for the ancestor', () => {
     const result = el.render()
     // lifeYears produces "(1850–1920)"
     expect(
@@ -258,11 +389,32 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     ).toBe(true)
   })
 
-  it('includes intermediate person name as a path link', () => {
+  it('includes intermediate person name in the breadcrumb', () => {
     const result = el.render()
     // Пётр Иванов is in path_a
     expect(
       hasValue(result, v => typeof v === 'string' && v.includes('Пётр'))
+    ).toBe(true)
+  })
+
+  it('includes the subject person name in the breadcrumb', () => {
+    const result = el.render()
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Алексей'))
+    ).toBe(true)
+  })
+
+  it('includes the home person name in the breadcrumb', () => {
+    const result = el.render()
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Ольга'))
+    ).toBe(true)
+  })
+
+  it('includes a "Home person" sublabel for the home node', () => {
+    const result = el.render()
+    expect(
+      hasValue(result, v => typeof v === 'string' && v.includes('Home person'))
     ).toBe(true)
   })
 
@@ -286,21 +438,14 @@ describe('GrampsjsCommonAncestors render — with data', () => {
     expect(hasString(result, s => s.includes('grampsjs-img'))).toBe(true)
   })
 
-  it('renders the arrow separator in path chains', () => {
+  it('includes › connector between breadcrumb nodes', () => {
     const result = el.render()
-    // Path chains include '←' arrows — the arrow is a static text node (in strings)
-    expect(hasString(result, s => s.includes('←'))).toBe(true)
-  })
-
-  it('path-link buttons have type="button"', () => {
-    // Verify type="button" appears in the static template strings of chain buttons
-    const result = el.render()
-    expect(hasString(result, s => s.includes('type="button"'))).toBe(true)
+    expect(hasString(result, s => s.includes('›'))).toBe(true)
   })
 })
 
-describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () => {
-  it('renders chips for both ancestor parents', () => {
+describe('GrampsjsCommonAncestors — sibling case (two common ancestors / paired apex)', () => {
+  it('renders names of both ancestor parents in the paired apex', () => {
     const father = {
       ...ancestorPerson,
       handle: 'h_father',
@@ -312,7 +457,7 @@ describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () =
       ...ancestorPerson,
       handle: 'h_mother',
       gramps_id: 'I0051',
-      name_given: 'Ольга',
+      name_given: 'Нина',
       name_surname: 'Иванова',
       sex: 'F',
     }
@@ -320,6 +465,8 @@ describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () =
     el._loading = false
     el._error = false
     el._relationship = 'брат'
+    el._subject = subjectPerson
+    el._home = homePerson
     el._ancestors = [
       {
         common_ancestors: [father, mother],
@@ -332,49 +479,35 @@ describe('GrampsjsCommonAncestors — sibling case (two common ancestors)', () =
       hasValue(result, v => typeof v === 'string' && v.includes('Алексей'))
     ).toBe(true)
     expect(
-      hasValue(result, v => typeof v === 'string' && v.includes('Ольга'))
+      hasValue(result, v => typeof v === 'string' && v.includes('Нина'))
     ).toBe(true)
   })
-})
 
-// ---------------------------------------------------------------------------
-// _buildChainHtml — unit test for the deduplicated chain helper
-// ---------------------------------------------------------------------------
-
-describe('GrampsjsCommonAncestors._buildChainHtml', () => {
-  let el
-
-  beforeEach(() => {
-    el = makeComponent()
-  })
-
-  it('returns empty string when segments is empty (both paths null, no ancestor)', () => {
-    const result = el._buildChainHtml('Subject', [], null)
-    expect(result).toBe('')
-  })
-
-  it('renders endpoint label and ancestor when path is empty (direct child)', () => {
-    // path_a=[], ancestor present → Subject ← ancestor
-    const result = el._buildChainHtml('Subject', [], ancestorPerson)
-    expect(hasValue(result, v => v === 'Subject')).toBe(true)
-    expect(
-      hasValue(result, v => typeof v === 'string' && v.includes('Иван'))
-    ).toBe(true)
-    expect(hasString(result, s => s.includes('←'))).toBe(true)
-  })
-
-  it('includes the intermediate person in the chain', () => {
-    const result = el._buildChainHtml(
-      'Subject',
-      [intermediatePerson],
-      ancestorPerson
-    )
-    expect(
-      hasValue(result, v => typeof v === 'string' && v.includes('Пётр'))
-    ).toBe(true)
-    expect(
-      hasValue(result, v => typeof v === 'string' && v.includes('Иван'))
-    ).toBe(true)
+  it('apex node for sibling case uses apex-avatars (secondary-container bg)', () => {
+    const father = {
+      ...ancestorPerson,
+      gramps_id: 'I0050',
+      name_given: 'Дмитрий',
+      sex: 'M',
+    }
+    const mother = {
+      ...ancestorPerson,
+      gramps_id: 'I0051',
+      name_given: 'Зинаида',
+      sex: 'F',
+    }
+    const el = makeComponent()
+    el._loading = false
+    el._error = false
+    el._relationship = 'сестра'
+    el._subject = subjectPerson
+    el._home = homePerson
+    el._ancestors = [
+      {common_ancestors: [father, mother], path_a: [], path_b: []},
+    ]
+    const result = el.render()
+    // The paired apex uses .apex-avatars class
+    expect(hasString(result, s => s.includes('apex-avatars'))).toBe(true)
   })
 })
 
@@ -397,6 +530,19 @@ describe('GrampsjsCommonAncestors._fetchData — apiGet mock', () => {
     expect(el._error).toBe(false)
   })
 
+  it('stores _subject and _home from a successful response', async () => {
+    const el = makeComponent({
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        apiGet: vi.fn().mockResolvedValue({data: mockApiResponse}),
+      },
+    })
+    el.handle = 'handle_subject'
+    await el._fetchData()
+    expect(el._subject).toEqual(subjectPerson)
+    expect(el._home).toEqual(homePerson)
+  })
+
   it('sets _error=true and clears data when apiGet returns an error', async () => {
     const el = makeComponent({
       appState: {
@@ -409,6 +555,8 @@ describe('GrampsjsCommonAncestors._fetchData — apiGet mock', () => {
     expect(el._error).toBe(true)
     expect(el._relationship).toBeNull()
     expect(el._ancestors).toHaveLength(0)
+    expect(el._subject).toBeNull()
+    expect(el._home).toBeNull()
   })
 
   it('clears data and does nothing when handle is empty', async () => {
@@ -417,6 +565,8 @@ describe('GrampsjsCommonAncestors._fetchData — apiGet mock', () => {
     await el._fetchData()
     expect(el._relationship).toBeNull()
     expect(el._ancestors).toHaveLength(0)
+    expect(el._subject).toBeNull()
+    expect(el._home).toBeNull()
     expect(el.appState.apiGet).not.toHaveBeenCalled()
   })
 
