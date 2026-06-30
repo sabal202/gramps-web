@@ -25,6 +25,7 @@ import {
   mdiBell,
   mdiBellBadge,
   mdiTimelineOutline,
+  mdiAccountGroup,
 } from '@mdi/js'
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -167,6 +168,13 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
       >
         ${this._icon(mdiTimelineOutline, p === 'timeline')}
         ${this._('Timeline')}
+      </md-list-item>
+      <md-list-item
+        type="link"
+        href="${BASE_DIR}/relatives"
+        ?selected="${p === 'relatives'}"
+      >
+        ${this._icon(mdiAccountGroup, p === 'relatives')} ${this._('Relatives')}
       </md-list-item>
       <md-list-item
         type="link"

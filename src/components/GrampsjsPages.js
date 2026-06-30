@@ -59,6 +59,7 @@ import '../views/GrampsjsViewNewMedia.js'
 import '../views/GrampsjsViewNewTask.js'
 import '../views/GrampsjsViewHelp.js'
 import '../views/GrampsjsViewTimeline.js'
+import '../views/GrampsjsViewRelatives.js'
 
 class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -412,6 +413,12 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
         ?active=${this.appState.path.page === 'timeline'}
         .appState="${this.appState}"
       ></grampsjs-view-timeline>
+      <grampsjs-view-relatives
+        class="page"
+        ?active=${this.appState.path.page === 'relatives'}
+        pageId="${this.appState.path.pageId}"
+        .appState="${this.appState}"
+      ></grampsjs-view-relatives>
     `
   }
 }

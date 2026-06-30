@@ -1,7 +1,7 @@
 import {html} from 'lit'
 import {mdiAccount} from '@mdi/js'
 
-import {objectIconPath} from '../util.js'
+import {objectIconPath, personProfileDisplayName} from '../util.js'
 import './GrampsjsImg.js'
 import './GrampsjsIcon.js'
 
@@ -53,4 +53,31 @@ export function renderPersonDates(profile, {showAge = true} = {}) {
       >${deathStr ? `† ${deathStr}` : ''}${ageStr ? ` ${ageStr}` : ''}</span
     ></span
   >`
+}
+
+/**
+ * Render the inner content of a person list row: gender-ringed avatar, display
+ * name, dates, and an optional extra supporting-text line.
+ *
+ * The caller owns the `<md-list-item>` wrapper (with its classes, event
+ * handlers, etc.).  This helper renders only the child nodes that go inside it,
+ * so any list component can reuse it while keeping its own interaction logic.
+ *
+ * @param {object} opts
+ * @param {object} opts.profile   - Person profile object (name_given/name_surname/sex/birth/death)
+ * @param {object|null} opts.extPerson  - Extended person object for the avatar (media_list)
+ * @param {import('lit').TemplateResult|string} [opts.supportingText] - Optional extra node that
+ *   projects into `slot="supporting-text"`.  Note that `renderPersonDates` also emits a
+ *   `slot="supporting-text"` span, so `md-list-item` will stack both lines when both are
+ *   present — this is intentional and matches the original GrampsjsChildren behaviour.
+ *   Pass `null`/`undefined` (or omit the key) to render no extra line.
+ * @returns {import('lit').TemplateResult}
+ */
+export function renderPersonListItem({profile, extPerson, supportingText}) {
+  const p = profile || {}
+  return html`
+    ${personProfileDisplayName(p)} ${renderPersonDates(p)}
+    ${supportingText != null ? supportingText : ''}
+    ${renderPersonAvatar(extPerson, p.sex)}
+  `
 }

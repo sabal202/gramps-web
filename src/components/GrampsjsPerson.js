@@ -14,6 +14,7 @@ import {asteriskIcon, crossIcon} from '../icons.js'
 import './GrampsjsImg.js'
 import './GrampsjsEditGender.js'
 import './GrampsjsPersonRelationship.js'
+import './GrampsjsCommonAncestors.js'
 import './GrampsjsFormExternalSearch.js'
 import {fireEvent, personProfileDisplayName} from '../util.js'
 
@@ -142,6 +143,8 @@ export class GrampsjsPerson extends GrampsjsObject {
       // no home person set
       return ''
     }
+    // Don't show common-ancestors block when this person IS the home person
+    const isSelf = this.homePersonDetails.handle === this.data.handle
     return html`
       <dl>
         <dt>${this._('Relationship to home person')}</dt>
@@ -153,6 +156,24 @@ export class GrampsjsPerson extends GrampsjsObject {
           ></grampsjs-person-relationship>
         </dd>
       </dl>
+      ${isSelf
+        ? ''
+        : html`
+            <grampsjs-common-ancestors
+              handle="${this.data.handle}"
+              .appState="${this.appState}"
+            ></grampsjs-common-ancestors>
+            <p class="button-list">
+              <md-outlined-button
+                @click="${() =>
+                  fireEvent(this, 'nav', {
+                    path: `relatives/${this.data.gramps_id}`,
+                  })}"
+              >
+                ${this._('All relatives')}
+              </md-outlined-button>
+            </p>
+          `}
     `
   }
 
