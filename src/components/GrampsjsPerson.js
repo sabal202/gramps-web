@@ -153,6 +153,7 @@ export class GrampsjsPerson extends GrampsjsObject {
         : html`
             <grampsjs-common-ancestors
               handle="${this.data.handle}"
+              to="${this.homePersonDetails.handle}"
               .appState="${this.appState}"
             ></grampsjs-common-ancestors>
             <p class="button-list">

@@ -1,4 +1,4 @@
-import {describe, it, expect} from 'vitest'
+import {describe, it, expect, vi} from 'vitest'
 import {html} from 'lit'
 import {
   CATEGORY_LABEL_MAP,
@@ -6,6 +6,7 @@ import {
   personMatchesFilter,
 } from '../../src/components/GrampsjsRelatives.js'
 import {renderPersonListItem} from '../../src/components/personListUtils.js'
+import {GrampsjsViewRelatives} from '../../src/views/GrampsjsViewRelatives.js'
 import {hasString, hasValue} from './helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -383,5 +384,127 @@ describe('GrampsjsViewRelatives update() fetch guard', () => {
   it('does NOT trigger from update() when pageId is not in changedProperties', () => {
     // null sentinel = pageId not in changedProperties
     expect(shouldRefetchFromUpdate(true, null)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GrampsjsViewRelatives._resolveAnchor() — precedence: pageId > homePerson > ''
+// ---------------------------------------------------------------------------
+
+function makeViewComponent(overrides = {}) {
+  const el = new GrampsjsViewRelatives()
+  el.active = true
+  el.appState = {
+    i18n: {lang: 'en', strings: {}},
+    settings: {},
+    apiGet: vi.fn().mockResolvedValue({data: {anchor: null, groups: []}}),
+    ...overrides.appState,
+  }
+  if (overrides.pageId !== undefined) el.pageId = overrides.pageId
+  return el
+}
+
+describe('GrampsjsViewRelatives._resolveAnchor — precedence', () => {
+  it('returns pageId when both pageId and homePerson are set', () => {
+    const el = makeViewComponent({
+      pageId: 'I0001',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {homePerson: 'I0002'},
+        apiGet: vi.fn(),
+      },
+    })
+    expect(el._resolveAnchor()).toBe('I0001')
+  })
+
+  it('returns homePerson when pageId is empty', () => {
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {homePerson: 'I0042'},
+        apiGet: vi.fn(),
+      },
+    })
+    expect(el._resolveAnchor()).toBe('I0042')
+  })
+
+  it('returns empty string when neither pageId nor homePerson is set', () => {
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {},
+        apiGet: vi.fn(),
+      },
+    })
+    expect(el._resolveAnchor()).toBe('')
+  })
+
+  it('returns empty string when settings is absent', () => {
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        apiGet: vi.fn(),
+      },
+    })
+    expect(el._resolveAnchor()).toBe('')
+  })
+})
+
+describe('GrampsjsViewRelatives._fetchData — URL and no-fetch behaviour', () => {
+  it('fetches with pageId in URL when pageId is set', async () => {
+    const apiGet = vi.fn().mockResolvedValue({data: {anchor: null, groups: []}})
+    const el = makeViewComponent({
+      pageId: 'I0001',
+      appState: {i18n: {lang: 'en', strings: {}}, settings: {}, apiGet},
+    })
+    await el._fetchData()
+    expect(apiGet).toHaveBeenCalledOnce()
+    expect(apiGet.mock.calls[0][0]).toBe('/api/relatives/?handle=I0001')
+  })
+
+  it('fetches with homePerson in URL when pageId is empty but homePerson is set', async () => {
+    const apiGet = vi.fn().mockResolvedValue({data: {anchor: null, groups: []}})
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {homePerson: 'I0042'},
+        apiGet,
+      },
+    })
+    await el._fetchData()
+    expect(apiGet).toHaveBeenCalledOnce()
+    expect(apiGet.mock.calls[0][0]).toBe('/api/relatives/?handle=I0042')
+  })
+
+  it('does NOT call apiGet when no anchor is resolvable', async () => {
+    const apiGet = vi.fn()
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {},
+        apiGet,
+      },
+    })
+    await el._fetchData()
+    expect(apiGet).not.toHaveBeenCalled()
+    expect(el.loading).toBe(false)
+    expect(el.error).toBe(false)
+    expect(el._data).toBeNull()
+  })
+
+  it('sets error and null data on backend error without throwing', async () => {
+    const apiGet = vi.fn().mockResolvedValue({error: 'Bad Request'})
+    const el = makeViewComponent({
+      pageId: 'I0001',
+      appState: {i18n: {lang: 'en', strings: {}}, settings: {}, apiGet},
+    })
+    await el._fetchData()
+    expect(el.error).toBe(true)
+    expect(el._data).toBeNull()
   })
 })
