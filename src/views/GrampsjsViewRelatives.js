@@ -45,8 +45,13 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
 
   /**
    * Re-fetch when the home person changes and no explicit pageId is set.
+   *
+   * Defer one microtask so the root's `settings:changed` listener (which writes
+   * to appState.settings) runs first — both listeners fire in registration order
+   * and ours would read a stale homePerson if we fetched synchronously.
    */
-  _onSettingsChanged() {
+  async _onSettingsChanged() {
+    await Promise.resolve()
     if (!this.pageId) {
       this._fetchData()
     }
@@ -74,8 +79,8 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
       `
     }
 
-    // Show guidance when no anchor is resolvable (no pageId, no homePerson)
-    if (!this._resolveAnchor() || (this.error && !this._data)) {
+    // No anchor at all (no pageId, no homePerson) → friendly guidance state.
+    if (!this._resolveAnchor()) {
       return html`
         <h2>${this._('Relatives')}</h2>
         <p>${this._('Set a home person to see relatives')}</p>
@@ -91,6 +96,8 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
       ? `${this._('Relatives')}: ${anchorName}`
       : this._('Relatives')
 
+    // Anchor is set but fetch errored (404/500/network) — delegate to the
+    // existing error state in <grampsjs-relatives> (shows "Error loading relatives.").
     return html`
       <h2>${heading}</h2>
       <grampsjs-relatives
@@ -144,7 +151,8 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
       this._data = result.data
       this.error = false
     } else if ('error' in result) {
-      // On backend error (e.g. 400 / 404) show the guidance state
+      // On backend error (e.g. 400 / 404 / network) surface the error through
+      // <grampsjs-relatives ?error> rather than the home-person guidance.
       this.error = true
       this._data = null
       this._errorMessage = result.error

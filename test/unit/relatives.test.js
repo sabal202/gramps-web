@@ -508,3 +508,87 @@ describe('GrampsjsViewRelatives._fetchData — URL and no-fetch behaviour', () =
     expect(el._data).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// GrampsjsViewRelatives.renderContent() — three distinct render branches
+// ---------------------------------------------------------------------------
+
+describe('GrampsjsViewRelatives.renderContent — render branches', () => {
+  it('shows guidance message when no anchor is resolvable', () => {
+    const el = makeViewComponent({
+      pageId: '',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {},
+        apiGet: vi.fn(),
+      },
+    })
+    el.loading = false
+    el.error = false
+    el._data = null
+    const result = el.renderContent()
+    // Must include the guidance string
+    expect(
+      hasValue(
+        result,
+        v =>
+          typeof v === 'string' &&
+          v.includes('Set a home person to see relatives')
+      )
+    ).toBe(true)
+    // Must NOT include grampsjs-relatives element
+    expect(hasString(result, s => s.includes('grampsjs-relatives'))).toBe(false)
+  })
+
+  it('shows grampsjs-relatives with ?error when anchor is set but fetch errored', () => {
+    const el = makeViewComponent({
+      pageId: 'I0001',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {},
+        apiGet: vi.fn(),
+      },
+    })
+    el.loading = false
+    el.error = true
+    el._data = null
+    const result = el.renderContent()
+    // Must NOT show the home-person guidance message
+    expect(
+      hasValue(
+        result,
+        v =>
+          typeof v === 'string' &&
+          v.includes('Set a home person to see relatives')
+      )
+    ).toBe(false)
+    // Must render grampsjs-relatives (which has its own error state)
+    expect(hasString(result, s => s.includes('grampsjs-relatives'))).toBe(true)
+    // The ?error boolean attribute value should be truthy
+    expect(hasValue(result, v => v === true)).toBe(true)
+  })
+
+  it('shows grampsjs-relatives normally on success', () => {
+    const el = makeViewComponent({
+      pageId: 'I0001',
+      appState: {
+        i18n: {lang: 'en', strings: {}},
+        settings: {},
+        apiGet: vi.fn(),
+      },
+    })
+    el.loading = false
+    el.error = false
+    el._data = {anchor: null, groups: []}
+    const result = el.renderContent()
+    expect(hasString(result, s => s.includes('grampsjs-relatives'))).toBe(true)
+    expect(
+      hasValue(
+        result,
+        v =>
+          typeof v === 'string' &&
+          v.includes('Set a home person to see relatives')
+      )
+    ).toBe(false)
+  })
+})
