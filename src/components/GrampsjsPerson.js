@@ -15,7 +15,7 @@ import './GrampsjsImg.js'
 import './GrampsjsEditGender.js'
 import './GrampsjsPersonRelationship.js'
 import './GrampsjsFormExternalSearch.js'
-import {fireEvent} from '../util.js'
+import {fireEvent, personProfileDisplayName} from '../util.js'
 
 export class GrampsjsPerson extends GrampsjsObject {
   static get styles() {
@@ -82,6 +82,14 @@ export class GrampsjsPerson extends GrampsjsObject {
   _displayName() {
     if (!this.data.profile) {
       return ''
+    }
+    // Prefer the server-formatted name so the configured Gramps name-format is
+    // applied. The manual given-first build below is a fallback and cannot
+    // reproduce an arbitrary configured order. Note: name_display is a plain
+    // string, so the call-name highlight span below is not applied to it (the
+    // server is expected to render the name inline).
+    if (this.data.profile.name_display) {
+      return this.data.profile.name_display
     }
     const surname = this.data.profile.name_surname || '…'
     const suffix = this.data.profile.name_suffix || ''
@@ -355,11 +363,7 @@ export class GrampsjsPerson extends GrampsjsObject {
         if (!this._showRelatedEvents) continue
       }
       const isRelated = !familyEventHandles.has(te.handle)
-      const personName = isRelated
-        ? [te.person?.name_given, te.person?.name_surname]
-            .filter(Boolean)
-            .join(' ')
-        : ''
+      const personName = isRelated ? personProfileDisplayName(te.person) : ''
       entries.push({
         sortKey: timelineOrder.get(te.handle),
         data: {

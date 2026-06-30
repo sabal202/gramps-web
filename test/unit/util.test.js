@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest'
 import {
   translate,
   personTitleFromProfile,
+  personProfileDisplayName,
   personDisplayName,
   reportSelectItemLabel,
   reportSelectItemValue,
@@ -104,6 +105,75 @@ describe('personDisplayName', () => {
 
   it('handles missing primary_name gracefully', () => {
     expect(personDisplayName({})).to.equal('… …')
+  })
+})
+
+describe('name_display preference (server name-format)', () => {
+  it('personProfileDisplayName prefers name_display', () => {
+    expect(
+      personProfileDisplayName({
+        name_given: 'John',
+        name_surname: 'Smith',
+        name_display: 'Smith John',
+      })
+    ).to.equal('Smith John')
+  })
+
+  it('personProfileDisplayName falls back to given+surname without name_display', () => {
+    expect(
+      personProfileDisplayName({name_given: 'John', name_surname: 'Smith'})
+    ).to.equal('John Smith')
+  })
+
+  it('personProfileDisplayName returns empty string for null or empty input', () => {
+    expect(personProfileDisplayName(null)).to.equal('')
+    expect(personProfileDisplayName({})).to.equal('')
+  })
+
+  it('personTitleFromProfile prefers name_display', () => {
+    expect(
+      personTitleFromProfile({
+        name_given: 'John',
+        name_surname: 'Smith',
+        name_suffix: '',
+        name_display: 'Smith John',
+      })
+    ).to.equal('Smith John')
+  })
+
+  it('personTitleFromProfile ignores an empty name_display and builds manually', () => {
+    expect(
+      personTitleFromProfile({
+        name_given: 'John',
+        name_surname: 'Smith',
+        name_display: '',
+      })
+    ).to.equal('John Smith')
+  })
+
+  it('personDisplayName prefers profile.name_display', () => {
+    expect(
+      personDisplayName({
+        primary_name: {first_name: 'John', surname_list: [], suffix: ''},
+        profile: {name_display: 'Smith John'},
+      })
+    ).to.equal('Smith John')
+  })
+
+  it('personDisplayName still builds surname-first when explicitly requested', () => {
+    expect(
+      personDisplayName(
+        {
+          primary_name: {
+            first_name: 'John',
+            surname_list: [{prefix: '', surname: 'Smith', connector: ''}],
+            suffix: '',
+          },
+          profile: {name_display: 'IGNORED'},
+        },
+        {givenfirst: false}
+      )
+    ).to.equal('Smith, John')
   })
 })
 

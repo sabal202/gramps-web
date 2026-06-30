@@ -2,7 +2,11 @@ import {css, html} from 'lit'
 
 import '@material/mwc-icon'
 
-import {fireEvent} from '../util.js'
+import {
+  familyTitleFromProfile,
+  fireEvent,
+  personProfileDisplayName,
+} from '../util.js'
 import './GrampsjsObjectLink.js'
 import './GrampsjsFormEditFamily.js'
 import './GrampsjsFormNewPerson.js'
@@ -80,12 +84,7 @@ export class GrampsjsFamily extends GrampsjsObject {
   }
 
   _renderTitle() {
-    return html`
-      ${this.data?.profile?.father?.name_given || '…'}
-      ${this.data?.profile?.father?.name_surname || '…'} &amp;
-      ${this.data?.profile?.mother?.name_given || '…'}
-      ${this.data?.profile?.mother?.name_surname || '…'}
-    `
+    return html`${familyTitleFromProfile(this.data?.profile ?? {})}`
   }
 
   _renderMarriageBlock() {
@@ -156,8 +155,9 @@ export class GrampsjsFamily extends GrampsjsObject {
                 ? html`<grampsjs-object-link
                       object-type="person"
                       gramps-id="${profile.gramps_id}"
-                      >${profile.name_given || '…'}
-                      ${profile.name_surname || '…'}</grampsjs-object-link
+                      >${personProfileDisplayName(
+                        profile
+                      )}</grampsjs-object-link
                     >
                     ${birthDate || deathDate
                       ? html`<span class="parent-dates">

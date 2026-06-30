@@ -78,6 +78,14 @@ export function translate(strings, s) {
 }
 
 export function personTitleFromProfile(personProfile) {
+  if (!personProfile) {
+    return '… …'
+  }
+  // name_display is formatted server-side per the Gramps name-format setting;
+  // prefer it so the configured name order is respected.
+  if (personProfile.name_display) {
+    return personProfile.name_display
+  }
   return `${personProfile.name_given || '…'} ${
     personProfile.name_surname || '…'
   } ${personProfile.name_suffix || ''}`.trim()
@@ -85,6 +93,7 @@ export function personTitleFromProfile(personProfile) {
 
 export function personProfileDisplayName(profile) {
   return (
+    profile?.name_display ||
     [profile?.name_given, profile?.name_surname].filter(Boolean).join(' ') ||
     profile?.name ||
     ''
@@ -96,6 +105,12 @@ function displaySurname(surname) {
 }
 
 export function personDisplayName(person, options = {givenfirst: true}) {
+  // Prefer the server-formatted name (respects the Gramps name-format setting)
+  // for given-first display. Surname-first callers keep the manual build since
+  // name_display encodes a single configured order.
+  if (options.givenfirst === true && person.profile?.name_display) {
+    return person.profile.name_display
+  }
   const suffix = person.primary_name?.suffix ?? ''
   const given = person.primary_name?.first_name ?? '…'
   const surname =

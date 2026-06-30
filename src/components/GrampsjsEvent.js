@@ -9,7 +9,7 @@ import './GrampsjsFormEditEventDetails.js'
 import './GrampsjsFormEditTitle.js'
 import './GrampsjsIcon.js'
 import './GrampsjsTooltip.js'
-import {fireEvent, emptyDate} from '../util.js'
+import {fireEvent, emptyDate, personProfileDisplayName} from '../util.js'
 import './GrampsjsObjectLink.js'
 
 export class GrampsjsEvent extends GrampsjsObject {
@@ -131,10 +131,10 @@ export class GrampsjsEvent extends GrampsjsObject {
 
   // eslint-disable-next-line class-methods-use-this
   _renderPerson(obj) {
-    if (obj === undefined) {
+    if (obj == null) {
       return ''
     }
-    return `${obj?.name_given || '…'} ${obj?.name_surname || '…'}`
+    return personProfileDisplayName(obj) || '…'
   }
 
   // eslint-disable-next-line class-methods-use-this

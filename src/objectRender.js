@@ -7,6 +7,7 @@ import {
   familyTitleFromProfile,
   eventTitleFromProfile,
   citationTitleFromProfile,
+  personProfileDisplayName,
   getName,
   translate,
   objectIconPath,
@@ -29,8 +30,7 @@ export function renderPerson(personProfile) {
       <grampsjs-object-link
         object-type="person"
         gramps-id="${personProfile.gramps_id}"
-        >${personProfile.name_given || '…'}
-        ${personProfile.name_surname || '…'}</grampsjs-object-link
+        >${personProfileDisplayName(personProfile) || '…'}</grampsjs-object-link
       >
     </span>
     ${personProfile?.birth?.date
@@ -54,8 +54,7 @@ export function showObject(type, obj, strings) {
           >person</mwc-icon
         >
         <grampsjs-object-link object-type="person" gramps-id="${obj.gramps_id}"
-          >${obj?.profile?.name_given || html`&hellip;`}
-          ${obj?.profile?.name_surname || html`&hellip;`}
+          >${personProfileDisplayName(obj?.profile) || html`&hellip;`}
         </grampsjs-object-link>
       `
     case 'family':

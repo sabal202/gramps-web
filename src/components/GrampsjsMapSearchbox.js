@@ -19,7 +19,12 @@ import './GrampsjsButtonToggle.js'
 import {classMap} from 'lit/directives/class-map.js'
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
-import {debounce, fireEvent, objectDetail} from '../util.js'
+import {
+  debounce,
+  fireEvent,
+  objectDetail,
+  personProfileDisplayName,
+} from '../util.js'
 
 const PANEL_EMPTY = 'empty'
 const PANEL_RESULTS = 'results'
@@ -396,12 +401,7 @@ class GrampsjsMapSearchbox extends GrampsjsAppStateMixin(LitElement) {
   _listItemMeta(obj) {
     if (obj.object_type === TYPE_PERSON) {
       return {
-        label:
-          [obj.object?.profile?.name_given, obj.object?.profile?.name_surname]
-            .filter(Boolean)
-            .join(' ') ||
-          obj.object?.profile?.name ||
-          '',
+        label: personProfileDisplayName(obj.object?.profile),
         supportingText: objectDetail(
           TYPE_PERSON,
           obj.object,

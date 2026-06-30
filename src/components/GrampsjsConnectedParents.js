@@ -1,7 +1,7 @@
 import {css, html} from 'lit'
 
 import {GrampsjsConnectedComponent} from './GrampsjsConnectedComponent.js'
-import {fireEvent} from '../util.js'
+import {fireEvent, personProfileDisplayName} from '../util.js'
 import {renderPersonAvatar, renderPersonDates} from './personListUtils.js'
 import {personListItemStyles} from '../SharedStyles.js'
 import '@material/web/list/list.js'
@@ -84,7 +84,7 @@ export class GrampsjsConnectedParents extends GrampsjsConnectedComponent {
             path: `person/${personProfile.gramps_id}`,
           })}"
       >
-        ${personProfile.name_given || ''} ${personProfile.name_surname || ''}
+        ${personProfileDisplayName(personProfile)}
         ${renderPersonDates(personProfile, {showAge: false})}
         ${renderPersonAvatar(extPerson, personProfile.sex)}
       </md-list-item>

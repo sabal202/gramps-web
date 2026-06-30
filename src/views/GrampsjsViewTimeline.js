@@ -6,7 +6,7 @@ import '../components/GrampsjsPillToggle.js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 import {dateToSdn, sdnToJsDate} from '../gcalendar.js'
-import {fireEvent} from '../util.js'
+import {fireEvent, personProfileDisplayName} from '../util.js'
 import '../components/GrampsjsTimeline.js'
 import '../components/GrampsjsFormSelectObject.js'
 
@@ -42,13 +42,7 @@ function filterLabel(obj) {
   if (!obj) return ''
   const o = obj.object
   if (obj.object_type === 'person') {
-    return (
-      [o?.profile?.name_given, o?.profile?.name_surname]
-        .filter(Boolean)
-        .join(' ') ||
-      o?.gramps_id ||
-      ''
-    )
+    return personProfileDisplayName(o?.profile) || o?.gramps_id || ''
   }
   return o?.profile?.name || o?.gramps_id || ''
 }
