@@ -154,8 +154,10 @@ export function buildToc(visibleGroups, labelFn) {
  * md-list-item one-line height = 56 px, supporting-text (two-line) = 72 px.
  * We use 72 px because relatives items show a relationship term below the name.
  *
- * Used by content-visibility contain-intrinsic-size to give the browser an
- * accurate off-screen size estimate so the scrollbar doesn't jump.
+ * Used as the intrinsic-size hint in `contain-intrinsic-size: auto <N>px`.
+ * The `auto` keyword lets the browser cache the last-rendered size and fall
+ * back to the estimate only for groups that have not yet been painted, so the
+ * scrollbar stays accurate after filter changes.
  */
 const ROW_HEIGHT_PX = 72
 
@@ -208,7 +210,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
         .toc-sidebar h3 {
           margin: 0 0 8px 0;
           font-size: 14px;
-          font-weight: 420;
+          font-weight: 450;
           opacity: 0.55;
           font-family: var(--grampsjs-heading-font-family);
         }
@@ -254,10 +256,16 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
           margin-left: 4px;
         }
 
-        /* Narrow-screen TOC: compact jump-to selector above the list */
+        /* Narrow-screen TOC: compact sticky jump-to selector */
         .toc-select-row {
           display: none;
-          margin-bottom: 12px;
+          position: sticky;
+          /* 64px = app-bar height; match top offset of the linear-progress bar */
+          top: 64px;
+          z-index: 1;
+          background: var(--md-sys-color-surface);
+          padding-bottom: 8px;
+          margin-bottom: 4px;
         }
 
         .toc-select-row md-outlined-select {
@@ -510,7 +518,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
         <span class="group-count">(${group.filteredPeople.length})</span>
       </h3>
       <md-list
-        style="content-visibility: auto; contain-intrinsic-size: 0 ${estimatedHeightPx}px;"
+        style="content-visibility: auto; contain-intrinsic-size: auto ${estimatedHeightPx}px;"
       >
         ${group.filteredPeople.map(
           person => html`
