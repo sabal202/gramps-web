@@ -260,6 +260,12 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     const payload = {
       query: this.messages[this.messages.length - 1].message,
     }
+    // Tell the backend who the user is, so the assistant can resolve
+    // self-references ("my cousins") to the home person without asking.
+    const homePerson = this.appState?.settings?.homePerson
+    if (homePerson) {
+      payload.home_person_gramps_id = homePerson
+    }
     const rawHistory = getChatMessageHistoryRaw()
     if (rawHistory) {
       payload.message_history_raw = rawHistory
