@@ -1,6 +1,8 @@
 import {html, css, LitElement} from 'lit'
 import '@material/web/button/filled-button.js'
-import {mdiNotificationClearAll} from '@mdi/js'
+import '@material/web/chips/chip-set.js'
+import '@material/web/chips/assist-chip.js'
+import {mdiNotificationClearAll, mdiAccountHeart} from '@mdi/js'
 
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -105,6 +107,34 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           top: 20px;
           left: 0px;
         }
+
+        .home-banner {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 14px 0 14px;
+          font-size: 0.85em;
+          color: var(--grampsjs-body-font-color-50, #666);
+        }
+
+        .home-banner a {
+          color: inherit;
+          font-weight: 500;
+          text-decoration: none;
+        }
+
+        .home-banner a:hover {
+          text-decoration: underline;
+        }
+
+        .suggestions {
+          padding: 0 10px 8px 10px;
+          flex-shrink: 0;
+        }
+
+        .suggestions md-chip-set {
+          justify-content: center;
+        }
       `,
     ]
   }
@@ -113,6 +143,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     return {
       messages: {type: Array},
       loading: {type: Boolean},
+      homePersonDetails: {type: Object},
       _liveToolCalls: {type: Array},
       _liveStatus: {type: String},
     }
@@ -122,8 +153,36 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     super()
     this.messages = getChatHistory() || []
     this.loading = false
+    this.homePersonDetails = {}
     this._liveToolCalls = []
     this._liveStatus = ''
+  }
+
+  get _homePersonName() {
+    return this.homePersonDetails?.profile?.name_display || ''
+  }
+
+  get _homePersonGrampsId() {
+    return (
+      this.homePersonDetails?.gramps_id ||
+      this.appState?.settings?.homePerson ||
+      ''
+    )
+  }
+
+  get _suggestions() {
+    const list = []
+    if (this._homePersonGrampsId) {
+      list.push(this._('chatSuggestRelatives'))
+      list.push(this._('chatSuggestAncestors'))
+    }
+    list.push(this._('chatSuggestBirthdays'))
+    list.push(this._('chatSuggestStats'))
+    return list
+  }
+
+  _handleSuggestion(text) {
+    this._handlePrompt({detail: {message: text}})
   }
 
   // Converts PROGRESS result_objects into the same shape GrampsjsChatToolCalls expects.
@@ -150,6 +209,20 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
             ${this._('New')}
           </md-filled-button>
         </div>
+        ${this._homePersonName
+          ? html`<div class="home-banner">
+              <grampsjs-icon
+                path="${mdiAccountHeart}"
+                color="currentColor"
+              ></grampsjs-icon>
+              <span
+                >${this._('Home person')}:
+                <a href="/person/${this._homePersonGrampsId}"
+                  >${this._homePersonName}</a
+                ></span
+              >
+            </div>`
+          : ''}
         <div class="container">
           <div class="conversation">
             ${this.loading
@@ -180,6 +253,18 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
                 `
               )}
           </div>
+          ${this.messages.length === 0 && !this.loading
+            ? html`<div class="suggestions">
+                <md-chip-set>
+                  ${this._suggestions.map(
+                    text => html`<md-assist-chip
+                      label="${text}"
+                      @click="${() => this._handleSuggestion(text)}"
+                    ></md-assist-chip>`
+                  )}
+                </md-chip-set>
+              </div>`
+            : ''}
           <div class="prompt">
             <grampsjs-chat-prompt
               ?loading="${this.loading}"

@@ -4,6 +4,13 @@ import '../components/GrampsjsChat.js'
 import {GrampsjsView} from './GrampsjsView.js'
 
 export class GrampsjsViewChat extends GrampsjsView {
+  static get properties() {
+    return {
+      ...super.properties,
+      homePersonDetails: {type: Object},
+    }
+  }
+
   static get styles() {
     return [
       super.styles,
@@ -33,7 +40,12 @@ export class GrampsjsViewChat extends GrampsjsView {
   }
 
   renderContent() {
-    return html` <grampsjs-chat .appState="${this.appState}"></grampsjs-chat> `
+    return html`
+      <grampsjs-chat
+        .appState="${this.appState}"
+        .homePersonDetails="${this.homePersonDetails}"
+      ></grampsjs-chat>
+    `
   }
 
   firstUpdated() {

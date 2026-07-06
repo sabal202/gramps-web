@@ -407,5 +407,9 @@
   "Distant relatives": "Distant relatives",
   "All relatives": "All relatives",
   "Home person": "Home person",
-  "Set a home person to see relatives": "Set a home person to see relatives"
+  "Set a home person to see relatives": "Set a home person to see relatives",
+  "chatSuggestRelatives": "Who are my cousins?",
+  "chatSuggestAncestors": "Show my ancestors",
+  "chatSuggestBirthdays": "Whose birthdays are coming up?",
+  "chatSuggestStats": "Tell me about our family tree"
 }

@@ -400,5 +400,9 @@
     "Distant relatives": "Дальние родственники",
     "All relatives": "Все родственники",
     "Home person": "Базовая персона",
-    "Set a home person to see relatives": "Задайте базовую персону, чтобы увидеть родственников"
+    "Set a home person to see relatives": "Задайте базовую персону, чтобы увидеть родственников",
+    "chatSuggestRelatives": "Кто мои двоюродные братья и сёстры?",
+    "chatSuggestAncestors": "Покажи моих предков",
+    "chatSuggestBirthdays": "У кого скоро дни рождения?",
+    "chatSuggestStats": "Расскажи о нашем семейном дереве"
 }

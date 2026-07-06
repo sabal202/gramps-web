@@ -262,6 +262,7 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
               class="page"
               ?active=${this.appState.path.page === 'chat'}
               .appState="${this.appState}"
+              .homePersonDetails=${this.homePersonDetails}
             ></grampsjs-view-chat>
           `
         : ''}
