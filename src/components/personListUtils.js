@@ -54,3 +54,23 @@ export function renderPersonDates(profile, {showAge = true} = {}) {
     ></span
   >`
 }
+
+/**
+ * Decide what to show for a person's age, from the backend-computed
+ * `profile.current_age` field. Returns null when there's nothing to show
+ * (no birth date, or an undated person too old to plausibly still be alive —
+ * see gramps-web-api's get_person_profile_for_object).
+ *
+ * @param {object} profile - Person profile object
+ * @returns {{age: string, isDeceased: boolean}|null}
+ */
+export function getCurrentAgeInfo(profile) {
+  const age = profile?.current_age
+  if (!age) {
+    return null
+  }
+  const isDeceased = Boolean(
+    profile?.death && Object.keys(profile.death).length > 0
+  )
+  return {age, isDeceased}
+}
