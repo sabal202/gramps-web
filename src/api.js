@@ -967,6 +967,59 @@ export async function apiGet(auth, endpoint) {
   }
 }
 
+// Stream a chat response via Server-Sent Events (fetch + ReadableStream).
+// EventSource can't set the Authorization header, so we use fetch and parse the
+// `data: {...}\n\n` frames ourselves, invoking onEvent for each parsed object.
+export async function apiChatStream(auth, payload, onEvent) {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  }
+  try {
+    const accessToken = await auth.getValidAccessToken()
+    headers.Authorization = `Bearer ${accessToken}`
+    // eslint-disable-next-line no-empty
+  } catch {}
+  const resp = await fetch(`${__APIHOST__}/api/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok || resp.body === null) {
+    throw new Error(`Chat stream failed with status ${resp.status}`)
+  }
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    // eslint-disable-next-line no-await-in-loop
+    const {done, value} = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, {stream: true})
+    let sep = buffer.indexOf('\n\n')
+    while (sep >= 0) {
+      const frame = buffer.slice(0, sep)
+      buffer = buffer.slice(sep + 2)
+      const line = frame.startsWith('data: ') ? frame.slice(6) : frame
+      if (line) {
+        let ev = null
+        try {
+          ev = JSON.parse(line)
+        } catch {
+          ev = null
+        }
+        if (ev) {
+          onEvent(ev)
+        }
+      }
+      sep = buffer.indexOf('\n\n')
+    }
+  }
+}
+
 export async function apiPutPostDelete(
   auth,
   method,

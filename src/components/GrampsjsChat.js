@@ -16,6 +16,7 @@ import {
   getChatMessageHistoryRaw,
   setChatMessageHistoryRaw,
   updateTaskStatus,
+  apiChatStream,
 } from '../api.js'
 import {fireEvent} from '../util.js'
 
@@ -146,6 +147,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       homePersonDetails: {type: Object},
       _liveToolCalls: {type: Array},
       _liveStatus: {type: String},
+      _liveText: {type: String},
     }
   }
 
@@ -156,6 +158,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     this.homePersonDetails = {}
     this._liveToolCalls = []
     this._liveStatus = ''
+    this._liveText = ''
   }
 
   get _homePersonName() {
@@ -228,16 +231,19 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
             ${this.loading
               ? html`<grampsjs-chat-message
                   type="ai"
+                  .message="${this._liveText}"
                   .metadata="${this._liveMetadata}"
                   .status="${this._liveStatus}"
                   ?live="${true}"
                   .appState="${this.appState}"
                 >
-                  <div class="loading" slot="no-wrap">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                  </div>
+                  ${this._liveText
+                    ? ''
+                    : html`<div class="loading" slot="no-wrap">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                      </div>`}
                 </grampsjs-chat-message>`
               : ''}
             ${this.messages
@@ -340,8 +346,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     })
   }
 
-  async _generateResponse() {
-    this.loading = true
+  _buildChatPayload() {
     const payload = {
       query: this.messages[this.messages.length - 1].message,
     }
@@ -358,6 +363,89 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       // Fallback for sessions pre-dating message_history_raw; can be removed later.
       payload.history = this.messages.slice(0, this.messages.length - 1)
     }
+    return payload
+  }
+
+  // Real token streaming via SSE; falls back to the background/polling path if
+  // streaming is unavailable (old server, network error, unsupported client).
+  async _generateResponse() {
+    this.loading = true
+    this._liveText = ''
+    this._liveToolCalls = []
+    this._liveStatus = ''
+    const payload = this._buildChatPayload()
+    let receivedAny = false
+    let finalized = false
+    const fireError = (msg, detail = {}) =>
+      fireEvent(this, 'grampsjs:error', {message: msg, silent: true, detail})
+    try {
+      await apiChatStream(this.appState.auth, payload, ev => {
+        receivedAny = true
+        if (ev.type === 'delta') {
+          this._liveText += ev.text || ''
+          this._scrollToLastMessage()
+        } else if (ev.type === 'tool') {
+          if (ev.name && !this._liveToolCalls.some(t => t.step === ev.step)) {
+            this._liveToolCalls = [
+              ...this._liveToolCalls,
+              {step: ev.step, tool: ev.name},
+            ]
+          }
+        } else if (ev.type === 'done') {
+          finalized = true
+          if (ev.message_history_raw) {
+            setChatMessageHistoryRaw(ev.message_history_raw)
+          }
+          this.messages = [
+            ...this.messages.slice(-5),
+            {
+              role: 'ai',
+              message: ev.response || this._liveText,
+              metadata: ev.metadata ?? this._liveMetadata,
+            },
+          ]
+          setChatHistory(this.messages)
+        } else if (ev.type === 'error') {
+          throw new Error(ev.message || this._('An error occurred'))
+        }
+      })
+      if (!finalized) {
+        if (this._liveText) {
+          this.messages = [
+            ...this.messages.slice(-5),
+            {role: 'ai', message: this._liveText, metadata: this._liveMetadata},
+          ]
+          setChatHistory(this.messages)
+        } else {
+          throw new Error('Empty stream')
+        }
+      }
+    } catch (err) {
+      if (!receivedAny) {
+        // Streaming unavailable/failed before any data — use the background path.
+        this._liveText = ''
+        this._liveToolCalls = []
+        this._liveStatus = ''
+        return this._generateResponseBackground()
+      }
+      fireError(err?.message || this._('An error occurred'))
+      this.messages = [
+        ...this.messages.slice(-5),
+        {role: 'error', message: this._('An error occurred')},
+      ]
+      setChatHistory(this.messages)
+    } finally {
+      this.loading = false
+      this._liveText = ''
+      this._liveToolCalls = []
+      this._liveStatus = ''
+    }
+    return undefined
+  }
+
+  async _generateResponseBackground() {
+    this.loading = true
+    const payload = this._buildChatPayload()
     const data = await this.appState.apiPost(
       '/api/chat/?background=1&verbose=1',
       payload,
