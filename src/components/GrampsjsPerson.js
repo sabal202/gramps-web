@@ -16,6 +16,7 @@ import './GrampsjsEditGender.js'
 import './GrampsjsPersonRelationship.js'
 import './GrampsjsFormExternalSearch.js'
 import {fireEvent} from '../util.js'
+import {getCurrentAgeInfo} from './personListUtils.js'
 
 export class GrampsjsPerson extends GrampsjsObject {
   static get styles() {
@@ -68,7 +69,8 @@ export class GrampsjsPerson extends GrampsjsObject {
         ></grampsjs-edit-gender>
         ${this._displayName()}
       </h2>
-      ${this._renderBirth()} ${this._renderDeath()} ${this._renderRelation()}
+      ${this._renderBirth()} ${this._renderDeath()} ${this._renderCurrentAge()}
+      ${this._renderRelation()}
       ${this.preview
         ? ''
         : html`<p class="button-list">
@@ -124,7 +126,21 @@ export class GrampsjsPerson extends GrampsjsObject {
       <span class="event">
         <i>${crossIcon}</i>
         ${obj.date || ''} ${obj.place ? this._('in') : ''}
-        ${obj.place_name || obj.place || ''}
+        ${obj.place_name || obj.place || ''}${obj.age ? ` (${obj.age})` : ''}
+      </span>
+    `
+  }
+
+  _renderCurrentAge() {
+    const info = getCurrentAgeInfo(this.data?.profile)
+    if (!info) {
+      return ''
+    }
+    return html`
+      <span class="event">
+        ${info.isDeceased
+          ? this._('Would be %s today', info.age)
+          : `${this._('Age')}: ${info.age}`}
       </span>
     `
   }
