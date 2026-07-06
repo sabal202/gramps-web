@@ -904,7 +904,7 @@ export function RelationshipChart(
     imgPadding = 10,
     getImageUrl = null,
     grampsId = 0,
-    maxImages = 50,
+    maxImages = 400,
     shrinkToFit = false,
     // orientation = 'LTR',
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,

@@ -23,7 +23,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this._setShowUnionDates = true
     this._setShowAllParents = true
     this.color = ''
-    this.defaults.nAnc = 2
+    this.defaults.nAnc = 10
     this.defaults.showUnionDates = false
     this.defaults.showAllParents = true
   }
