@@ -113,7 +113,10 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 4px 14px 0 14px;
+          /* clear the .clear-btn, which is shifted down 20px via position:relative
+             and therefore overlaps whatever follows it in normal flow */
+          margin-top: 28px;
+          padding: 0 14px 4px 14px;
           font-size: 0.85em;
           color: var(--grampsjs-body-font-color-50, #666);
         }
