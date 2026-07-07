@@ -12,6 +12,8 @@ import '@material/web/button/text-button'
 import '@material/web/button/filled-button'
 import '@material/web/iconbutton/icon-button.js'
 import '@material/web/icon/icon.js'
+import '@material/web/select/outlined-select.js'
+import '@material/web/select/select-option.js'
 import {
   mdiOpenInNew,
   mdiEarth,
@@ -26,7 +28,12 @@ import {
 } from '@mdi/js'
 import {renderIcon} from '../icons.js'
 import {updateSettings, getSettings} from '../api.js'
-import {resolveSiteData} from '../externalSearch.js'
+import {
+  resolveSiteData,
+  getPersonNames,
+  getNameParts,
+  buildExternalSearchDataForName,
+} from '../externalSearch.js'
 import {clickKeyHandler, makeHandle} from '../util.js'
 import './GrampsjsFormSelectType.js'
 import './GrampsjsIcon.js'
@@ -118,6 +125,8 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
       hiddenWebsites: {type: Object},
       showAddForm: {type: Boolean},
       customEngines: {type: Array},
+      person: {type: Object},
+      selectedNameIndex: {type: Number},
     }
   }
 
@@ -127,6 +136,28 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
     this.hiddenWebsites = this._loadHiddenWebsites()
     this.showAddForm = false
     this.customEngines = this._loadCustomEngines()
+    this.person = null
+    this.selectedNameIndex = 0
+  }
+
+  // The person's names (primary first); empty when no person was passed.
+  _getNames() {
+    return getPersonNames(this.person)
+  }
+
+  // Substitution data for the currently selected name. Falls back to the
+  // pre-built `this.data` when no person object is available.
+  _getSearchData() {
+    const names = this._getNames()
+    if (!names.length) {
+      return this.data
+    }
+    const name = names[this.selectedNameIndex] || names[0]
+    return buildExternalSearchDataForName(name, this.person)
+  }
+
+  _handleNameSelect(e) {
+    this.selectedNameIndex = Number(e.target.value) || 0
   }
 
   _loadCustomEngines() {
@@ -273,6 +304,10 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
           gap: 0.5em;
           justify-content: flex-end;
         }
+        .name-select {
+          width: 100%;
+          margin-bottom: 0.75em;
+        }
       `,
     ]
   }
@@ -286,8 +321,9 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
   }
 
   getExternalSearchWebsitesData() {
+    const searchData = this._getSearchData()
     const builtIn = EXTERNAL_SEARCH_WEBSITES.map(website => {
-      const siteData = resolveSiteData(this.data, website.script)
+      const siteData = resolveSiteData(searchData, website.script)
       return {
         ...website,
         baseUrl: this.interpolateTemplate(website.baseUrl, siteData),
@@ -302,7 +338,7 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
         reqRegistration: false,
         reqSubscription: false,
       },
-      baseUrl: this.interpolateTemplate(engine.url, this.data),
+      baseUrl: this.interpolateTemplate(engine.url, searchData),
       params: '',
       isCustom: true,
     }))
@@ -466,6 +502,42 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
     `
   }
 
+  _nameOptionLabel(name) {
+    const {given, familySurname} = getNameParts(name)
+    const text =
+      [given, familySurname].filter(Boolean).join(' ') || this._('Name')
+    const type = name?.type ? ` (${this._(name.type)})` : ''
+    return `${text}${type}`
+  }
+
+  // Let the user pick which of the person's names to search by (e.g. maiden vs
+  // married name). Only shown when the person has more than one name.
+  _renderNameSelector() {
+    const names = this._getNames()
+    if (names.length < 2) {
+      return ''
+    }
+    return html`
+      <md-outlined-select
+        class="name-select"
+        label="${this._('Name')}"
+        .value="${String(this.selectedNameIndex)}"
+        @change="${this._handleNameSelect}"
+      >
+        ${names.map(
+          (name, i) => html`
+            <md-select-option
+              value="${i}"
+              ?selected="${i === this.selectedNameIndex}"
+            >
+              <div slot="headline">${this._nameOptionLabel(name)}</div>
+            </md-select-option>
+          `
+        )}
+      </md-outlined-select>
+    `
+  }
+
   renderForm() {
     const searchWebUrls = this.getExternalSearchWebsitesData()
     const visibleWebUrls = this.editMode
@@ -474,7 +546,8 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
 
     return html`
       <div>
-        ${this._renderHeader()} ${this._renderWebsiteList(visibleWebUrls)}
+        ${this._renderHeader()} ${this._renderNameSelector()}
+        ${this._renderWebsiteList(visibleWebUrls)}
         ${this._renderAddCustomEngine()} ${this._renderLegend()}
       </div>
     `
