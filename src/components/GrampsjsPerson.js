@@ -313,6 +313,7 @@ export class GrampsjsPerson extends GrampsjsObject {
           @object:cancel=${this._handleCancelDialog}
           .appState="${this.appState}"
           .data=${data}
+          .person=${this.data}
           .dialogTitle=${this._('External Search')}
           .hideSaveButton=${true}
         >

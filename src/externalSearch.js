@@ -37,48 +37,53 @@ export const getNameParts = name => {
 export const isLatinScript = str =>
   /[A-Za-zÀ-ɏ]/.test(str || '') && !/[А-Яа-яЁёІіЇїЄєҐґЎўЂђЈј]/.test(str || '')
 
+// All of a person's names, primary first, in stored order.
+export const getPersonNames = person =>
+  [person?.primary_name, ...(person?.alternate_names ?? [])].filter(Boolean)
+
+const isLatinName = name => {
+  const {familySurname, given} = getNameParts(name)
+  return isLatinScript(familySurname) || isLatinScript(given)
+}
+
 // From the primary name plus any alternate names, return the first Name whose
 // family surname (or given name) is written in Latin script, or null.
-export const pickLatinName = person => {
-  const names = [
-    person?.primary_name,
-    ...(person?.alternate_names ?? []),
-  ].filter(Boolean)
-  return (
-    names.find(n => {
-      const {familySurname, given} = getNameParts(n)
-      return isLatinScript(familySurname) || isLatinScript(given)
-    }) || null
-  )
-}
+export const pickLatinName = person =>
+  getPersonNames(person).find(isLatinName) || null
 
 const extractYear = dateStr => {
   const m = String(dateStr || '').match(/\d{4}/)
   return m ? m[0] : ''
 }
 
-// Build the full substitution dict from a person object (`this.data` in
-// GrampsjsPerson: has `primary_name`, `alternate_names` and a `profile`).
-export const buildExternalSearchData = data => {
-  const primary = getNameParts(data?.primary_name)
-  const latinName = pickLatinName(data)
+// Build the substitution dict for a specific name of the person. Name fields
+// come from `name` (so an alternate/maiden name can be searched, not just the
+// active one); years and place come from the person `profile` (name-independent).
+// Latin variants use `name` itself if it is Latin-script, else any Latin
+// alternate name on the person.
+export const buildExternalSearchDataForName = (name, data) => {
+  const parts = getNameParts(name)
+  const allSurnames = (name?.surname_list ?? [])
+    .map(s => s.surname)
+    .filter(Boolean)
+    .join(' ')
+  const latinName = isLatinName(name) ? name : pickLatinName(data)
   const latin = latinName
     ? getNameParts(latinName)
     : {given: '', familySurname: '', patronymic: ''}
   const profile = data?.profile ?? {}
-  const given = profile.name_given || primary.given
   return {
-    // primary spelling (as entered — Cyrillic for this tree)
-    name_given: given,
-    name_surname: profile.name_surname || primary.familySurname,
-    name_family_surname: primary.familySurname,
-    name_patronymic: primary.patronymic,
-    name_middle: given.split(' ')[1] || '',
-    // Latin variants from an alternate name ('' when none is recorded)
+    // spelling as entered on the chosen name (Cyrillic for this tree)
+    name_given: parts.given,
+    name_surname: allSurnames,
+    name_family_surname: parts.familySurname,
+    name_patronymic: parts.patronymic,
+    name_middle: parts.given.split(' ')[1] || '',
+    // Latin variants ('' when the person has no Latin-script name)
     name_given_latin: latin.given,
     name_family_surname_latin: latin.familySurname,
     name_patronymic_latin: latin.patronymic,
-    // shared
+    // shared, name-independent
     place_name:
       profile?.birth?.place_name ||
       profile?.birth?.place ||
@@ -89,6 +94,11 @@ export const buildExternalSearchData = data => {
     death_year: extractYear(profile?.death?.date),
   }
 }
+
+// Build the substitution dict from a person object using the active (primary)
+// name — the default when no specific name is chosen.
+export const buildExternalSearchData = data =>
+  buildExternalSearchDataForName(data?.primary_name, data)
 
 // Produce the variable dict to interpolate for one site. Latin-script sites get
 // the Latin name variants mapped onto the plain template variables, so a site

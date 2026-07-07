@@ -3,7 +3,9 @@ import {
   getNameParts,
   isLatinScript,
   pickLatinName,
+  getPersonNames,
   buildExternalSearchData,
+  buildExternalSearchDataForName,
   resolveSiteData,
 } from '../../src/externalSearch.js'
 
@@ -216,5 +218,53 @@ describe('resolveSiteData', () => {
   it('defaults to Cyrillic when script is undefined', () => {
     const r = resolveSiteData(searchData, undefined)
     expect(r.name_family_surname).toBe('Соболевский')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Multiple names: getPersonNames + buildExternalSearchDataForName
+// ---------------------------------------------------------------------------
+
+// A married woman: active (primary) = married name, alternate = maiden name.
+const marriedName = {
+  type: 'Married Name',
+  first_name: 'Мария',
+  surname_list: [{surname: 'Иванова', origintype: ''}],
+}
+const maidenName = {
+  type: 'Birth Name',
+  first_name: 'Мария',
+  surname_list: [{surname: 'Петрова', origintype: ''}],
+}
+const marriedWoman = {
+  primary_name: marriedName,
+  alternate_names: [maidenName],
+  profile: {birth: {date: '1950', place_name: 'Минск'}},
+}
+
+describe('getPersonNames', () => {
+  it('lists primary first then alternates, in stored order', () => {
+    expect(getPersonNames(marriedWoman)).toEqual([marriedName, maidenName])
+  })
+
+  it('is safe on a person with no names', () => {
+    expect(getPersonNames({})).toEqual([])
+    expect(getPersonNames(undefined)).toEqual([])
+  })
+})
+
+describe('buildExternalSearchDataForName', () => {
+  it('uses the active (married) name by default via buildExternalSearchData', () => {
+    const d = buildExternalSearchData(marriedWoman)
+    expect(d.name_family_surname).toBe('Иванова')
+  })
+
+  it('searches by the chosen (maiden) name instead of the active one', () => {
+    const d = buildExternalSearchDataForName(maidenName, marriedWoman)
+    expect(d.name_given).toBe('Мария')
+    expect(d.name_family_surname).toBe('Петрова')
+    // years/place stay name-independent (from the profile)
+    expect(d.birth_year).toBe('1950')
+    expect(d.place_name).toBe('Минск')
   })
 })
