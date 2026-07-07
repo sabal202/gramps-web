@@ -109,6 +109,79 @@ const EXTERNAL_SEARCH_WEBSITES = [
     params:
       '?firstname={{name_given}}&middlename={{name_middle}}&lastname={{name_surname}}&birthyear={{birth_year}}&birthyearfilter=&deathyear={{death_year}}&deathyearfilter=',
   },
+  // --- CIS / Eastern-European sources -------------------------------------
+  // Cyrillic sources use the primary (as-entered) name incl. patronymic.
+  // `script: 'latin'` sources use a Latin-script alternate name if recorded.
+  {
+    key: 'yandexArchive',
+    value: 'Яндекс Архив',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'cyrillic',
+    baseUrl: 'https://yandex.ru/archive/search',
+    params:
+      '?text={{name_family_surname}}+{{name_given}}+{{name_patronymic}}&dateFrom={{birth_year}}&dateTo={{death_year}}&searchZone=name%3Bsheet&rankMode=by_relevance&index=archive',
+  },
+  {
+    key: 'familio',
+    value: 'Familio',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'cyrillic',
+    baseUrl: 'https://familio.org/persons',
+    params:
+      '?f_lastName={{name_family_surname}}&f_firstAndMiddleName={{name_given}}+{{name_patronymic}}&page-persons=1',
+  },
+  {
+    key: 'geni',
+    value: 'Geni',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'cyrillic',
+    baseUrl: 'https://www.geni.com/search',
+    params: '?search_type=people&names={{name_given}}+{{name_family_surname}}',
+  },
+  {
+    key: 'pamyatNaroda',
+    value: 'Память народа',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'cyrillic',
+    baseUrl: 'https://pamyat-naroda.ru/heroes/',
+    params:
+      '?adv_search=y&last_name={{name_family_surname}}&first_name={{name_given}}&middle_name={{name_patronymic}}',
+  },
+  {
+    key: 'permArchive',
+    value: 'Поколения Пермского края',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'cyrillic',
+    baseUrl: 'https://pokolenia.permkrai.ru/records/search/',
+    params: '?lastname={{name_family_surname}}',
+  },
+  {
+    key: 'geneteka',
+    value: 'Geneteka',
+    websiteCriteria: {
+      reqRegistration: false,
+      reqSubscription: false,
+    },
+    script: 'latin',
+    baseUrl: 'https://geneteka.genealodzy.pl/index.php',
+    params:
+      '?op=gt&lang=eng&bdm=B&w=&rid=B&search_lastname={{name_family_surname}}&search_name={{name_given}}',
+  },
 ]
 
 class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
