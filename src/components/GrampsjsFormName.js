@@ -13,6 +13,11 @@ import {fireEvent} from '../util.js'
 import './GrampsjsFormString.js'
 import './GrampsjsFormSurname.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
+import {
+  getPatronymicValue,
+  isComplexName,
+  withPatronymic,
+} from '../nameFormUtils.js'
 
 class GrampsjsFormName extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -148,6 +153,7 @@ class GrampsjsFormName extends GrampsjsAppStateMixin(LitElement) {
           ></mwc-icon-button>
 
           <grampsjs-form-surname
+            class="${classMap({hide: i > 0 && !this.showMore})}"
             ?origintype="${this.origintype}"
             ?showMore="${this.showMore}"
             id="surnames${i}"
@@ -160,9 +166,18 @@ class GrampsjsFormName extends GrampsjsAppStateMixin(LitElement) {
             .typesLocale="${this.typesLocale}"
           >
           </grampsjs-form-surname>
-          <hr />
+          <hr class="${classMap({hide: i > 0 && !this.showMore})}" />
         `
       )}
+      <p class="${classMap({hide: this.showMore})}">
+        <grampsjs-form-string
+          @formdata:changed="${this._handleFormData}"
+          fullwidth
+          id="patronymic"
+          value="${getPatronymicValue(this.data)}"
+          label="${this._('Patronymic')}"
+        ></grampsjs-form-string>
+      </p>
       <p class="${classMap({hide: !this.showMore})}">
         <mwc-icon-button
           @click="${this._handleAddSurname}"
@@ -190,6 +205,16 @@ class GrampsjsFormName extends GrampsjsAppStateMixin(LitElement) {
 
   _handleShowMore() {
     this.showMore = true
+  }
+
+  updated(changedProperties) {
+    if (
+      changedProperties.has('data') &&
+      !this.showMore &&
+      isComplexName(this.data)
+    ) {
+      this.showMore = true
+    }
   }
 
   reset() {
@@ -242,6 +267,8 @@ class GrampsjsFormName extends GrampsjsAppStateMixin(LitElement) {
       )
     ) {
       this.data = {...this.data, [originalTarget.id]: e.detail.data}
+    } else if (originalTarget.id === 'patronymic') {
+      this.data = withPatronymic(this.data, e.detail.data)
     } else if (originalTarget.id.startsWith('surnames')) {
       const i = e.detail.idx
       const surnameList = this.data.surname_list || []
