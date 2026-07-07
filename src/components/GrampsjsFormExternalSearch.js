@@ -26,6 +26,7 @@ import {
 } from '@mdi/js'
 import {renderIcon} from '../icons.js'
 import {updateSettings, getSettings} from '../api.js'
+import {resolveSiteData} from '../externalSearch.js'
 import {clickKeyHandler, makeHandle} from '../util.js'
 import './GrampsjsFormSelectType.js'
 import './GrampsjsIcon.js'
@@ -277,15 +278,22 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
   }
 
   interpolateTemplate(template, data) {
-    return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || '')
+    // Only the substituted values are URL-encoded; the static template text
+    // (which already contains valid separators like & = + %3B) is left as-is.
+    return template.replace(/\{\{(\w+)\}\}/g, (match, key) =>
+      encodeURIComponent(data[key] || '')
+    )
   }
 
   getExternalSearchWebsitesData() {
-    const builtIn = EXTERNAL_SEARCH_WEBSITES.map(website => ({
-      ...website,
-      baseUrl: this.interpolateTemplate(website.baseUrl, this.data),
-      params: this.interpolateTemplate(website.params, this.data),
-    }))
+    const builtIn = EXTERNAL_SEARCH_WEBSITES.map(website => {
+      const siteData = resolveSiteData(this.data, website.script)
+      return {
+        ...website,
+        baseUrl: this.interpolateTemplate(website.baseUrl, siteData),
+        params: this.interpolateTemplate(website.params, siteData),
+      }
+    })
 
     const custom = this.customEngines.map(engine => ({
       key: engine.key,
@@ -386,7 +394,11 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
           ${this._(
             'Enter a search URL with template variables for person data. Available variables:'
           )}
-          <strong>{{name_given}}, {{name_surname}}, {{place_name}}</strong>
+          <strong
+            >{{name_given}}, {{name_surname}}, {{name_family_surname}},
+            {{name_patronymic}}, {{place_name}}, {{birth_year}},
+            {{death_year}}</strong
+          >
         </div>
         <md-outlined-text-field
           id="custom-name"
