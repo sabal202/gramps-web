@@ -32,9 +32,10 @@ export const getNameParts = name => {
   }
 }
 
-// A string is "Latin" if it has a Latin letter and no Cyrillic letter.
+// A string is "Latin" if it has a Latin-script letter (incl. Polish/Baltic
+// diacritics like ł ż ą ś) and no Cyrillic letter.
 export const isLatinScript = str =>
-  /[A-Za-z]/.test(str || '') && !/[А-Яа-яЁёІіЇїЄєҐґЎўЂђЈј]/.test(str || '')
+  /[A-Za-zÀ-ɏ]/.test(str || '') && !/[А-Яа-яЁёІіЇїЄєҐґЎўЂђЈј]/.test(str || '')
 
 // From the primary name plus any alternate names, return the first Name whose
 // family surname (or given name) is written in Latin script, or null.

@@ -115,6 +115,10 @@ describe('isLatinScript', () => {
     expect(isLatinScript(undefined)).toBe(false)
     expect(isLatinScript('1882')).toBe(false)
   })
+
+  it('is true for a Latin string made only of diacritics (no ASCII letters)', () => {
+    expect(isLatinScript('Żółć')).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -167,6 +171,18 @@ describe('buildExternalSearchData', () => {
     expect(d.birth_year).toBe('1882')
     expect(d.death_year).toBe('1943')
     expect(d.place_name).toBe('Гродно')
+  })
+
+  it('extracts the year from a qualified date string', () => {
+    const d = buildExternalSearchData({
+      primary_name: cyrillicName,
+      profile: {
+        birth: {date: 'ок. 1890'},
+        death: {date: 'between 1941 and 1945'},
+      },
+    })
+    expect(d.birth_year).toBe('1890')
+    expect(d.death_year).toBe('1941')
   })
 
   it('is safe on an empty person', () => {
