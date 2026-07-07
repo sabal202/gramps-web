@@ -2,13 +2,14 @@ import {html} from 'lit'
 
 import {GrampsjsObjectForm} from './GrampsjsObjectForm.js'
 import {GrampsjsNewMediaMixin} from '../mixins/GrampsjsNewMediaMixin.js'
+import {GrampsjsMediaUploadMixin} from '../mixins/GrampsjsMediaUploadMixin.js'
 
 import './GrampsjsFormUpload.js'
 
 import {fireEvent, emptyDate} from '../util.js'
 
-export class GrampsjsFormNewMedia extends GrampsjsNewMediaMixin(
-  GrampsjsObjectForm
+export class GrampsjsFormNewMedia extends GrampsjsMediaUploadMixin(
+  GrampsjsNewMediaMixin(GrampsjsObjectForm)
 ) {
   constructor() {
     super()
@@ -51,27 +52,12 @@ export class GrampsjsFormNewMedia extends GrampsjsNewMediaMixin(
   }
 
   async upload(submittedData) {
-    let finalData = {...submittedData}
     const uploadElement = this.shadowRoot.getElementById('upload')
-    let data = await this.appState.apiPost('/api/media/', uploadElement.file, {
-      isJson: false,
-      dbChanged: false,
-    })
-    if ('data' in data) {
-      finalData = {...data.data[0].new, ...finalData}
-    } else if ('error' in data) {
-      fireEvent(this, 'grampsjs:error', {message: data.error})
-      return {error: data.error}
+    const result = await this.uploadMediaFile(uploadElement.file, submittedData)
+    if (result.error) {
+      fireEvent(this, 'grampsjs:error', {message: result.error})
     }
-    const updateUrl = `/api/media/${finalData.handle}`
-    data = await this.appState.apiPut(updateUrl, finalData, {
-      dbChanged: false,
-    })
-    if ('error' in data) {
-      fireEvent(this, 'grampsjs:error', {message: data.error})
-      return {error: data.error}
-    }
-    return {data: finalData}
+    return result
   }
 }
 
