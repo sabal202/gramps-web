@@ -1421,14 +1421,52 @@ function remasterChart(
     .attr('width', 70)
     .attr('xlink:href', d => d.imageUrl)
 
+  // Absolute (family-node-local-frame-independent) left edge of every
+  // visible person card, keyed by handle — used below to size the union bar
+  // so it actually reaches both spouse cards. There are no spouse→family
+  // graphviz edges (only child→family ones), so this bar is the ONLY visual
+  // connector between the two cards; a fixed-width bar would float in the
+  // gap once that gap's width (FAMILY_NODE_WIDTH_IN above) changes.
+  const personLeftXByHandle = new Map()
+  for (const nd of nodedata) {
+    if (nd.nodetype === 'person') personLeftXByHandle.set(nd.handle, nd.xCoord)
+  }
+
+  // Union bar span, in the family node's own local coordinates (its <g> is
+  // translated to (d.xCoord, d.yCoord), so 0 is the family node's center).
+  // A person card spans absolute x ∈ [xCoord, xCoord+boxWidth] (see the
+  // nodedata push loop above), so the left spouse's inner/right edge is
+  // xCoord+boxWidth and the right spouse's inner/left edge is its own
+  // xCoord; both converted to family-local space by subtracting d.xCoord.
+  // Falls back to the old fixed ±11 half-width when a spouse's position is
+  // unknown (single-parent family node with no marker at all in practice,
+  // but guarded defensively since this is keyed off handles, not indices).
+  const UNION_BAR_FALLBACK_HALF_WIDTH = 11
+  const unionBarSpan = d => {
+    const fatherX = personLeftXByHandle.get(d.father)
+    const motherX = personLeftXByHandle.get(d.mother)
+    if (fatherX === undefined || motherX === undefined) {
+      return {
+        x1: -UNION_BAR_FALLBACK_HALF_WIDTH,
+        x2: UNION_BAR_FALLBACK_HALF_WIDTH,
+      }
+    }
+    const leftX = Math.min(fatherX, motherX)
+    const rightX = Math.max(fatherX, motherX)
+    return {x1: leftX + boxWidth - d.xCoord, x2: rightX - d.xCoord}
+  }
+
   // Union bar — draw for every family node; unknown status → plain bar, no ring/decoration.
   // The bar is always drawn first (insert ':first-child') so rings/overlays render on top.
+  // y stays fixed (boxHeight/2 - 10): family nodes share a graphviz rank
+  // (same cluster) with their spouses, so their yCoord already lines up with
+  // the spouse cards' vertical mid — only the horizontal span needed fixing.
   nodes
     .filter(d => d.nodetype === 'family')
     .insert('line', ':first-child')
     .attr('class', 'union-bar')
-    .attr('x1', -11)
-    .attr('x2', 11)
+    .attr('x1', d => unionBarSpan(d).x1)
+    .attr('x2', d => unionBarSpan(d).x2)
     .attr('y1', boxHeight / 2 - 10)
     .attr('y2', boxHeight / 2 - 10)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
