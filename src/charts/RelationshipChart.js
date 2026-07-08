@@ -4,8 +4,9 @@ import {linkVertical} from 'd3-shape'
 import {Graphviz} from '@hpcc-js/wasm'
 import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
-import {selectParentFamilies, childRefStyle} from './familyHelpers.js'
+import {childRefStyle} from './familyHelpers.js'
 import {getMaidenSurname} from './util.js'
+import {parentFamiliesOf, familyNodeExists} from './adjacency.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
@@ -138,15 +139,9 @@ function createGraph(graph) {
   const data = graph.getData()
   graph.unionMap = buildFamilyUnionMap(data)
 
-  // Helper: which parent families to use for person p.
-  // When showAllParents is ON, returns all parent families (including non-primary).
-  // When OFF, falls back to the primary only — exact prior behaviour.
-  const parentFamiliesOf = p =>
-    graph.showAllParents
-      ? selectParentFamilies(p)
-      : p.extended?.primary_parent_family
-      ? [p.extended.primary_parent_family]
-      : []
+  // Which handles are known/visible — same set addPerson populates in step 1,
+  // used to evaluate family-node existence via the shared adjacency rules.
+  const knownHandles = new Set(data.map(p => p.handle))
 
   // step 1: collect all persons to be shown
   for (const p of data) {
@@ -156,11 +151,11 @@ function createGraph(graph) {
   // step 2: create nodes for relevant families
   for (const p of data) {
     for (const f of p.extended.families) {
-      if (graph.known(f.father_handle) && graph.known(f.mother_handle)) {
+      if (familyNodeExists(f, knownHandles, {asParentFamily: false})) {
         graph.addNode(f, f.handle, f.father_handle, f.mother_handle)
       }
     }
-    for (const f of parentFamiliesOf(p)) {
+    for (const f of parentFamiliesOf(p, graph.showAllParents)) {
       if (f?.handle) {
         graph.addNode(f, f.handle, f.father_handle, f.mother_handle)
       }
@@ -178,7 +173,7 @@ function createGraph(graph) {
   // step 4: create edges (child → parent family)
   for (const p of data) {
     const me = p.handle
-    for (const f of parentFamiliesOf(p)) {
+    for (const f of parentFamiliesOf(p, graph.showAllParents)) {
       const father = f.father_handle
       const mother = f.mother_handle
       // OFF-gate must be a perfect no-op vs current behavior: no dashing at all when the
@@ -197,7 +192,7 @@ function createGraph(graph) {
   // step 5: connect unconnected couples (no parents and more than one family)
   for (const p of data) {
     // Has any known parent across all selected parent families?
-    const hasKnownParent = parentFamiliesOf(p).some(
+    const hasKnownParent = parentFamiliesOf(p, graph.showAllParents).some(
       f =>
         (f?.father_handle && graph.known(f.father_handle)) ||
         (f?.mother_handle && graph.known(f.mother_handle))
