@@ -108,7 +108,12 @@ describe('pruneGraph', () => {
     })
   })
 
-  it('union cut does not invert after re-root: the same key hides W2 whether G or W2 is the nearer side', () => {
+  it('union cut root self-guard: rooting on the union child itself still hides W2, not G, even though both spouses are equidistant from that root', () => {
+    // NOTE: this is the root-self-guard case, not a genuine near/far
+    // distance flip — AUNT is F2's own child, so she is exactly 1 hop from
+    // BOTH G and W2 via the shared family node (equidistant, not "W2
+    // nearer"). See the next test for a fixture with a REAL distance
+    // asymmetry (root strictly closer to W2 than to G).
     const f1 = fam('F1', 'G', 'W1', ['DAD'])
     const f2 = fam('F2', 'G', 'W2', ['AUNT'])
     const people = [
@@ -120,17 +125,65 @@ describe('pruneGraph', () => {
     ]
     const collapsed = new Set(['union:F2:W2'])
 
-    // Rooted on DAD (G's line): G is the "near" spouse relative to root.
+    // Rooted on DAD (G's line, distance 2 to G vs. 4 to W2): the "normal"
+    // orientation.
     const fromDad = pruneGraph(people, collapsed, 'DAD', true)
     expect(fromDad.visibleHandles.has('W2')).toBe(false)
     expect(fromDad.visibleHandles.has('G')).toBe(true)
 
-    // Rooted on AUNT (W2's own child): W2 is now the nearer side, only one
-    // hop away via family F2. The pinned key must still hide W2, not G.
+    // Rooted on AUNT (F2's own child, distance 1 to BOTH G and W2 via the
+    // shared family node): the pinned key must still hide W2, not G,
+    // because the child's own ancEdge to F2 is guarded (root's own child
+    // edge is never severed) rather than because of any distance
+    // computation.
     const fromAunt = pruneGraph(people, collapsed, 'AUNT', true)
     expect(fromAunt.visibleHandles.has('W2')).toBe(false)
     expect(fromAunt.visibleHandles.has('G')).toBe(true)
     expect(fromAunt.visibleHandles.has('AUNT')).toBe(true)
+  })
+
+  it("union cut with a genuine near/far asymmetry: rooting strictly on W2's own independent line never hides G, and rooting on G's line hides W2's whole line", () => {
+    // G married W1 (F1, with child DAD) and W2 (F2). W2 remarried
+    // OTHER_HUSBAND (F3, with child C_W2) -- a line that has nothing to do
+    // with G or F2 except through W2 herself. From C_W2, W2 is strictly
+    // closer (dist 2, straight through F3) than G is (dist 4, and only
+    // reachable by first passing through W2/F2) -- a real asymmetry, not
+    // an equidistant tie like the previous test.
+    const f1 = fam('F1', 'G', 'W1', ['DAD'])
+    const f2 = fam('F2', 'G', 'W2', [])
+    const f3 = fam('F3', 'W2', 'OTHER_HUSBAND', ['C_W2'])
+    const people = [
+      person('G', {ownFamilies: [f1, f2]}),
+      person('W1', {ownFamilies: [f1]}),
+      person('W2', {ownFamilies: [f2, f3]}),
+      person('OTHER_HUSBAND', {ownFamilies: [f3]}),
+      person('DAD', {parentFamilies: [f1]}),
+      person('C_W2', {parentFamilies: [f3]}),
+    ]
+    const collapsed = new Set(['union:F2:W2'])
+
+    // Rooted on DAD (G's line): the cut correctly hides W2's entire
+    // independent world (herself, her second husband, and C_W2), since
+    // none of it is reachable from DAD any other way.
+    const fromDad = pruneGraph(people, collapsed, 'DAD', true)
+    expect(fromDad.visibleHandles.has('G')).toBe(true)
+    expect(fromDad.visibleHandles.has('W2')).toBe(false)
+    expect(fromDad.visibleHandles.has('OTHER_HUSBAND')).toBe(false)
+    expect(fromDad.visibleHandles.has('C_W2')).toBe(false)
+
+    // Rooted on C_W2 -- strictly inside W2's own independent line, and
+    // therefore her own descendant: it is impossible for ANY cut to hide
+    // root's own ancestor while keeping root itself visible, so the
+    // pinned union:F2:W2 cut can't literally hide W2 here. What matters
+    // for "does not invert" is that it must NEVER flip to hiding G (the
+    // near side) instead -- that would be the real inversion bug. The
+    // cut safely becomes a no-op for this cut from this vantage point:
+    // G (and W1, DAD) stay visible, exactly as they would with no cuts
+    // at all.
+    const fromCW2 = pruneGraph(people, collapsed, 'C_W2', true)
+    expect(fromCW2.visibleHandles.has('G')).toBe(true)
+    expect(fromCW2.visibleHandles.has('W1')).toBe(true)
+    expect(fromCW2.visibleHandles.has('DAD')).toBe(true)
   })
 
   it('a disconnected person (no family edges) stays visible under any cuts, with no chip for them', () => {
