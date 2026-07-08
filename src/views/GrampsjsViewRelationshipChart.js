@@ -3,6 +3,10 @@ import {html, css} from 'lit'
 import {GrampsjsViewTreeChartBase} from './GrampsjsViewTreeChartBase.js'
 import '../components/GrampsjsRelationshipChart.js'
 import '../components/GrampsjsTreeChartAddPerson.js'
+import {
+  presetCollapseDescendants,
+  presetDirectLineOnly,
+} from '../charts/collapse.js'
 
 export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
   static get styles() {
@@ -29,6 +33,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this._setMaxImages = true
     this._setShowUnionDates = true
     this._setShowAllParents = true
+    this._setCollapsePresets = true
     this.color = ''
     this.defaults.nAnc = 10
     this.defaults.showUnionDates = false
@@ -61,20 +66,29 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     )
   }
 
+  // The chart is about to be rebuilt from scratch (a fresh SVG node), so
+  // whatever node the hover-preview popup is currently anchored to may no
+  // longer exist afterwards and would never fire mouseleave — force it
+  // closed now rather than leave it stranded. See GrampsjsObjectPreview's
+  // force-hide path and clicked() in RelationshipChart.js, which does the
+  // same before a reroot.
+  // eslint-disable-next-line class-methods-use-this
+  _forceHidePreview() {
+    window.dispatchEvent(
+      new CustomEvent('object:preview-hide', {detail: {force: true}})
+    )
+  }
+
+  get _rootHandle() {
+    return this._data.find(p => p.gramps_id === this.grampsId)?.handle
+  }
+
   // Toggles a single cut key. Always swaps in a brand-new Set so Lit's
   // default (reference) change detection sees the update and re-renders.
   _handleCollapseToggle(e) {
     const cutKey = e.detail?.cutKey
     if (!cutKey) return
-    // The chart is about to be rebuilt from scratch (a fresh SVG node), so
-    // whatever node the hover-preview popup is currently anchored to may
-    // no longer exist afterwards and would never fire mouseleave — force
-    // it closed now rather than leave it stranded. See
-    // GrampsjsObjectPreview's force-hide path and clicked() in
-    // RelationshipChart.js, which does the same before a reroot.
-    window.dispatchEvent(
-      new CustomEvent('object:preview-hide', {detail: {force: true}})
-    )
+    this._forceHidePreview()
     const next = new Set(this._collapsed)
     if (next.has(cutKey)) {
       next.delete(cutKey)
@@ -82,6 +96,36 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
       next.add(cutKey)
     }
     this._collapsed = next
+  }
+
+  // Presets replace _collapsed wholesale (not merge) — predictable, and
+  // matches "Show only direct line" / "Collapse all descendants" reading
+  // as an absolute view state rather than an incremental tweak.
+  _handleCollapseAllDescendants() {
+    const rootHandle = this._rootHandle
+    if (!rootHandle) return
+    this._forceHidePreview()
+    this._collapsed = presetCollapseDescendants(
+      this._data,
+      rootHandle,
+      this.showAllParents
+    )
+  }
+
+  _handleDirectLineOnly() {
+    const rootHandle = this._rootHandle
+    if (!rootHandle) return
+    this._forceHidePreview()
+    this._collapsed = presetDirectLineOnly(
+      this._data,
+      rootHandle,
+      this.showAllParents
+    )
+  }
+
+  _handleExpandAllCollapsed() {
+    this._forceHidePreview()
+    this._collapsed = new Set()
   }
 
   get nAnc() {

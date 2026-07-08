@@ -85,6 +85,9 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
       _setShowUnionDates: {type: Boolean},
       _setShowAllParents: {type: Boolean},
       _setShowNonBirthChildren: {type: Boolean},
+      // Gates the collapse/expand preset buttons below — only the
+      // relationship chart (which supports collapse/expand) sets this true.
+      _setCollapsePresets: {type: Boolean},
       _editMode: {type: Boolean},
     }
   }
@@ -111,6 +114,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     this._setShowUnionDates = false
     this._setShowAllParents = false
     this._setShowNonBirthChildren = false
+    this._setCollapsePresets = false
     this._editMode = false
     this._boundToggleEditMode = this._toggleEditMode.bind(this)
     this._boundDisableEditMode = this._disableEditMode.bind(this)
@@ -440,6 +444,30 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
                     `
                   : ''
               }
+              ${
+                this._setCollapsePresets
+                  ? html`
+                      <tr>
+                        <td>${this._('Collapse/expand branches')}</td>
+                        <td>
+                          <md-text-button
+                            @click="${this._handleCollapseAllDescendants}"
+                            >${this._(
+                              'Collapse all descendants'
+                            )}</md-text-button
+                          >
+                          <md-text-button @click="${this._handleDirectLineOnly}"
+                            >${this._('Show only direct line')}</md-text-button
+                          >
+                          <md-text-button
+                            @click="${this._handleExpandAllCollapsed}"
+                            >${this._('Expand all')}</md-text-button
+                          >
+                        </td>
+                      </tr>
+                    `
+                  : ''
+              }
             </table>
           </div>
           <div slot="actions">
@@ -455,6 +483,19 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
 
     `
   }
+
+  // The three methods below are no-ops in the base class; only
+  // GrampsjsViewRelationshipChart (the one subclass with
+  // _setCollapsePresets = true) overrides them, so the buttons above never
+  // render for the other tree-chart views in the first place.
+  // eslint-disable-next-line class-methods-use-this
+  _handleCollapseAllDescendants() {}
+
+  // eslint-disable-next-line class-methods-use-this
+  _handleDirectLineOnly() {}
+
+  // eslint-disable-next-line class-methods-use-this
+  _handleExpandAllCollapsed() {}
 
   // eslint-disable-next-line class-methods-use-this
   renderChart() {
