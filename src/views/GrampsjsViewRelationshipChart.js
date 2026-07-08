@@ -43,7 +43,11 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
 
   connectedCallback() {
     super.connectedCallback()
-    this.addEventListener(
+    // Window-level, like the existing pedigree:person-selected pattern (see
+    // clicked() in RelationshipChart.js and its window.addEventListener in
+    // GrampsjsViewTree.js) — the SVG controls dispatch with a bare
+    // `dispatchEvent(...)` call, which targets window, not the element.
+    window.addEventListener(
       'chart:collapse-toggle',
       this._boundHandleCollapseToggle
     )
@@ -51,7 +55,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
 
   disconnectedCallback() {
     super.disconnectedCallback()
-    this.removeEventListener(
+    window.removeEventListener(
       'chart:collapse-toggle',
       this._boundHandleCollapseToggle
     )
