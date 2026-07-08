@@ -35,8 +35,11 @@ const DIRECT_LINE_COLOR =
 // nodesep is 0, so this gap is the only room between spouse cards; it must fit
 // the family-node controls (whole-marriage ring + "▶/◀" spouse tab). The marker
 // glyph itself is drawn centered by d3 (remasterChart), so only the reserved
-// gap grows, not the drawn marker. Was 0.1 (controls overlapped the cards).
-const FAMILY_NODE_WIDTH_IN = 0.85
+// gap grows, not the drawn marker. Was 0.1 (controls overlapped the cards),
+// then 0.85 (too much daylight between spouse cards); halved back down to
+// 0.45 — still enough room for the controls, tight enough that the union bar
+// (see unionBarSpan in remasterChart) doesn't have to span an odd gap.
+const FAMILY_NODE_WIDTH_IN = 0.45
 
 const sexColor = {
   F: 'var(--color-girl)',
