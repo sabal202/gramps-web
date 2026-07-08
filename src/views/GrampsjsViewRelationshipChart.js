@@ -16,6 +16,13 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     ]
   }
 
+  static get properties() {
+    return {
+      ...super.properties,
+      _collapsed: {type: Object},
+    }
+  }
+
   constructor() {
     super()
     this._setSep = true
@@ -26,6 +33,42 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this.defaults.nAnc = 10
     this.defaults.showUnionDates = false
     this.defaults.showAllParents = true
+    // Set<string> of collapse cut keys (see charts/collapse.js). Session-
+    // scoped: survives re-rooting (same view instance) but not a page
+    // reload or a tab switch away and back (the relationship-chart element
+    // is remounted then). See design doc §1.
+    this._collapsed = new Set()
+    this._boundHandleCollapseToggle = this._handleCollapseToggle.bind(this)
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.addEventListener(
+      'chart:collapse-toggle',
+      this._boundHandleCollapseToggle
+    )
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    this.removeEventListener(
+      'chart:collapse-toggle',
+      this._boundHandleCollapseToggle
+    )
+  }
+
+  // Toggles a single cut key. Always swaps in a brand-new Set so Lit's
+  // default (reference) change detection sees the update and re-renders.
+  _handleCollapseToggle(e) {
+    const cutKey = e.detail?.cutKey
+    if (!cutKey) return
+    const next = new Set(this._collapsed)
+    if (next.has(cutKey)) {
+      next.delete(cutKey)
+    } else {
+      next.add(cutKey)
+    }
+    this._collapsed = next
   }
 
   get nAnc() {
@@ -108,6 +151,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this.showUnionDates = this.defaults.showUnionDates
     this.showAllParents = this.defaults.showAllParents
     this.showMaidenName = this.defaults.showMaidenName
+    this._collapsed = new Set()
   }
 
   _getPersonRules(grampsId) {
@@ -135,6 +179,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
           ?showMaidenName=${this.showMaidenName}
           ?canEdit="${this._editMode}"
           .data=${this._data}
+          .collapsed=${this._collapsed}
         >
         </grampsjs-relationship-chart>
       </div>
