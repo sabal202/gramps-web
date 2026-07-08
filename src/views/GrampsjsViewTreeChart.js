@@ -33,6 +33,7 @@ export class GrampsjsViewTreeChart extends GrampsjsViewTreeChartBase {
   _resetLevels() {
     this.nAnc = this.defaults.nAnc
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
+    this.showMaidenName = this.defaults.showMaidenName
   }
 
   renderChart() {
@@ -47,6 +48,7 @@ export class GrampsjsViewTreeChart extends GrampsjsViewTreeChartBase {
           ?canEdit="${this._editMode}"
           .data=${this._data}
           .appState="${this.appState}"
+          ?showMaidenName=${this.showMaidenName}
         >
         </grampsjs-tree-chart>
       </div>

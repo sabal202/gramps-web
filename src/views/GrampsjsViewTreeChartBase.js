@@ -77,6 +77,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
       showUnionDates: {type: Boolean},
       showAllParents: {type: Boolean},
       showNonBirthChildren: {type: Boolean},
+      showMaidenName: {type: Boolean},
       _data: {type: Array},
       _setAnc: {type: Boolean},
       _setDesc: {type: Boolean},
@@ -94,6 +95,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
     nMaxImages: 400,
     nameDisplayFormat: chartNameDisplayFormat.surnameThenGivenPatronymic,
     showNonBirthChildren: false,
+    showMaidenName: false,
   }
 
   constructor() {
@@ -165,6 +167,19 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
 
   set showNonBirthChildren(value) {
     this.appState.updateSettings({treeChartShowNonBirthChildren: value}, false)
+  }
+
+  // Shared across all chart types (relationship/tree/hourglass/fan): whether
+  // to show a woman's maiden name in parentheses after her current surname.
+  get showMaidenName() {
+    return (
+      this.appState?.settings?.chartShowMaidenName ??
+      this.defaults.showMaidenName
+    )
+  }
+
+  set showMaidenName(value) {
+    this.appState.updateSettings({chartShowMaidenName: value}, false)
   }
 
   // Person-profile fetch level. The default avoids requesting family profiles;
@@ -367,6 +382,16 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
                     </mwc-select>
                 </td>
               </tr>
+              <tr>
+                <td>${this._('Show maiden name')}</td>
+                <td>
+                  <md-switch
+                    aria-label=${this._('Show maiden name')}
+                    ?selected=${this.showMaidenName}
+                    @change=${this._handleChangeShowMaidenName}
+                  ></md-switch>
+                </td>
+              </tr>
               ${
                 this._setShowUnionDates
                   ? html`
@@ -526,6 +551,10 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
 
   _handleChangeShowNonBirthChildren(e) {
     this.showNonBirthChildren = e.target.selected
+  }
+
+  _handleChangeShowMaidenName(e) {
+    this.showMaidenName = e.target.selected
   }
 
   _openMenuControls() {

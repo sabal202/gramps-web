@@ -22,6 +22,7 @@ class GrampsjsFanChart extends GrampsjsChartBase {
       depth: {type: Number},
       color: {type: String},
       nameDisplayFormat: {type: String},
+      showMaidenName: {type: Boolean},
     }
   }
 
@@ -50,6 +51,7 @@ class GrampsjsFanChart extends GrampsjsChartBase {
         bboxWidth: this.containerWidth,
         bboxHeight: this.containerHeight,
         nameDisplayFormat: this.nameDisplayFormat,
+        showMaidenName: this.showMaidenName,
         strings: this.appState.i18n.strings,
       })}
     `

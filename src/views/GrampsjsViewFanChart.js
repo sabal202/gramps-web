@@ -83,6 +83,7 @@ export class GrampsjsViewFanChart extends GrampsjsViewTreeChartBase {
   _resetLevels() {
     this.nAnc = this.defaults.nAnc
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
+    this.showMaidenName = this.defaults.showMaidenName
   }
 
   // Disable edit mode for fan chart
@@ -102,6 +103,7 @@ export class GrampsjsViewFanChart extends GrampsjsViewTreeChartBase {
         .appState="${this.appState}"
         color="${this.color}"
         nameDisplayFormat=${this.nameDisplayFormat}
+        ?showMaidenName=${this.showMaidenName}
       >
       </grampsjs-fan-chart>
     `

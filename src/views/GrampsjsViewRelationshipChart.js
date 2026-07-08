@@ -107,6 +107,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     this.nameDisplayFormat = this.defaults.nameDisplayFormat
     this.showUnionDates = this.defaults.showUnionDates
     this.showAllParents = this.defaults.showAllParents
+    this.showMaidenName = this.defaults.showMaidenName
   }
 
   _getPersonRules(grampsId) {
@@ -131,6 +132,7 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
           nameDisplayFormat=${this.nameDisplayFormat}
           ?showUnionDates=${this.showUnionDates}
           ?showAllParents=${this.showAllParents}
+          ?showMaidenName=${this.showMaidenName}
           ?canEdit="${this._editMode}"
           .data=${this._data}
         >

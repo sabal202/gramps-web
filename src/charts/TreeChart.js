@@ -59,6 +59,7 @@ function TreeChartCore(
     orientation = 'LTR',
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     canEdit = false,
+    showMaidenName = false,
   } = {}
 ) {
   // Create a hierarchical data structure based on the input data
@@ -241,6 +242,13 @@ function TreeChartCore(
       ? boxWidth - 2 * imgPadding - 2 * imgRadius
       : boxWidth - 2 * imgPadding
 
+  // Appends "(maiden surname)" to a rendered surname when the toggle is on
+  // and this person has one (see getMaidenSurname for when that is null).
+  const withMaidenName = (text, d) =>
+    showMaidenName && d.data.name_maiden_surname
+      ? `${text} (${d.data.name_maiden_surname})`
+      : text
+
   node
     .append('text')
     .filter(d => d.data.name_given || d.data.name_surname)
@@ -253,7 +261,7 @@ function TreeChartCore(
     .text(d =>
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? `${d.data.name_surname || '…'},`
+          ? `${withMaidenName(d.data.name_surname || '…', d)},`
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
           ? [d.data.name_given, d.data.name_patronymic]
@@ -261,7 +269,10 @@ function TreeChartCore(
               .join(' ') || '…'
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? d.data.name_family_surname || d.data.name_surname || '…'
+          ? withMaidenName(
+              d.data.name_family_surname || d.data.name_surname || '…',
+              d
+            )
           : d.data.name_given || '…',
         textWidth(d)
       )
@@ -286,13 +297,16 @@ function TreeChartCore(
           ? d.data.name_given || '…'
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
-          ? d.data.name_family_surname || d.data.name_surname || '…'
+          ? withMaidenName(
+              d.data.name_family_surname || d.data.name_surname || '…',
+              d
+            )
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
           ? [d.data.name_given, d.data.name_patronymic]
               .filter(Boolean)
               .join(' ') || '…'
-          : d.data.name_surname || '…',
+          : withMaidenName(d.data.name_surname || '…', d),
         textWidth(d)
       )
     )

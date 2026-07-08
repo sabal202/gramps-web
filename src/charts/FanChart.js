@@ -227,6 +227,7 @@ export function FanChart(
     bboxWidth = 800,
     bboxHeight = 800,
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
+    showMaidenName = false,
     strings = {},
   } = {}
 ) {
@@ -402,11 +403,21 @@ export function FanChart(
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven ||
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
 
+  // Appends "(maiden surname)" to a rendered surname when the toggle is on
+  // and this person has one (see getMaidenSurname for when that is null).
+  const withMaidenName = (text, d) =>
+    showMaidenName && d.data.name_maiden_surname
+      ? `${text} (${d.data.name_maiden_surname})`
+      : text
+
   const fanLine1 = d => {
     if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven)
-      return d.data.name_surname || ''
+      return withMaidenName(d.data.name_surname || '', d)
     if (nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic)
-      return d.data.name_family_surname || d.data.name_surname || ''
+      return withMaidenName(
+        d.data.name_family_surname || d.data.name_surname || '',
+        d
+      )
     if (nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname)
       return [d.data.name_given, d.data.name_patronymic]
         .filter(Boolean)
@@ -422,8 +433,11 @@ export function FanChart(
         .filter(Boolean)
         .join(' ')
     if (nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname)
-      return d.data.name_family_surname || d.data.name_surname || ''
-    return d.data.name_surname || ''
+      return withMaidenName(
+        d.data.name_family_surname || d.data.name_surname || '',
+        d
+      )
+    return withMaidenName(d.data.name_surname || '', d)
   }
 
   cell.append('title').text(d => `${fanLine1(d)}, ${fanLine2(d)}`)

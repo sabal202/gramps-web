@@ -8,6 +8,40 @@ import {getThumbnailUrl, getThumbnailUrlCropped} from '../api.js'
 import {normalizeRect} from '../util.js'
 import {descendantChildRefs} from './familyHelpers.js'
 
+const FEMALE = 0
+
+const familySurname = name =>
+  (name?.surname_list ?? [])
+    .filter(s => s.origintype !== 'Patronymic')
+    .map(s => s.surname)
+    .join(' ')
+
+// Maiden (birth) surname for a woman whose current (primary) name is her
+// married name, for the "show maiden name" chart toggle. Returns null when
+// there is nothing meaningful to show: not a woman, primary name isn't
+// tagged as a married name, no birth-name alternate is recorded, or the
+// birth surname is blank/identical to the current one (surname unchanged
+// by marriage).
+export const getMaidenSurname = person => {
+  if (person?.gender !== FEMALE) {
+    return null
+  }
+  if (person?.primary_name?.type !== 'Married Name') {
+    return null
+  }
+  const birthName = (person?.alternate_names ?? []).find(
+    n => n.type === 'Birth Name'
+  )
+  if (!birthName) {
+    return null
+  }
+  const maiden = familySurname(birthName)
+  if (!maiden || maiden === familySurname(person.primary_name)) {
+    return null
+  }
+  return maiden
+}
+
 export const getPerson = (data, handle) =>
   data.find(person => person.handle === handle) || {}
 
@@ -52,6 +86,7 @@ export const getTree = (
         .filter(s => s.origintype !== 'Patronymic')
         .map(s => s.surname)
         .join(' ') || null,
+    name_maiden_surname: getMaidenSurname(person),
     id: label,
     depth: i,
     person,
@@ -103,6 +138,7 @@ export const getDescendantTree = (
         .filter(s => s.origintype !== 'Patronymic')
         .map(s => s.surname)
         .join(' ') || null,
+    name_maiden_surname: getMaidenSurname(person),
     id: label,
     depth: i,
     person,

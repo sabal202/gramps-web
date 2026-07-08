@@ -42,6 +42,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       nameDisplayFormat: {type: String},
       canEdit: {type: Boolean},
       showNonBirthChildren: {type: Boolean},
+      showMaidenName: {type: Boolean},
     }
   }
 
@@ -115,6 +116,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
         nameDisplayFormat: this.nameDisplayFormat,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
+        showMaidenName: this.showMaidenName,
       })}
     `
   }

@@ -5,6 +5,7 @@ import {Graphviz} from '@hpcc-js/wasm'
 import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 import {selectParentFamilies, childRefStyle} from './familyHelpers.js'
+import {getMaidenSurname} from './util.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
@@ -501,7 +502,8 @@ function remasterChart(
   nameDisplayFormat,
   canEdit = false,
   showUnionDates = false,
-  unionStatusLabels = {}
+  unionStatusLabels = {},
+  showMaidenName = false
 ) {
   const gvchartx = divhidden.select('svg')
   const nodedata = []
@@ -509,6 +511,10 @@ function remasterChart(
   const textPadding = d =>
     d.imageUrl ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
   const boxWidthTotal = d => boxWidth - textPadding(d)
+  // Appends "(maiden surname)" to a rendered surname when the toggle is on
+  // and this person has one (see getMaidenSurname for when that is null).
+  const withMaidenName = (text, d) =>
+    showMaidenName && d.maidenSurname ? `${text} (${d.maidenSurname})` : text
   gvchartx.selectAll('title').remove()
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
@@ -531,6 +537,7 @@ function remasterChart(
         yCoord: y - boxHeight / 2,
         profile: d.profile,
         primaryName: d.data?.primary_name,
+        maidenSurname: getMaidenSurname(d.data),
         imageUrl: imageCount > maxImages ? '' : imageUrl,
         handle: found.groups.handle,
       })
@@ -603,7 +610,7 @@ function remasterChart(
     .text(d =>
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? `${d.profile?.name_surname},`
+          ? `${withMaidenName(d.profile?.name_surname, d)},`
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
           ? [d.profile?.name_given, getPatronymic(d.primaryName)]
@@ -611,7 +618,10 @@ function remasterChart(
               .join(' ')
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
+          ? withMaidenName(
+              getFamilySurname(d.primaryName) || d.profile?.name_surname,
+              d
+            )
           : d.profile?.name_given,
         boxWidthTotal(d)
       )
@@ -638,13 +648,16 @@ function remasterChart(
           ? d.profile?.name_given
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
-          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
+          ? withMaidenName(
+              getFamilySurname(d.primaryName) || d.profile?.name_surname,
+              d
+            )
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
           ? [d.profile?.name_given, getPatronymic(d.primaryName)]
               .filter(Boolean)
               .join(' ')
-          : d.profile?.name_surname,
+          : withMaidenName(d.profile?.name_surname, d),
         boxWidthTotal(d)
       )
     )
@@ -913,6 +926,7 @@ export function RelationshipChart(
     showAllParents = false,
     initialZoom = null,
     unionStatusLabels = {},
+    showMaidenName = false,
   }
 ) {
   const resultnode = create('div').style('width', '100%')
@@ -956,7 +970,8 @@ export function RelationshipChart(
       nameDisplayFormat,
       canEdit,
       showUnionDates,
-      unionStatusLabels
+      unionStatusLabels,
+      showMaidenName
     )
     svg.attr('viewBox', [
       -bboxWidth / 2,
