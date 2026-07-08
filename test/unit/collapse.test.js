@@ -273,6 +273,9 @@ describe('children:<F> — descendants, both spouses kept', () => {
       expect(visibleHandles.has(h)).toBe(false)
     }
     expect(chipFor(chips, 'ROOT')).toMatchObject({side: 'children'})
+    expect(disconnectedVisible(people, visibleHandles, 'ROOT', true)).toEqual(
+      []
+    )
   })
 
   it("children:<root's own family> == desc preset when root has one family", () => {
@@ -326,6 +329,7 @@ describe('children:<F> — descendants, both spouses kept', () => {
     ).visibleHandles
     expect(descAll.has('K1')).toBe(false)
     expect(descAll.has('K2')).toBe(false) // desc hides both
+    expect(disconnectedVisible(people, perFamily, 'ROOT', true)).toEqual([])
   })
 })
 

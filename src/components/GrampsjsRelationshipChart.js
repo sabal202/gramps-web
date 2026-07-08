@@ -43,11 +43,6 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         svg .node:focus-within .collapse-control {
           opacity: 1;
         }
-        /* Touch has no hover — keep the control visible but dimmed rather
-           than invisible, since there is no gesture to reveal it. */
-        svg .collapse-control.touch {
-          opacity: 0.35;
-        }
         svg .node[tabindex]:focus-visible {
           outline: 2px solid var(--md-sys-color-primary);
           outline-offset: 2px;

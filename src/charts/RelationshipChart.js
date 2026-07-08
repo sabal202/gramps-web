@@ -580,6 +580,11 @@ function bfsDistances(rootHandle, neighbors) {
 // remasterChart), so anchoring here visually ties the controls to them.
 const FAMILY_ANCHOR_Y_OFFSET = -10
 
+// Pending touch long-press timer id (module-level: only one touch pointer can
+// be pressing at a time). Cleared whenever affordances are (re)built so a timer
+// armed on a now-discarded chart cannot fire a stale chart:collapse-menu.
+let activeLongPressTimer = null
+
 // Renders the granular collapse/expand affordances on top of an
 // already-drawn chart (see
 // docs/superpowers/specs/2026-07-09-relchart-granular-collapse-design.md):
@@ -623,6 +628,14 @@ function addCollapseAffordances(
   directAncestors,
   touchState
 ) {
+  // Cancel any long-press timer still pending from a previous render: the old
+  // SVG subtree is discarded on rebuild but a timer's closure survives and
+  // would dispatch a stale chart:collapse-menu (review finding 2026-07-09).
+  if (activeLongPressTimer) {
+    clearTimeout(activeLongPressTimer)
+    activeLongPressTimer = null
+  }
+
   // Transient paint with no resolved root (see the caller in
   // GrampsjsRelationshipChart.js) — nothing meaningful to offer.
   if (!rootHandle) return
@@ -820,21 +833,20 @@ function addCollapseAffordances(
       if (isTouch) {
         const LONG_PRESS_MS = 500
         const MOVE_CANCEL_PX = 10
-        let timer = null
         let startX = 0
         let startY = 0
         const cancel = () => {
-          if (timer) {
-            clearTimeout(timer)
-            timer = null
+          if (activeLongPressTimer) {
+            clearTimeout(activeLongPressTimer)
+            activeLongPressTimer = null
           }
         }
         g.on('pointerdown.longpress', event => {
           startX = event.clientX
           startY = event.clientY
           cancel()
-          timer = setTimeout(() => {
-            timer = null
+          activeLongPressTimer = setTimeout(() => {
+            activeLongPressTimer = null
             touchState.suppressClick = true
             forceHidePreview()
             const options = families.map(f => {
@@ -870,7 +882,7 @@ function addCollapseAffordances(
           }, LONG_PRESS_MS)
         })
           .on('pointermove.longpress', event => {
-            if (!timer) return
+            if (!activeLongPressTimer) return
             if (
               Math.hypot(event.clientX - startX, event.clientY - startY) >
               MOVE_CANCEL_PX
