@@ -1,5 +1,10 @@
 import {describe, it, expect} from 'vitest'
-import {pruneGraph} from '../../src/charts/collapse.js'
+import {
+  pruneGraph,
+  directAncestorHandles,
+  presetCollapseDescendants,
+  presetDirectLineOnly,
+} from '../../src/charts/collapse.js'
 
 // Copied from test/unit/adjacency.test.js so this file stands alone.
 const person = (handle, {ownFamilies = [], parentFamilies = []} = {}) => ({
@@ -288,5 +293,130 @@ describe('pruneGraph', () => {
       anchorHandle: 'G',
       side: 'marriage',
     })
+  })
+})
+
+describe('directAncestorHandles', () => {
+  it('collects blood ancestors through the direct line, excluding laterals', () => {
+    // GF/GM had DAD and AUNT. DAD married MOM -> ME (root).
+    const fGf = fam('F_GF', 'GF', 'GM', ['DAD', 'AUNT'])
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const people = [
+      person('GF', {ownFamilies: [fGf]}),
+      person('GM', {ownFamilies: [fGf]}),
+      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
+      person('AUNT', {parentFamilies: [fGf]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('ME', {parentFamilies: [fMe]}),
+    ]
+    const ancestors = directAncestorHandles(people, 'ME', true)
+    expect(ancestors).toEqual(new Set(['DAD', 'MOM', 'GF', 'GM']))
+    expect(ancestors.has('AUNT')).toBe(false)
+    expect(ancestors.has('ME')).toBe(false)
+  })
+
+  it('returns an empty set for a root with no known parents', () => {
+    const people = [person('ME')]
+    expect(directAncestorHandles(people, 'ME', true)).toEqual(new Set())
+  })
+})
+
+describe('presetCollapseDescendants', () => {
+  it("collapses each of root's children's own marriages, sparing root's own family", () => {
+    const fMe = fam('F_ME', 'ME', 'SPOUSE', ['KID'])
+    const fKid = fam('F_KID', 'KID', 'KIDSPOUSE', ['GRANDKID'])
+    const people = [
+      person('ME', {ownFamilies: [fMe]}),
+      person('SPOUSE', {ownFamilies: [fMe]}),
+      person('KID', {parentFamilies: [fMe], ownFamilies: [fKid]}),
+      person('KIDSPOUSE', {ownFamilies: [fKid]}),
+      person('GRANDKID', {parentFamilies: [fKid]}),
+    ]
+    const cuts = presetCollapseDescendants(people, 'ME', true)
+    expect(cuts).toEqual(new Set(['union:F_KID:KIDSPOUSE']))
+
+    // Applying the preset via pruneGraph keeps root's own family, hides the
+    // grandchild generation entirely (transitively, via the single cut).
+    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
+    expect(visibleHandles.has('ME')).toBe(true)
+    expect(visibleHandles.has('SPOUSE')).toBe(true)
+    expect(visibleHandles.has('KID')).toBe(true)
+    expect(visibleHandles.has('KIDSPOUSE')).toBe(false)
+    expect(visibleHandles.has('GRANDKID')).toBe(false)
+  })
+
+  it('produces no cuts when root has no children', () => {
+    const people = [person('ME')]
+    expect(presetCollapseDescendants(people, 'ME', true)).toEqual(new Set())
+  })
+})
+
+describe('presetDirectLineOnly', () => {
+  it('collapses ancestor siblings and side marriages, keeping the blood line and root family', () => {
+    // GF married GM (direct line, DAD+AUNT) and also OTHERW (side family,
+    // HALFUNCLE). DAD married MOM -> ME (root). AUNT married UNCLE -> COUSIN.
+    const fGf = fam('F_GF', 'GF', 'GM', ['DAD', 'AUNT'])
+    const fGfSide = fam('F_GF2', 'GF', 'OTHERW', ['HALFUNCLE'])
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const fAunt = fam('F_AUNT', 'AUNT', 'UNCLE', ['COUSIN'])
+    const people = [
+      person('GF', {ownFamilies: [fGf, fGfSide]}),
+      person('GM', {ownFamilies: [fGf]}),
+      person('OTHERW', {ownFamilies: [fGfSide]}),
+      person('HALFUNCLE', {parentFamilies: [fGfSide]}),
+      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
+      person('AUNT', {parentFamilies: [fGf], ownFamilies: [fAunt]}),
+      person('UNCLE', {ownFamilies: [fAunt]}),
+      person('COUSIN', {parentFamilies: [fAunt]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('ME', {parentFamilies: [fMe]}),
+    ]
+    const cuts = presetDirectLineOnly(people, 'ME', true)
+    expect(cuts).toEqual(
+      new Set(['anc:AUNT', 'union:F_AUNT:UNCLE', 'union:F_GF2:OTHERW'])
+    )
+
+    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
+    // Direct line + root's own generation stay visible.
+    expect(visibleHandles.has('ME')).toBe(true)
+    expect(visibleHandles.has('DAD')).toBe(true)
+    expect(visibleHandles.has('MOM')).toBe(true)
+    expect(visibleHandles.has('GF')).toBe(true)
+    expect(visibleHandles.has('GM')).toBe(true)
+    // The lateral (AUNT) stays visible as a leaf — the cut vocabulary has
+    // no way to hide one specific child of a still-visible family — but
+    // her own marriage (the actual source of width) collapses away, as
+    // does GF's side marriage.
+    expect(visibleHandles.has('AUNT')).toBe(true)
+    expect(visibleHandles.has('UNCLE')).toBe(false)
+    expect(visibleHandles.has('COUSIN')).toBe(false)
+    expect(visibleHandles.has('OTHERW')).toBe(false)
+    expect(visibleHandles.has('HALFUNCLE')).toBe(false)
+  })
+
+  it("keeps root's own spouse and children (focus family spared)", () => {
+    const fGf = fam('F_GF', 'GF', 'GM', ['DAD'])
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const fMine = fam('F_MINE', 'ME', 'SPOUSE', ['CHILD'])
+    const people = [
+      person('GF', {ownFamilies: [fGf]}),
+      person('GM', {ownFamilies: [fGf]}),
+      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('ME', {parentFamilies: [fMe], ownFamilies: [fMine]}),
+      person('SPOUSE', {ownFamilies: [fMine]}),
+      person('CHILD', {parentFamilies: [fMine]}),
+    ]
+    const cuts = presetDirectLineOnly(people, 'ME', true)
+    expect([...cuts].some(c => c.includes('F_MINE'))).toBe(false)
+
+    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
+    expect(visibleHandles.has('SPOUSE')).toBe(true)
+    expect(visibleHandles.has('CHILD')).toBe(true)
+  })
+
+  it('produces no cuts for a root with no known ancestors or siblings', () => {
+    const people = [person('ME')]
+    expect(presetDirectLineOnly(people, 'ME', true)).toEqual(new Set())
   })
 })

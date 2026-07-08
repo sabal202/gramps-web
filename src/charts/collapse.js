@@ -147,3 +147,170 @@ export function pruneGraph(people, collapsed, rootHandle, showAllParents) {
   const visibleHandles = new Set([...allHandles].filter(h => !hidden.has(h)))
   return {visibleHandles, chipCounts, chipAnchors}
 }
+
+// Maps each family handle to the handles of its children, by inverting
+// adj.ancEdges (child -> parent-family). Shared by directAncestorHandles'
+// callers below (the two preset generators).
+function buildChildrenOfFamily(adj) {
+  const childrenOfFamily = new Map()
+  for (const [personHandle, fams] of adj.ancEdges) {
+    for (const f of fams) {
+      if (!childrenOfFamily.has(f)) childrenOfFamily.set(f, [])
+      childrenOfFamily.get(f).push(personHandle)
+    }
+  }
+  return childrenOfFamily
+}
+
+/**
+ * Root's direct blood-ancestor handles (for the direct-line highlight, and
+ * as the backbone of presetDirectLineOnly below): walks ancEdges upward
+ * from rootHandle, through each parent-family node, to its father/mother,
+ * transitively. Does not include rootHandle itself.
+ *
+ * @param {object[]} people
+ * @param {string} rootHandle
+ * @param {boolean} showAllParents
+ * @returns {Set<string>}
+ */
+export function directAncestorHandles(people, rootHandle, showAllParents) {
+  const adj = buildAdjacency(people, {showAllParents})
+  const result = new Set()
+  const seen = new Set([rootHandle])
+  const queue = [rootHandle]
+  while (queue.length) {
+    const h = queue.shift()
+    for (const f of adj.ancEdges.get(h) ?? []) {
+      const rec = adj.familyNodes.get(f)
+      if (!rec) continue
+      for (const parent of [rec.father, rec.mother]) {
+        if (parent && !seen.has(parent)) {
+          seen.add(parent)
+          result.add(parent)
+          queue.push(parent)
+        }
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * "Collapse all descendants" preset: for each of root's own direct
+ * children, collapses that child's own marriage(s) — hiding the other
+ * spouse and everything below — while leaving root's own family (spouse +
+ * children) untouched. Because collapsing a child's union also hides
+ * everyone below it transitively, deeper generations never need their own
+ * cuts here.
+ *
+ * @param {object[]} people
+ * @param {string} rootHandle
+ * @param {boolean} showAllParents
+ * @returns {Set<string>} cut keys
+ */
+export function presetCollapseDescendants(people, rootHandle, showAllParents) {
+  const adj = buildAdjacency(people, {showAllParents})
+  const childrenOfFamily = buildChildrenOfFamily(adj)
+  const cuts = new Set()
+
+  const children = new Set()
+  for (const f of adj.ownFamiliesOf.get(rootHandle) ?? []) {
+    for (const c of childrenOfFamily.get(f) ?? []) children.add(c)
+  }
+
+  for (const child of children) {
+    for (const f of adj.ownFamiliesOf.get(child) ?? []) {
+      const rec = adj.familyNodes.get(f) || {}
+      const otherSpouse = rec.father === child ? rec.mother : rec.father
+      if (otherSpouse) cuts.add(`union:${f}:${otherSpouse}`)
+    }
+  }
+
+  return cuts
+}
+
+/**
+ * "Show only direct line" preset: collapses every lateral branch off
+ * root's blood-ancestor line.
+ *
+ * ⚠️ Cut-vocabulary limitation (see collapse.test.js for the failing
+ * exploration that led to this design): `anc:<P>` only ever hides what is
+ * ABOVE `P` (its own anchors are P's *parent*-family nodes, not P itself —
+ * see anchorsFor above), so it can never make a lateral sibling itself
+ * disappear from view while their shared parent stays visible; there is
+ * also no cut type for "hide just this one child of a family, keep the
+ * others." So instead of trying to hide siblings/cousins outright, this
+ * preset keeps them visible as single leaf boxes but collapses what would
+ * otherwise balloon the chart through them:
+ *   - each lateral's OWN marriage(s) (spouse + descendants), via
+ *     `union:<F>:<otherSpouse>` — this is what actually reclaims width,
+ *     since a lateral's descendant line is usually the bulk of the
+ *     clutter, not the lateral person themselves;
+ *   - each lateral's own `anc:<lateral>` cut too, for completeness and to
+ *     cover the (rare) step/adopted case where a lateral has their OWN
+ *     distinct parent family not shared with the direct line — usually a
+ *     no-op when the lateral is a full sibling sharing the exact same
+ *     parent family as the direct-line member.
+ * Each direct-line ancestor's OTHER marriages (not the one the direct line
+ * actually descends through) collapse the same way, via `union:`.
+ * Root's own family (spouse + children) is left untouched, same as
+ * presetCollapseDescendants above.
+ *
+ * @param {object[]} people
+ * @param {string} rootHandle
+ * @param {boolean} showAllParents
+ * @returns {Set<string>} cut keys
+ */
+export function presetDirectLineOnly(people, rootHandle, showAllParents) {
+  const adj = buildAdjacency(people, {showAllParents})
+  const childrenOfFamily = buildChildrenOfFamily(adj)
+  const directAncestors = directAncestorHandles(
+    people,
+    rootHandle,
+    showAllParents
+  )
+  const onLine = h => h === rootHandle || directAncestors.has(h)
+  const cuts = new Set()
+
+  const collapseOwnMarriages = person => {
+    for (const f of adj.ownFamiliesOf.get(person) ?? []) {
+      const rec = adj.familyNodes.get(f) || {}
+      const otherSpouse = rec.father === person ? rec.mother : rec.father
+      if (otherSpouse) cuts.add(`union:${f}:${otherSpouse}`)
+    }
+  }
+
+  // Laterals: siblings at each generation of the direct line (incl. root's
+  // own siblings) — co-children of a family that a direct-line member (or
+  // root) belongs to, who are themselves not on the line.
+  const laterals = new Set()
+  for (const a of [rootHandle, ...directAncestors]) {
+    for (const f of adj.ancEdges.get(a) ?? []) {
+      for (const c of childrenOfFamily.get(f) ?? []) {
+        if (c === a || onLine(c)) continue
+        laterals.add(c)
+      }
+    }
+  }
+  for (const lat of laterals) {
+    cuts.add(`anc:${lat}`)
+    collapseOwnMarriages(lat)
+  }
+
+  // Each direct-line ancestor's other marriages (never the chain-link one
+  // that the direct line actually descends through — cutting that would
+  // sever the line itself, since union cuts remove every non-root child's
+  // edge to the family).
+  for (const a of directAncestors) {
+    for (const f of adj.ownFamiliesOf.get(a) ?? []) {
+      const chainChildren = childrenOfFamily.get(f) ?? []
+      const isChainFamily = chainChildren.some(onLine)
+      if (isChainFamily) continue
+      const rec = adj.familyNodes.get(f) || {}
+      const otherSpouse = rec.father === a ? rec.mother : rec.father
+      if (otherSpouse) cuts.add(`union:${f}:${otherSpouse}`)
+    }
+  }
+
+  return cuts
+}
