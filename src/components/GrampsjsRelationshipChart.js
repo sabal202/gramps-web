@@ -23,6 +23,39 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
           --mdc-typography-subtitle1-font-size: 13px;
           --mdc-menu-item-height: 36px;
         }
+
+        /* Collapse/expand affordances (see charts/RelationshipChart.js
+           addCollapseAffordances). Revealed on hover of the containing
+           node and on keyboard focus of that node (:focus-within — v1
+           puts tabindex on the node itself, not on the small "-" control,
+           see addCollapseAffordances for why). Chips (⊕N) are excluded
+           from this rule — they indicate hidden data and stay visible. */
+        svg .collapse-control {
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          svg .collapse-control {
+            transition: none;
+          }
+        }
+        svg .node:hover .collapse-control,
+        svg .node:focus-within .collapse-control {
+          opacity: 1;
+        }
+        /* Touch has no hover — keep the control visible but dimmed rather
+           than invisible, since there is no gesture to reveal it. */
+        svg .collapse-control.touch {
+          opacity: 0.35;
+        }
+        svg .node[tabindex]:focus-visible {
+          outline: 2px solid var(--md-sys-color-primary);
+          outline-offset: 2px;
+        }
+        svg .collapse-chip:focus-visible {
+          outline: 2px solid var(--md-sys-color-primary);
+          outline-offset: 2px;
+        }
       `,
     ]
   }
@@ -88,6 +121,11 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
           divorced: this._('Divorced'),
           widowed: this._('Widowed'),
           partners: this._('Unmarried partners'),
+        },
+        collapseLabels: {
+          collapseAncestors: this._('Collapse ancestors'),
+          collapseMarriage: this._('Collapse this marriage'),
+          expandHidden: n => this._('Expand %s hidden', n),
         },
       })}
     `

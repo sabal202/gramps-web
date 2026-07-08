@@ -6,7 +6,11 @@ import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 import {childRefStyle} from './familyHelpers.js'
 import {getMaidenSurname} from './util.js'
-import {parentFamiliesOf, familyNodeExists} from './adjacency.js'
+import {
+  parentFamiliesOf,
+  familyNodeExists,
+  buildAdjacency,
+} from './adjacency.js'
 import {pruneGraph} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
@@ -478,6 +482,13 @@ const getFamilySurname = primaryName =>
     .join(' ')
 
 function clicked(event, d) {
+  // Force-hide any lingering hover-preview popup before the SVG gets
+  // rebuilt under new root — the node under the cursor is about to be
+  // removed, so no mouseleave will ever fire for it (see
+  // GrampsjsObjectPreview's force-hide path).
+  window.dispatchEvent(
+    new CustomEvent('object:preview-hide', {detail: {force: true}})
+  )
   dispatchEvent(
     new CustomEvent('pedigree:person-selected', {
       bubbles: true,
@@ -485,6 +496,282 @@ function clicked(event, d) {
       detail: {grampsId: d.profile?.gramps_id},
     })
   )
+}
+
+function dispatchCollapseToggle(cutKey) {
+  // Bare dispatchEvent (no explicit target) resolves to window.dispatchEvent
+  // in a browser — same pattern as pedigree:person-selected above, so the
+  // view can listen with a single window-level handler regardless of where
+  // in the shadow-DOM tree the control lives.
+  dispatchEvent(
+    new CustomEvent('chart:collapse-toggle', {
+      bubbles: true,
+      composed: true,
+      detail: {cutKey},
+    })
+  )
+}
+
+function forceHidePreview() {
+  window.dispatchEvent(
+    new CustomEvent('object:preview-hide', {detail: {force: true}})
+  )
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+// Shortest-hop distance from rootHandle to every other reachable vertex,
+// over the full (uncollapsed) adjacency graph. Used only to decide, at
+// control-render time, which side of an eligible union is the "far" one —
+// this is a one-off UI decision (which spouse to name in the cut key when
+// the control is drawn), not part of pruneGraph's own reachability logic.
+function bfsDistances(rootHandle, neighbors) {
+  const dist = new Map([[rootHandle, 0]])
+  const queue = [rootHandle]
+  while (queue.length) {
+    const cur = queue.shift()
+    for (const nxt of neighbors.get(cur) ?? []) {
+      if (!dist.has(nxt)) {
+        dist.set(nxt, dist.get(cur) + 1)
+        queue.push(nxt)
+      }
+    }
+  }
+  return dist
+}
+
+// Renders the collapse/expand affordances on top of an already-drawn chart:
+//   - a "–" control on any person node with visible parents (collapse that
+//     person's ancestors) and on any eligible family node (collapse that
+//     union's far side);
+//   - a "⊕N" chip per active cut, anchored on the visible person pruneGraph
+//     named for it (see chipAnchors in collapse.js).
+// `nodes` is the already-built d3 selection of .node .person/.family <g>
+// elements, data-bound to the same nodedata records used elsewhere in
+// remasterChart.
+function addCollapseAffordances(
+  nodes,
+  graph,
+  boxWidth,
+  boxHeight,
+  chipCounts,
+  chipAnchors,
+  svg,
+  zoomBehavior,
+  collapseLabels
+) {
+  const rootHandle = graph.rootPerson?.handle
+  const knownHandles = new Set(graph.getData().map(p => p.handle))
+  const hasVisibleParents = handle => {
+    const p = graph.known(handle)
+    if (!p) return false
+    return parentFamiliesOf(p.data, graph.showAllParents).some(f =>
+      familyNodeExists(f, knownHandles, {asParentFamily: true})
+    )
+  }
+  const rootParentFamilyHandles = new Set(
+    parentFamiliesOf(graph.rootPerson?.data, graph.showAllParents)
+      .map(f => f?.handle)
+      .filter(Boolean)
+  )
+  const adj = buildAdjacency(graph.getData(), {
+    showAllParents: graph.showAllParents,
+  })
+  const distFromRoot = rootHandle
+    ? bfsDistances(rootHandle, adj.neighbors)
+    : new Map()
+  // Which spouse to hide when the marriage control is activated: the one
+  // farther from root over the uncollapsed graph. Ties fall back to hiding
+  // the father — an arbitrary but deterministic choice; the near/far split
+  // only matters when it differs from root's own blood line, and pruneGraph
+  // itself pins whichever handle ends up in the key (see collapse.js).
+  const farSpouseOf = d => {
+    const df = distFromRoot.get(d.father) ?? -1
+    const dm = distFromRoot.get(d.mother) ?? -1
+    return df >= dm ? d.father : d.mother
+  }
+  const isTouch = window.matchMedia('(hover: none)').matches
+  const reduceMotion = prefersReducedMotion()
+
+  const focusPanToNode = d => {
+    if (!svg || !zoomBehavior) return
+    const cx = d.xCoord + boxWidth / 2
+    const cy = d.yCoord + boxHeight / 2
+    const t = reduceMotion ? svg : svg.transition().duration(200)
+    t.call(zoomBehavior.translateTo, cx, cy)
+  }
+
+  const addControl = (selection, {ariaLabel, dx, dy, onActivate}) => {
+    const control = selection
+      .append('g')
+      .attr('class', isTouch ? 'collapse-control touch' : 'collapse-control')
+      .attr('aria-label', ariaLabel)
+      .attr('transform', `translate(${dx}, ${dy})`)
+      .style('cursor', 'pointer')
+      .style('touch-action', 'manipulation')
+    control
+      .append('circle')
+      .attr('r', 8)
+      .attr('fill', 'var(--md-sys-color-surface-container-high)')
+      .attr('stroke', 'var(--md-sys-color-primary)')
+      .attr('stroke-width', 1)
+    control
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', '13px')
+      .attr('fill', 'var(--md-sys-color-primary)')
+      .attr('pointer-events', 'none')
+      .text('–')
+    control
+      .on('click', function onClick(event, d) {
+        event.stopPropagation()
+        forceHidePreview()
+        onActivate(d)
+      })
+      .on('mouseenter', () => {
+        if (!isTouch) forceHidePreview()
+      })
+    return control
+  }
+
+  // Person ancestors-collapse control — offered on any person with visible
+  // parents, root included (collapsing root's own ancestors is the primary
+  // use case).
+  const ancestorNodes = nodes.filter(
+    d => d.nodetype === 'person' && hasVisibleParents(d.handle)
+  )
+  addControl(ancestorNodes, {
+    ariaLabel: collapseLabels.collapseAncestors,
+    dx: boxWidth / 2,
+    dy: -10,
+    onActivate: d => dispatchCollapseToggle(`anc:${d.handle}`),
+  })
+
+  // Marriage-collapse control — offered on family nodes with both spouses
+  // known/visible, excluding root's own family (focus family, spared per
+  // design) and root's own parent family (collapsing "the marriage" there
+  // is semantically the wrong action for an ancestors-context control).
+  const marriageNodes = nodes.filter(
+    d =>
+      d.nodetype === 'family' &&
+      d.father &&
+      d.mother &&
+      d.father !== rootHandle &&
+      d.mother !== rootHandle &&
+      !rootParentFamilyHandles.has(d.handle)
+  )
+  addControl(marriageNodes, {
+    ariaLabel: collapseLabels.collapseMarriage,
+    dx: 0,
+    dy: boxHeight / 2 - 10 - 22,
+    onActivate: d =>
+      dispatchCollapseToggle(`union:${d.handle}:${farSpouseOf(d)}`),
+  })
+
+  // Keyboard: v1 focuses whole nodes (not the individual "-" controls,
+  // which stay mouse/touch-only) — Tab lands on any node offering a
+  // control, Enter/Space performs that node's one collapse action, and
+  // focusing a node recentres the view on it (best-effort; the zoom
+  // transform's units are assumed to line up ~1:1 with the SVG's own
+  // client pixels, same assumption the existing zoom setup already makes).
+  const ancestorHandles = new Set(ancestorNodes.data().map(d => d.handle))
+  const marriageHandles = new Set(marriageNodes.data().map(d => d.handle))
+  nodes
+    .filter(
+      d =>
+        (d.nodetype === 'person' && ancestorHandles.has(d.handle)) ||
+        (d.nodetype === 'family' && marriageHandles.has(d.handle))
+    )
+    .attr('tabindex', '0')
+    .attr('aria-label', d =>
+      d.nodetype === 'person'
+        ? collapseLabels.collapseAncestors
+        : collapseLabels.collapseMarriage
+    )
+    .on('focus', function onFocus(event, d) {
+      focusPanToNode(d)
+    })
+    .on('keydown', function onKeydown(event, d) {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      forceHidePreview()
+      if (d.nodetype === 'person') {
+        dispatchCollapseToggle(`anc:${d.handle}`)
+      } else {
+        dispatchCollapseToggle(`union:${d.handle}:${farSpouseOf(d)}`)
+      }
+    })
+
+  // Chips: one per active cut, anchored on the visible person pruneGraph
+  // named for it. Always visible (they indicate hidden data, not a
+  // hover-only affordance), focusable in their own right, positioned near
+  // where the collapsed branch used to attach.
+  const personNodeSelectionByHandle = new Map()
+  nodes
+    .filter(d => d.nodetype === 'person')
+    .each(function collectPersonNodes(d) {
+      personNodeSelectionByHandle.set(d.handle, select(this))
+    })
+
+  for (const [cutKey, count] of chipCounts) {
+    const anchor = chipAnchors.get(cutKey)
+    if (!anchor?.anchorHandle) continue
+    const anchorSelection = personNodeSelectionByHandle.get(anchor.anchorHandle)
+    if (!anchorSelection) continue
+    const [dx, dy] =
+      anchor.side === 'marriage'
+        ? [boxWidth + 14, boxHeight / 2 - 10]
+        : [boxWidth / 2, -10]
+    const chip = anchorSelection
+      .append('g')
+      .attr('class', 'collapse-chip')
+      .attr('role', 'button')
+      .attr('tabindex', '0')
+      .attr('aria-label', collapseLabels.expandHidden?.(count) ?? `+${count}`)
+      .attr('transform', `translate(${dx}, ${dy})`)
+      .style('cursor', 'pointer')
+      .style('touch-action', 'manipulation')
+    chip
+      .append('rect')
+      .attr('x', -18)
+      .attr('y', -10)
+      .attr('width', 36)
+      .attr('height', 20)
+      .attr('rx', 10)
+      .attr('ry', 10)
+      .attr('fill', 'var(--md-sys-color-primary-container)')
+      .attr('stroke', 'var(--md-sys-color-primary)')
+      .attr('stroke-dasharray', '3,2')
+      .attr('stroke-width', 1)
+    chip
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', '11px')
+      .attr('font-weight', '600')
+      .attr('fill', 'var(--md-sys-color-on-primary-container)')
+      .attr('pointer-events', 'none')
+      .text(`⊕ ${count}`)
+    const activateChip = event => {
+      event.stopPropagation()
+      forceHidePreview()
+      dispatchCollapseToggle(cutKey)
+    }
+    chip
+      .on('click', activateChip)
+      .on('mouseenter', () => {
+        if (!isTouch) forceHidePreview()
+      })
+      .on('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          activateChip(event)
+        }
+      })
+  }
 }
 function remasterChart(
   divhidden,
@@ -501,9 +788,14 @@ function remasterChart(
   unionStatusLabels = {},
   showMaidenName = false,
   // chipCounts/chipAnchors come from pruneGraph (collapse/expand, see
-  // collapse.js): rendered as ⊕N chips in Task 7.
+  // collapse.js): rendered as ⊕N chips below.
   chipCounts = new Map(),
-  chipAnchors = new Map()
+  chipAnchors = new Map(),
+  // Outer <svg> selection + its d3-zoom behavior, so a focused node can
+  // pan/recentre itself into view (best-effort; see focusPanToNode below).
+  svg = null,
+  zoomBehavior = null,
+  collapseLabels = {}
 ) {
   const gvchartx = divhidden.select('svg')
   const nodedata = []
@@ -555,6 +847,8 @@ function remasterChart(
         unionDates: d.unionDates,
         unionLabel: formatUnionDates(d.maritalStatus, d.unionDates),
         handle: found.groups.handle,
+        father: d.father,
+        mother: d.mother,
       })
     }
   })
@@ -903,6 +1197,18 @@ function remasterChart(
       'drop-shadow(0 3px 8px var(--grampsjs-body-font-color-30))'
     )
 
+  addCollapseAffordances(
+    nodes,
+    graph,
+    boxWidth,
+    boxHeight,
+    chipCounts,
+    chipAnchors,
+    svg,
+    zoomBehavior,
+    collapseLabels
+  )
+
   // kill hidden graphviz generated svg
   gvchartx.remove()
 }
@@ -933,6 +1239,7 @@ export function RelationshipChart(
     // pruning and rooting never disagree about who "root" is.
     collapsed = new Set(),
     rootHandle = undefined,
+    collapseLabels = {},
   }
 ) {
   // Prune BEFORE building the graph, so createGraph (incl. its fake-parent
@@ -951,13 +1258,12 @@ export function RelationshipChart(
 
   const resultnode = create('div').style('width', '100%')
   const divhidden = resultnode.append('div').style('display', 'none')
+  const zoomBehavior = zoom().on('zoom', e =>
+    svg.select('#chart-content').attr('transform', e.transform)
+  )
   const svg = resultnode
     .append('svg')
-    .call(
-      zoom().on('zoom', e =>
-        svg.select('#chart-content').attr('transform', e.transform)
-      )
-    )
+    .call(zoomBehavior)
     .attr('font-family', 'Inter var')
     .attr('font-size', 13)
 
@@ -993,7 +1299,10 @@ export function RelationshipChart(
       unionStatusLabels,
       showMaidenName,
       chipCounts,
-      chipAnchors
+      chipAnchors,
+      svg,
+      zoomBehavior,
+      collapseLabels
     )
     svg.attr('viewBox', [
       -bboxWidth / 2,
