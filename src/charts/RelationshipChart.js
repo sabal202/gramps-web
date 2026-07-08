@@ -31,6 +31,13 @@ const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→paren
 const DIRECT_LINE_COLOR =
   'color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent)'
 
+// Reserved horizontal width (inches) of the family marriage-marker node.
+// nodesep is 0, so this gap is the only room between spouse cards; it must fit
+// the family-node controls (whole-marriage ring + "▶/◀" spouse tab). The marker
+// glyph itself is drawn centered by d3 (remasterChart), so only the reserved
+// gap grows, not the drawn marker. Was 0.1 (controls overlapped the cards).
+const FAMILY_NODE_WIDTH_IN = 0.85
+
 const sexColor = {
   F: 'var(--color-girl)',
   M: 'var(--color-boy)',
@@ -282,7 +289,7 @@ function generateDot(graph) {
           shape="none"
           margin=0
           fixedsize=true
-          width=0.1
+          width=${FAMILY_NODE_WIDTH_IN}
           height=${heightInches}
         ]
         "node_${n.handle}x${pm}" [
@@ -1038,7 +1045,7 @@ function addCollapseAffordances(
         const pointRight = farX === undefined ? true : farX >= d.xCoord
         const sCount = countFor(sKey)
         const bTab = appendPill(g, {
-          cx: pointRight ? 20 : -20,
+          cx: pointRight ? 18 : -18,
           cy: anchorY,
           iconPath: pointRight ? mdiChevronRight : mdiChevronLeft,
           ariaLabel: collapseLabels.spouseAria(sCount),
