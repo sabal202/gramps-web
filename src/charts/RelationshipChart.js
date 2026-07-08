@@ -7,6 +7,7 @@ import {appendAddPersonButton} from './addPersonButton.js'
 import {childRefStyle} from './familyHelpers.js'
 import {getMaidenSurname} from './util.js'
 import {parentFamiliesOf, familyNodeExists} from './adjacency.js'
+import {pruneGraph} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
@@ -498,7 +499,11 @@ function remasterChart(
   canEdit = false,
   showUnionDates = false,
   unionStatusLabels = {},
-  showMaidenName = false
+  showMaidenName = false,
+  // chipCounts/chipAnchors come from pruneGraph (collapse/expand, see
+  // collapse.js): rendered as ⊕N chips in Task 7.
+  chipCounts = new Map(),
+  chipAnchors = new Map()
 ) {
   const gvchartx = divhidden.select('svg')
   const nodedata = []
@@ -922,8 +927,28 @@ export function RelationshipChart(
     initialZoom = null,
     unionStatusLabels = {},
     showMaidenName = false,
+    // Collapse/expand (see collapse.js): collapsed is a Set of cut keys,
+    // rootHandle is the handle (not gramps_id) of the person named by
+    // grampsId above — the caller derives it once and passes both down so
+    // pruning and rooting never disagree about who "root" is.
+    collapsed = new Set(),
+    rootHandle = undefined,
   }
 ) {
+  // Prune BEFORE building the graph, so createGraph (incl. its fake-parent
+  // glue step) runs only on the already-visible set — the drawn graph and
+  // pruneGraph's visibility/chip bookkeeping can then never diverge. With
+  // an empty `collapsed` set this is a no-op: pruneGraph never populates
+  // `hidden` unless there is at least one active cut, so every person
+  // passes the filter and rendering is unchanged from before this feature.
+  const {visibleHandles, chipCounts, chipAnchors} = pruneGraph(
+    data,
+    collapsed,
+    rootHandle,
+    showAllParents
+  )
+  const prunedData = data.filter(p => visibleHandles.has(p.handle))
+
   const resultnode = create('div').style('width', '100%')
   const divhidden = resultnode.append('div').style('display', 'none')
   const svg = resultnode
@@ -943,7 +968,7 @@ export function RelationshipChart(
     chartContent.attr('transform', initialZoom.toString())
   }
   const graph = new Relgraph(
-    data,
+    prunedData,
     boxWidth,
     boxHeight,
     grampsId,
@@ -966,7 +991,9 @@ export function RelationshipChart(
       canEdit,
       showUnionDates,
       unionStatusLabels,
-      showMaidenName
+      showMaidenName,
+      chipCounts,
+      chipAnchors
     )
     svg.attr('viewBox', [
       -bboxWidth / 2,

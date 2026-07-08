@@ -38,6 +38,9 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       showAllParents: {type: Boolean},
       showMaidenName: {type: Boolean},
       canEdit: {type: Boolean},
+      // Set<string> of collapse cut keys (see charts/collapse.js). Not a
+      // reflected attribute — always passed as a Lit property.
+      collapsed: {type: Object},
     }
   }
 
@@ -46,6 +49,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     this.grampsId = ''
     this.gapX = 30
     this._savedZoom = null
+    this.collapsed = new Set()
   }
 
   willUpdate() {
@@ -60,6 +64,9 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     if (this.data.length === 0 || !this.grampsId) {
       return ''
     }
+    const rootHandle = this.data.find(
+      p => p.gramps_id === this.grampsId
+    )?.handle
     return html`
       ${RelationshipChart(this.data, {
         nAnc: this.nAnc,
@@ -74,6 +81,8 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         showMaidenName: this.showMaidenName,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
+        collapsed: this.collapsed,
+        rootHandle,
         unionStatusLabels: {
           married: this._('Married'),
           divorced: this._('Divorced'),
