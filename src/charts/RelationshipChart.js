@@ -17,11 +17,7 @@ import {
   familyNodeExists,
   buildAdjacency,
 } from './adjacency.js'
-import {
-  pruneGraph,
-  directAncestorHandles,
-  hiddenCountForCut,
-} from './collapse.js'
+import {pruneGraph, directAncestorHandles, makeCutResolver} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 // Per-edge class prefix carrying the edge's target person handle (see
@@ -644,8 +640,18 @@ function addCollapseAffordances(
   const isTouch = window.matchMedia('(hover: none)').matches
   const reduceMotion = prefersReducedMotion()
 
-  const countFor = cutKey =>
-    hiddenCountForCut(data, collapsed, cutKey, rootHandle, showAllParents)
+  // One adjacency build per render, shared by every tab/pill label AND every
+  // hover preview: cutHidden(cutKey) -> the set of currently-visible persons
+  // that cut would additionally hide. `.size` is the tooltip count; the set
+  // drives preview dimming. Computed over the VISIBLE people (graph.getData()),
+  // so a single cut's effect is exactly the marginal hide — far cheaper than a
+  // full pruneGraph per control (see collapse.js makeCutResolver).
+  const cutHidden = makeCutResolver(
+    graph.getData(),
+    rootHandle,
+    graph.showAllParents
+  )
+  const countFor = cutKey => cutHidden(cutKey).size
 
   const adj = buildAdjacency(graph.getData(), {
     showAllParents: graph.showAllParents,
@@ -737,26 +743,15 @@ function addCollapseAffordances(
     if (isTouch) return
     const show = () => {
       forceHidePreview()
-      const before = pruneGraph(
-        data,
-        collapsed,
-        rootHandle,
-        showAllParents
-      ).visibleHandles
-      const next = new Set(collapsed)
-      for (const k of cutKeys) next.add(k)
-      const after = pruneGraph(
-        data,
-        next,
-        rootHandle,
-        showAllParents
-      ).visibleHandles
+      const goingHidden = new Set()
+      for (const k of cutKeys) {
+        for (const h of cutHidden(k)) goingHidden.add(h)
+      }
       nodes.each(function dimIfHidden(nd) {
-        const goesHidden = h => before.has(h) && !after.has(h)
         const hide =
-          (nd.nodetype === 'person' && goesHidden(nd.handle)) ||
+          (nd.nodetype === 'person' && goingHidden.has(nd.handle)) ||
           (nd.nodetype === 'family' &&
-            (goesHidden(nd.father) || goesHidden(nd.mother)))
+            (goingHidden.has(nd.father) || goingHidden.has(nd.mother)))
         if (hide) select(this).style('opacity', 0.25)
       })
     }

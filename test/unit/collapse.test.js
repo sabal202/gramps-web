@@ -2,6 +2,7 @@ import {describe, it, expect} from 'vitest'
 import {
   pruneGraph,
   hiddenCountForCut,
+  makeCutResolver,
   directAncestorHandles,
   presetCollapseDescendants,
   presetDirectLineOnly,
@@ -442,6 +443,29 @@ describe('hiddenCountForCut', () => {
     ]
     const already = new Set(['anc:ME:F1'])
     expect(hiddenCountForCut(people, already, 'anc:ME:F1', 'ME', true)).toBe(0)
+  })
+})
+
+describe('makeCutResolver', () => {
+  it('returns the hidden set of a single cut over the given people (one ctx)', () => {
+    const f1 = fam('F1', 'DAD', 'MOM', ['ME'])
+    const fDad = fam('FDAD', 'GF', 'GM', ['DAD'])
+    const people = [
+      person('ME', {parentFamilies: [f1]}),
+      person('DAD', {parentFamilies: [fDad], ownFamilies: [f1]}),
+      person('MOM', {ownFamilies: [f1]}),
+      person('GF', {ownFamilies: [fDad]}),
+      person('GM', {ownFamilies: [fDad]}),
+    ]
+    const resolve = makeCutResolver(people, 'ME', true)
+    const hidden = resolve('anc:ME:F1')
+    expect([...hidden].sort()).toEqual(['DAD', 'GF', 'GM', 'MOM'])
+    // Same marginal count as hiddenCountForCut on the full graph, no collapse.
+    expect(hidden.size).toBe(
+      hiddenCountForCut(people, new Set(), 'anc:ME:F1', 'ME', true)
+    )
+    // Unknown/empty key -> empty set.
+    expect(resolve('bogus:X').size).toBe(0)
   })
 })
 

@@ -378,6 +378,41 @@ export function hiddenCountForCut(
 }
 
 /**
+ * Build a resolver over a SINGLE adjacency graph: `cutKey => Set` of the
+ * persons that cut hides, computed against `people` as given. Pass the
+ * currently-visible people and the result is the set a cut would ADDITIONALLY
+ * hide (its `.size` is the tooltip count, the set itself is what to dim for a
+ * hover preview). One ctx build per call, then each lookup is just a flood —
+ * far cheaper than hiddenCountForCut's two full pruneGraph rebuilds per cut,
+ * which matters when many controls are labelled/previewed in one render.
+ *
+ * @param {object[]} people
+ * @param {string} rootHandle
+ * @param {boolean} showAllParents
+ * @returns {(cutKey: string) => Set<string>}
+ */
+export function makeCutResolver(people, rootHandle, showAllParents) {
+  const ctx = makeCtx(people, showAllParents)
+  return cutKey => {
+    if (cutKey === 'line') return hiddenLine(ctx, rootHandle).hidden
+    if (cutKey === 'desc') return hiddenDesc(ctx, rootHandle).hidden
+    if (cutKey.startsWith('anc:')) {
+      const {person, family} = parseAncCut(cutKey)
+      return hiddenAncFamily(ctx, rootHandle, person, family).hidden
+    }
+    if (cutKey.startsWith('spouse:')) {
+      const {family, spouse} = parseSpouseCut(cutKey)
+      return hiddenSpouse(ctx, rootHandle, family, spouse).hidden
+    }
+    if (cutKey.startsWith('children:')) {
+      const family = cutKey.slice('children:'.length)
+      return hiddenChildrenFam(ctx, rootHandle, family).hidden
+    }
+    return new Set()
+  }
+}
+
+/**
  * Root's direct blood-ancestor handles (for the direct-line highlight):
  * child->parent closure upward from rootHandle, excluding rootHandle itself.
  *
