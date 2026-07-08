@@ -135,7 +135,7 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     this._hideTimer = null
     this._mouseInPopup = false
     this._boundShow = this._handleShow.bind(this)
-    this._boundHide = this._handleHide.bind(this)
+    this._boundHide = e => this._handleHide(e)
     this._boundNav = () => {
       this._visible = false
     }
@@ -198,8 +198,14 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     }
   }
 
-  _handleHide() {
+  _handleHide(e) {
     clearTimeout(this._showTimer)
+    if (e?.detail?.force) {
+      clearTimeout(this._hideTimer)
+      this._mouseInPopup = false
+      this._visible = false
+      return
+    }
     if (this._mouseInPopup) return
     this._hideTimer = setTimeout(() => {
       this._visible = false
