@@ -617,6 +617,23 @@ function addCollapseAffordances(
     t.call(zoomBehavior.translateTo, cx, cy)
   }
 
+  // A tabbable node receives focus on MOUSEDOWN as well as on keyboard Tab.
+  // Recentring the view on mouse-focus is actively harmful: it moves the
+  // content out from under the pointer between mousedown and mouseup, so the
+  // browser fires no click at all — which silently swallowed both the person
+  // reroot click and the "–" collapse click (bug found 2026-07-08). Track
+  // pointer activity on the svg and only pan for keyboard-initiated focus.
+  let pointerInitiatedFocus = false
+  if (svg) {
+    svg
+      .on('pointerdown.collapsefocus', () => {
+        pointerInitiatedFocus = true
+      })
+      .on('pointerup.collapsefocus', () => {
+        pointerInitiatedFocus = false
+      })
+  }
+
   const addControl = (selection, {ariaLabel, dx, dy, onActivate}) => {
     const control = selection
       .append('g')
@@ -707,6 +724,9 @@ function addCollapseAffordances(
         : collapseLabels.collapseMarriage
     )
     .on('focus', function onFocus(event, d) {
+      // Skip mouse-initiated focus (see pointerInitiatedFocus above) — pan
+      // only when the user tabbed here with the keyboard.
+      if (pointerInitiatedFocus) return
       focusPanToNode(d)
     })
     .on('keydown', function onKeydown(event, d) {
