@@ -3,6 +3,7 @@ import {html, css} from 'lit'
 import {GrampsjsViewTreeChartBase} from './GrampsjsViewTreeChartBase.js'
 import '../components/GrampsjsRelationshipChart.js'
 import '../components/GrampsjsTreeChartAddPerson.js'
+import '../components/GrampsjsCollapseSheet.js'
 import {
   presetCollapseDescendants,
   presetDirectLineOnly,
@@ -24,6 +25,11 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     return {
       ...super.properties,
       _collapsed: {type: Object},
+      // Mobile bottom-sheet state (see GrampsjsCollapseSheet + the chart's
+      // touch handling in RelationshipChart.js addCollapseAffordances).
+      _collapseMenuOpen: {type: Boolean},
+      _collapseMenuTitle: {type: String},
+      _collapseMenuItems: {type: Array},
     }
   }
 
@@ -43,7 +49,11 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     // reload or a tab switch away and back (the relationship-chart element
     // is remounted then). See design doc §1.
     this._collapsed = new Set()
+    this._collapseMenuOpen = false
+    this._collapseMenuTitle = ''
+    this._collapseMenuItems = []
     this._boundHandleCollapseToggle = this._handleCollapseToggle.bind(this)
+    this._boundHandleCollapseMenu = this._handleCollapseMenu.bind(this)
   }
 
   connectedCallback() {
@@ -56,6 +66,10 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
       'chart:collapse-toggle',
       this._boundHandleCollapseToggle
     )
+    window.addEventListener(
+      'chart:collapse-menu',
+      this._boundHandleCollapseMenu
+    )
   }
 
   disconnectedCallback() {
@@ -63,6 +77,10 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
     window.removeEventListener(
       'chart:collapse-toggle',
       this._boundHandleCollapseToggle
+    )
+    window.removeEventListener(
+      'chart:collapse-menu',
+      this._boundHandleCollapseMenu
     )
   }
 
@@ -85,9 +103,9 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
 
   // Toggles a single cut key. Always swaps in a brand-new Set so Lit's
   // default (reference) change detection sees the update and re-renders.
-  _handleCollapseToggle(e) {
-    const cutKey = e.detail?.cutKey
-    if (!cutKey) return
+  // Shared by the window-level chart:collapse-toggle listener (desktop tabs
+  // and reopen pills) and the mobile bottom-sheet's plain cutKey selections.
+  _toggleCut(cutKey) {
     this._forceHidePreview()
     const next = new Set(this._collapsed)
     if (next.has(cutKey)) {
@@ -96,6 +114,57 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
       next.add(cutKey)
     }
     this._collapsed = next
+  }
+
+  _handleCollapseToggle(e) {
+    const cutKey = e.detail?.cutKey
+    if (!cutKey) return
+    this._toggleCut(cutKey)
+  }
+
+  // Opens the mobile bottom-sheet (see GrampsjsCollapseSheet) with the
+  // options the chart built for whatever was tapped/long-pressed — see
+  // addCollapseAffordances' touch branch in RelationshipChart.js.
+  _handleCollapseMenu(e) {
+    this._collapseMenuTitle = e.detail?.title ?? ''
+    this._collapseMenuItems = e.detail?.options ?? []
+    this._collapseMenuOpen = true
+  }
+
+  _handleCollapseSheetClose() {
+    this._collapseMenuOpen = false
+  }
+
+  // Handles a selection from the mobile bottom-sheet. "whole" adds BOTH the
+  // spouse and children cuts for the family (not a toggle — this is the
+  // sheet's explicit "collapse whole marriage" action, see design §4.4);
+  // "reroot" re-centres the chart on the long-pressed person (the sheet's
+  // "make home person" item); a plain cutKey reuses the normal toggle.
+  _handleCollapseSelect(e) {
+    const {cutKey, action, family, spouse, grampsId} = e.detail ?? {}
+    if (action === 'whole') {
+      this._forceHidePreview()
+      const next = new Set(this._collapsed)
+      next.add(`spouse:${family}:${spouse}`)
+      next.add(`children:${family}`)
+      this._collapsed = next
+      return
+    }
+    if (action === 'reroot') {
+      if (!grampsId) return
+      this._forceHidePreview()
+      dispatchEvent(
+        new CustomEvent('pedigree:person-selected', {
+          bubbles: true,
+          composed: true,
+          detail: {grampsId},
+        })
+      )
+      return
+    }
+    if (cutKey) {
+      this._toggleCut(cutKey)
+    }
   }
 
   // Presets replace _collapsed wholesale (not merge) — predictable, and
@@ -249,6 +318,14 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
       <grampsjs-tree-chart-add-person
         .appState="${this.appState}"
       ></grampsjs-tree-chart-add-person>
+      <grampsjs-collapse-sheet
+        .appState="${this.appState}"
+        ?open="${this._collapseMenuOpen}"
+        .sheetTitle="${this._collapseMenuTitle}"
+        .items="${this._collapseMenuItems}"
+        @collapse-select="${this._handleCollapseSelect}"
+        @collapse-sheet-close="${this._handleCollapseSheetClose}"
+      ></grampsjs-collapse-sheet>
     `
   }
 }

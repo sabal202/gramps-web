@@ -127,9 +127,26 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
           partners: this._('Unmarried partners'),
         },
         collapseLabels: {
-          collapseAncestors: this._('Collapse ancestors'),
-          collapseMarriage: this._('Collapse this marriage'),
+          // Desktop tab/ring aria-labels + tooltips — embed the count so a
+          // screen reader or native <title> tooltip states the effect
+          // up-front, before activating the control.
+          ancestorsAria: (familyLabel, count) =>
+            familyLabel
+              ? this._('Collapse ancestors: %s (%s hidden)', familyLabel, count)
+              : this._('Collapse ancestors (%s hidden)', count),
+          spouseAria: count =>
+            this._("Hide spouse's branch (%s hidden)", count),
+          childrenAria: count => this._('Hide children (%s hidden)', count),
+          wholeMarriageAria: this._('Collapse whole marriage'),
           expandHidden: n => this._('Expand %s hidden', n),
+          // Mobile bottom-sheet item labels — plain action names; the sheet
+          // renders the count/dashed state itself (see
+          // GrampsjsCollapseSheet).
+          spouseTab: this._("Hide spouse's branch"),
+          childrenTab: this._('Hide children'),
+          wholeMarriage: this._('Collapse whole marriage'),
+          makeHomePerson: this._('Make home person'),
+          familySheetTitle: this._('Family'),
         },
       })}
     `
