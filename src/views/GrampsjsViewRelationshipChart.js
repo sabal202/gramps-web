@@ -66,6 +66,15 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
   _handleCollapseToggle(e) {
     const cutKey = e.detail?.cutKey
     if (!cutKey) return
+    // The chart is about to be rebuilt from scratch (a fresh SVG node), so
+    // whatever node the hover-preview popup is currently anchored to may
+    // no longer exist afterwards and would never fire mouseleave — force
+    // it closed now rather than leave it stranded. See
+    // GrampsjsObjectPreview's force-hide path and clicked() in
+    // RelationshipChart.js, which does the same before a reroot.
+    window.dispatchEvent(
+      new CustomEvent('object:preview-hide', {detail: {force: true}})
+    )
     const next = new Set(this._collapsed)
     if (next.has(cutKey)) {
       next.delete(cutKey)
