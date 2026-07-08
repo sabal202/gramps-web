@@ -14,6 +14,10 @@ import {
 import {pruneGraph, directAncestorHandles} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
+// Per-edge class prefix carrying the edge's target person handle (see
+// generateDot). Read back in remasterChart to highlight the direct blood line
+// without depending on graphviz's edge output order.
+const EDGE_TARGET_CLASS_PREFIX = 'edgetarget_'
 const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
 // Muted accent for the direct-ancestor-line highlight (Task 10) — additive
 // only, never the sole carrier of meaning (root itself already gets a
@@ -308,14 +312,20 @@ function generateDot(graph) {
   }
   // edges
   for (const e of graph.getEdges()) {
-    const dashedAttr = e.dashed ? `, class="${DASHED_EDGE_CLASS}"` : ''
+    // Tag each edge with its target person via a class, so the direct-line
+    // highlight in remasterChart can identify the edge by identity (graphviz
+    // preserves the DOT `class` on the output edge <g>) rather than by DOM
+    // order, which graphviz does not guarantee matches the DOT edge order.
+    const classes = [`${EDGE_TARGET_CLASS_PREFIX}${e.targetPerson}`]
+    if (e.dashed) classes.push(DASHED_EDGE_CLASS)
+    const classAttr = `, class="${classes.join(' ')}"`
     for (const targetnode of graph.getNodesOfPerson(e.targetPerson)) {
       if (e.sourcePerson) {
         // one-person node as source
-        dot += `"node_${e.sourceFamily}x${e.sourcePerson}" -> "node_${targetnode}x${e.targetPerson}" [label="", arrowhead=none, color="#555"${dashedAttr}]
+        dot += `"node_${e.sourceFamily}x${e.sourcePerson}" -> "node_${targetnode}x${e.targetPerson}" [label="", arrowhead=none, color="#555"${classAttr}]
       `
       } else {
-        dot += `"node_${e.sourceFamily}" -> "node_${targetnode}x${e.targetPerson}" [ltail="node_${e.sourceFamily}", label="", arrowhead=none, color="#555"${dashedAttr}]
+        dot += `"node_${e.sourceFamily}" -> "node_${targetnode}x${e.targetPerson}" [ltail="node_${e.sourceFamily}", label="", arrowhead=none, color="#555"${classAttr}]
       `
       }
     }
@@ -551,8 +561,8 @@ function bfsDistances(rootHandle, neighbors) {
 //   - a "–" control on any person node with visible parents (collapse that
 //     person's ancestors) and on any eligible family node (collapse that
 //     union's far side);
-//   - a "⊕N" chip per active cut, anchored on the visible person pruneGraph
-//     named for it (see chipAnchors in collapse.js).
+//   - a "⊕N" chip for each entry in `chips` (see collapse.js pruneGraph),
+//     anchored on the visible person named by it.
 // `nodes` is the already-built d3 selection of .node .person/.family <g>
 // elements, data-bound to the same nodedata records used elsewhere in
 // remasterChart.
@@ -561,8 +571,7 @@ function addCollapseAffordances(
   graph,
   boxWidth,
   boxHeight,
-  chipCounts,
-  chipAnchors,
+  chips,
   svg,
   zoomBehavior,
   collapseLabels
@@ -711,10 +720,13 @@ function addCollapseAffordances(
       }
     })
 
-  // Chips: one per active cut, anchored on the visible person pruneGraph
-  // named for it. Always visible (they indicate hidden data, not a
-  // hover-only affordance), focusable in their own right, positioned near
-  // where the collapsed branch used to attach.
+  // Chips: "⊕N" badges marking where hidden branches were cut off, anchored
+  // on the visible person pruneGraph named for each (see chips in
+  // collapse.js). Always visible (they indicate hidden data, not a hover-only
+  // affordance), focusable in their own right, and clicking one re-runs the
+  // cut it names — expanding that branch (or, for a preset chip, the whole
+  // preset). A person may anchor more than one chip (e.g. a preset that hid
+  // relatives on several sides), so identical anchors are staggered.
   const personNodeSelectionByHandle = new Map()
   nodes
     .filter(d => d.nodetype === 'person')
@@ -722,15 +734,20 @@ function addCollapseAffordances(
       personNodeSelectionByHandle.set(d.handle, select(this))
     })
 
-  for (const [cutKey, count] of chipCounts) {
-    const anchor = chipAnchors.get(cutKey)
-    if (!anchor?.anchorHandle) continue
-    const anchorSelection = personNodeSelectionByHandle.get(anchor.anchorHandle)
+  const chipsPerAnchor = new Map()
+  for (const {cutKey, count, anchorHandle, side} of chips) {
+    if (!anchorHandle) continue
+    const anchorSelection = personNodeSelectionByHandle.get(anchorHandle)
     if (!anchorSelection) continue
+    const seq = chipsPerAnchor.get(anchorHandle) ?? 0
+    chipsPerAnchor.set(anchorHandle, seq + 1)
+    const stagger = seq * 22
     const [dx, dy] =
-      anchor.side === 'marriage'
+      side === 'marriage'
         ? [boxWidth + 14, boxHeight / 2 - 10]
-        : [boxWidth / 2, -10]
+        : side === 'descendants'
+        ? [boxWidth / 2, boxHeight + 12 + stagger]
+        : [boxWidth / 2, -10 - stagger]
     const chip = anchorSelection
       .append('g')
       .attr('class', 'collapse-chip')
@@ -793,10 +810,9 @@ function remasterChart(
   showUnionDates = false,
   unionStatusLabels = {},
   showMaidenName = false,
-  // chipCounts/chipAnchors come from pruneGraph (collapse/expand, see
-  // collapse.js): rendered as ⊕N chips below.
-  chipCounts = new Map(),
-  chipAnchors = new Map(),
+  // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
+  // as ⊕N chips below.
+  chips = [],
   // Outer <svg> selection + its d3-zoom behavior, so a focused node can
   // pan/recentre itself into view (best-effort; see focusPanToNode below).
   svg = null,
@@ -1163,27 +1179,21 @@ function remasterChart(
     graph.rootPerson?.handle,
     ...directAncestors,
   ])
-  // Every rendered .edge element corresponds 1:1, IN ORDER, to one
-  // iteration of generateDot's own edges loop (one graph.getEdges() entry
-  // can expand into several rendered edges via getNodesOfPerson, when a
-  // person appears in more than one graphviz node — e.g. the fake-parent
-  // glue case). Mirroring that exact iteration here is what lets us zip a
-  // targetPerson handle back onto each DOM edge below, purely by index.
-  const flatEdgeTargets = []
-  for (const e of graph.getEdges()) {
-    const targetNodeCount = graph.getNodesOfPerson(e.targetPerson).length
-    for (let i = 0; i < targetNodeCount; i += 1) {
-      flatEdgeTargets.push(e.targetPerson)
-    }
-  }
 
   const linkGenerator = linkVertical()
     .x(d => d.x)
     .y(d => d.y)
   // copy edges
-  gvchartx.selectAll('.edge').each(function (datum, i) {
+  gvchartx.selectAll('.edge').each(function copyEdge() {
     const group = select(this)
-    const dashed = group.attr('class')?.includes(DASHED_EDGE_CLASS)
+    const classAttr = group.attr('class') ?? ''
+    const dashed = classAttr.includes(DASHED_EDGE_CLASS)
+    // Identify the edge's target person from the class graphviz carried over
+    // (see EDGE_TARGET_CLASS_PREFIX) — robust to graphviz edge reordering.
+    const targetMatch = classAttr.match(
+      new RegExp(`${EDGE_TARGET_CLASS_PREFIX}(\\S+)`)
+    )
+    const edgeTarget = targetMatch ? targetMatch[1] : null
     const path = group.select('path')
     const pathData = path.attr('d')
     // extract points from path data
@@ -1195,7 +1205,8 @@ function remasterChart(
     if (!points) {
       return
     }
-    const isDirectLine = directLineForEdges.has(flatEdgeTargets[i])
+    const isDirectLine =
+      edgeTarget !== null && directLineForEdges.has(edgeTarget)
     // we replace the polyline with a smooth connector from start to end
     edges
       .append('path')
@@ -1250,8 +1261,7 @@ function remasterChart(
     graph,
     boxWidth,
     boxHeight,
-    chipCounts,
-    chipAnchors,
+    chips,
     svg,
     zoomBehavior,
     collapseLabels
@@ -1296,7 +1306,7 @@ export function RelationshipChart(
   // an empty `collapsed` set this is a no-op: pruneGraph never populates
   // `hidden` unless there is at least one active cut, so every person
   // passes the filter and rendering is unchanged from before this feature.
-  const {visibleHandles, chipCounts, chipAnchors} = pruneGraph(
+  const {visibleHandles, chips} = pruneGraph(
     data,
     collapsed,
     rootHandle,
@@ -1346,8 +1356,7 @@ export function RelationshipChart(
       showUnionDates,
       unionStatusLabels,
       showMaidenName,
-      chipCounts,
-      chipAnchors,
+      chips,
       svg,
       zoomBehavior,
       collapseLabels

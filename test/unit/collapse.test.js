@@ -23,65 +23,109 @@ const fam = (handle, father, mother, children = []) => ({
   child_ref_list: children.map(ref => ({ref})),
 })
 
+const chipFor = (chips, anchorHandle) =>
+  chips.find(c => c.anchorHandle === anchorHandle)
+
 describe('pruneGraph', () => {
-  it('anc cut hides ancestors above the person and counts them', () => {
+  it('empty cut set hides nobody and yields no chips', () => {
     const F = fam('F', 'DAD', 'MOM', ['ME'])
     const people = [
       person('ME', {parentFamilies: [F]}),
       person('DAD', {ownFamilies: [F]}),
       person('MOM', {ownFamilies: [F]}),
     ]
-    const {visibleHandles, chipCounts, chipAnchors} = pruneGraph(
+    const {visibleHandles, chips} = pruneGraph(people, new Set(), 'ME', true)
+    expect(visibleHandles.size).toBe(3)
+    expect(chips).toEqual([])
+  })
+
+  it('anc cut on root hides all its ancestors and anchors a chip on root', () => {
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const fDad = fam('F_DAD', 'GF', 'GM', ['DAD'])
+    const people = [
+      person('ME', {parentFamilies: [fMe]}),
+      person('DAD', {parentFamilies: [fDad], ownFamilies: [fMe]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('GF', {ownFamilies: [fDad]}),
+      person('GM', {ownFamilies: [fDad]}),
+    ]
+    const {visibleHandles, chips} = pruneGraph(
       people,
       new Set(['anc:ME']),
       'ME',
       true
     )
     expect(visibleHandles.has('ME')).toBe(true)
-    expect(visibleHandles.has('DAD')).toBe(false)
-    expect(visibleHandles.has('MOM')).toBe(false)
-    expect(chipCounts.get('anc:ME')).toBe(2)
-    expect(chipAnchors.get('anc:ME')).toEqual({
-      anchorHandle: 'ME',
-      side: 'ancestors',
-    })
+    for (const h of ['DAD', 'MOM', 'GF', 'GM']) {
+      expect(visibleHandles.has(h)).toBe(false)
+    }
+    const chip = chipFor(chips, 'ME')
+    expect(chip).toMatchObject({cutKey: 'anc:ME', side: 'ancestors', count: 4})
   })
 
-  it('pedigree collapse: an ancestor reachable through two lines stays visible when only one line is cut, and is not counted', () => {
-    // GF/GM had two children: DAD and AUNT. DAD married MOM's... no: AUNT's
-    // line leads down to MOM, and MOM marries DAD, so GF/GM are reachable
-    // both through DAD's direct parent-family AND through MOM -> AUNT.
-    const fGf = fam('F_GF', 'GF', 'GM', ['DAD', 'AUNT'])
-    const fAunt = fam('F_AUNT', 'UNCLE', 'AUNT', ['MOM'])
+  it('directional: an ancestor reachable only through a DOWN-then-marriage loop is still hidden (the key fix)', () => {
+    // GF/GM -> DAD and UNCLE. ME = DAD x MOM. ME's child KID married COUSIN,
+    // COUSIN is UNCLE's child. So GF/GM are reachable from ME both up through
+    // DAD and, via a marriage, down through KID -> COUSIN -> UNCLE. The old
+    // reachability model kept them visible; the directional model hides them.
+    const fGp = fam('F_GP', 'GF', 'GM', ['DAD', 'UNCLE'])
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const fKid = fam('F_KID', 'KID', 'COUSIN', [])
+    const fUncle = fam('F_UNCLE', 'UNCLE', 'AUNT', ['COUSIN'])
+    const fMine = fam('F_MINE', 'ME', 'SP', ['KID'])
+    const people = [
+      person('GF', {ownFamilies: [fGp]}),
+      person('GM', {ownFamilies: [fGp]}),
+      person('DAD', {parentFamilies: [fGp], ownFamilies: [fMe]}),
+      person('UNCLE', {parentFamilies: [fGp], ownFamilies: [fUncle]}),
+      person('AUNT', {ownFamilies: [fUncle]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('ME', {parentFamilies: [fMe], ownFamilies: [fMine]}),
+      person('SP', {ownFamilies: [fMine]}),
+      person('KID', {parentFamilies: [fMine], ownFamilies: [fKid]}),
+      person('COUSIN', {parentFamilies: [fUncle], ownFamilies: [fKid]}),
+    ]
+    const {visibleHandles} = pruneGraph(people, new Set(['anc:ME']), 'ME', true)
+    // Whole ancestral cone hidden despite the marriage loop back to root.
+    for (const h of ['DAD', 'MOM', 'GF', 'GM', 'UNCLE', 'AUNT', 'COUSIN']) {
+      expect(visibleHandles.has(h)).toBe(false)
+    }
+    // Root and root's descendants kept.
+    expect(visibleHandles.has('ME')).toBe(true)
+    expect(visibleHandles.has('SP')).toBe(true)
+    expect(visibleHandles.has('KID')).toBe(true)
+  })
+
+  it('anc cut keeps ancestors root still reaches up a different blood line', () => {
+    // DAD is ME's father AND (uncle-niece) MOM's uncle: GF/GM -> DAD, AUNT;
+    // AUNT -> MOM. Collapsing DAD's ancestors leaves GF/GM visible because ME
+    // still reaches them going up through MOM -> AUNT.
+    const fGp = fam('F_GP', 'GF', 'GM', ['DAD', 'AUNT'])
+    const fAunt = fam('F_AUNT', 'UNCLEX', 'AUNT', ['MOM'])
     const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
     const people = [
-      person('GF', {ownFamilies: [fGf]}),
-      person('GM', {ownFamilies: [fGf]}),
-      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
-      person('AUNT', {parentFamilies: [fGf], ownFamilies: [fAunt]}),
-      person('UNCLE', {ownFamilies: [fAunt]}),
+      person('GF', {ownFamilies: [fGp]}),
+      person('GM', {ownFamilies: [fGp]}),
+      person('DAD', {parentFamilies: [fGp], ownFamilies: [fMe]}),
+      person('AUNT', {parentFamilies: [fGp], ownFamilies: [fAunt]}),
+      person('UNCLEX', {ownFamilies: [fAunt]}),
       person('MOM', {parentFamilies: [fAunt], ownFamilies: [fMe]}),
       person('ME', {parentFamilies: [fMe]}),
     ]
-    const {visibleHandles, chipCounts} = pruneGraph(
+    const {visibleHandles, chips} = pruneGraph(
       people,
       new Set(['anc:DAD']),
       'ME',
       true
     )
-    // GF/GM still reachable via MOM -> AUNT -> F_GF, so cutting DAD's own
-    // edge to F_GF hides nothing.
     expect(visibleHandles.has('GF')).toBe(true)
     expect(visibleHandles.has('GM')).toBe(true)
     expect(visibleHandles.has('DAD')).toBe(true)
-    expect(visibleHandles.has('AUNT')).toBe(true)
-    expect(visibleHandles.has('UNCLE')).toBe(true)
-    expect(chipCounts.get('anc:DAD')).toBe(0)
+    expect(chipFor(chips, 'DAD').count).toBe(0)
   })
 
-  it('union cut hides the pinned far spouse + that union children, but the near spouse stays visible', () => {
-    // Grandfather G married W1 (root line, family F1) then W2 (side family
-    // F2, with a child UNCLE).
+  it('union cut hides the far spouse and that union children, keeping the near spouse', () => {
+    // G married W1 (root line, F1) then W2 (side family F2, child UNCLE).
     const f1 = fam('F1', 'G', 'W1', ['DAD'])
     const f2 = fam('F2', 'G', 'W2', ['UNCLE'])
     const fMe = fam('FME', 'DAD', 'MOM', ['ME'])
@@ -94,7 +138,7 @@ describe('pruneGraph', () => {
       person('UNCLE', {parentFamilies: [f2]}),
       person('ME', {parentFamilies: [fMe]}),
     ]
-    const {visibleHandles, chipCounts, chipAnchors} = pruneGraph(
+    const {visibleHandles, chips} = pruneGraph(
       people,
       new Set(['union:F2:W2']),
       'ME',
@@ -106,317 +150,133 @@ describe('pruneGraph', () => {
     expect(visibleHandles.has('W1')).toBe(true)
     expect(visibleHandles.has('DAD')).toBe(true)
     expect(visibleHandles.has('ME')).toBe(true)
-    expect(chipCounts.get('union:F2:W2')).toBe(2)
-    expect(chipAnchors.get('union:F2:W2')).toEqual({
-      anchorHandle: 'G',
+    const chip = chipFor(chips, 'G')
+    expect(chip).toMatchObject({
+      cutKey: 'union:F2:W2',
       side: 'marriage',
+      count: 2,
     })
   })
 
-  it('union cut root self-guard: rooting on the union child itself still hides W2, not G, even though both spouses are equidistant from that root', () => {
-    // NOTE: this is the root-self-guard case, not a genuine near/far
-    // distance flip — AUNT is F2's own child, so she is exactly 1 hop from
-    // BOTH G and W2 via the shared family node (equidistant, not "W2
-    // nearer"). See the next test for a fixture with a REAL distance
-    // asymmetry (root strictly closer to W2 than to G).
-    const f1 = fam('F1', 'G', 'W1', ['DAD'])
-    const f2 = fam('F2', 'G', 'W2', ['AUNT'])
+  it('a disconnected person stays visible under anc/union cuts', () => {
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
     const people = [
-      person('G', {ownFamilies: [f1, f2]}),
-      person('W1', {ownFamilies: [f1]}),
-      person('W2', {ownFamilies: [f2]}),
-      person('DAD', {parentFamilies: [f1]}),
-      person('AUNT', {parentFamilies: [f2]}),
-    ]
-    const collapsed = new Set(['union:F2:W2'])
-
-    // Rooted on DAD (G's line, distance 2 to G vs. 4 to W2): the "normal"
-    // orientation.
-    const fromDad = pruneGraph(people, collapsed, 'DAD', true)
-    expect(fromDad.visibleHandles.has('W2')).toBe(false)
-    expect(fromDad.visibleHandles.has('G')).toBe(true)
-
-    // Rooted on AUNT (F2's own child, distance 1 to BOTH G and W2 via the
-    // shared family node): the pinned key must still hide W2, not G,
-    // because the child's own ancEdge to F2 is guarded (root's own child
-    // edge is never severed) rather than because of any distance
-    // computation.
-    const fromAunt = pruneGraph(people, collapsed, 'AUNT', true)
-    expect(fromAunt.visibleHandles.has('W2')).toBe(false)
-    expect(fromAunt.visibleHandles.has('G')).toBe(true)
-    expect(fromAunt.visibleHandles.has('AUNT')).toBe(true)
-  })
-
-  it("union cut with a genuine near/far asymmetry: rooting strictly on W2's own independent line never hides G, and rooting on G's line hides W2's whole line", () => {
-    // G married W1 (F1, with child DAD) and W2 (F2). W2 remarried
-    // OTHER_HUSBAND (F3, with child C_W2) -- a line that has nothing to do
-    // with G or F2 except through W2 herself. From C_W2, W2 is strictly
-    // closer (dist 2, straight through F3) than G is (dist 4, and only
-    // reachable by first passing through W2/F2) -- a real asymmetry, not
-    // an equidistant tie like the previous test.
-    const f1 = fam('F1', 'G', 'W1', ['DAD'])
-    const f2 = fam('F2', 'G', 'W2', [])
-    const f3 = fam('F3', 'W2', 'OTHER_HUSBAND', ['C_W2'])
-    const people = [
-      person('G', {ownFamilies: [f1, f2]}),
-      person('W1', {ownFamilies: [f1]}),
-      person('W2', {ownFamilies: [f2, f3]}),
-      person('OTHER_HUSBAND', {ownFamilies: [f3]}),
-      person('DAD', {parentFamilies: [f1]}),
-      person('C_W2', {parentFamilies: [f3]}),
-    ]
-    const collapsed = new Set(['union:F2:W2'])
-
-    // Rooted on DAD (G's line): the cut correctly hides W2's entire
-    // independent world (herself, her second husband, and C_W2), since
-    // none of it is reachable from DAD any other way.
-    const fromDad = pruneGraph(people, collapsed, 'DAD', true)
-    expect(fromDad.visibleHandles.has('G')).toBe(true)
-    expect(fromDad.visibleHandles.has('W2')).toBe(false)
-    expect(fromDad.visibleHandles.has('OTHER_HUSBAND')).toBe(false)
-    expect(fromDad.visibleHandles.has('C_W2')).toBe(false)
-
-    // Rooted on C_W2 -- strictly inside W2's own independent line, and
-    // therefore her own descendant: it is impossible for ANY cut to hide
-    // root's own ancestor while keeping root itself visible, so the
-    // pinned union:F2:W2 cut can't literally hide W2 here. What matters
-    // for "does not invert" is that it must NEVER flip to hiding G (the
-    // near side) instead -- that would be the real inversion bug. The
-    // cut safely becomes a no-op for this cut from this vantage point:
-    // G (and W1, DAD) stay visible, exactly as they would with no cuts
-    // at all.
-    const fromCW2 = pruneGraph(people, collapsed, 'C_W2', true)
-    expect(fromCW2.visibleHandles.has('G')).toBe(true)
-    expect(fromCW2.visibleHandles.has('W1')).toBe(true)
-    expect(fromCW2.visibleHandles.has('DAD')).toBe(true)
-  })
-
-  it('a disconnected person (no family edges) stays visible under any cuts, with no chip for them', () => {
-    const F = fam('F', 'DAD', 'MOM', ['ME'])
-    const people = [
-      person('ME', {parentFamilies: [F]}),
-      person('DAD', {ownFamilies: [F]}),
-      person('MOM', {ownFamilies: [F]}),
+      person('ME', {parentFamilies: [fMe]}),
+      person('DAD', {ownFamilies: [fMe]}),
+      person('MOM', {ownFamilies: [fMe]}),
       person('LONER'),
     ]
-    const {visibleHandles, chipCounts, chipAnchors} = pruneGraph(
-      people,
-      new Set(['anc:ME']),
-      'ME',
-      true
-    )
+    const {visibleHandles} = pruneGraph(people, new Set(['anc:ME']), 'ME', true)
     expect(visibleHandles.has('LONER')).toBe(true)
-    expect(chipCounts.size).toBe(1)
-    expect(chipCounts.has('anc:ME')).toBe(true)
-    expect([...chipAnchors.values()]).not.toContainEqual(
-      expect.objectContaining({anchorHandle: 'LONER'})
-    )
   })
 
-  it('the root is always visible, even with cuts on both its ancestor side and its own union', () => {
-    const f1 = fam('F1', 'DAD', 'MOM', ['ME'])
-    const f2 = fam('F2', 'ME', 'SPOUSE', ['CHILD'])
+  it('root is always visible, even with a cut on its own ancestors', () => {
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
     const people = [
-      person('DAD', {ownFamilies: [f1]}),
-      person('MOM', {ownFamilies: [f1]}),
-      person('ME', {parentFamilies: [f1], ownFamilies: [f2]}),
-      person('SPOUSE', {ownFamilies: [f2]}),
-      person('CHILD', {parentFamilies: [f2]}),
-    ]
-    const {visibleHandles} = pruneGraph(
-      people,
-      new Set(['anc:ME', 'union:F2:SPOUSE']),
-      'ME',
-      true
-    )
-    expect(visibleHandles.has('ME')).toBe(true)
-    expect(visibleHandles.has('DAD')).toBe(false)
-    expect(visibleHandles.has('MOM')).toBe(false)
-    expect(visibleHandles.has('SPOUSE')).toBe(false)
-    expect(visibleHandles.has('CHILD')).toBe(false)
-  })
-
-  it('marginal chip counts: two cuts on disjoint branches each count only the people they individually hide', () => {
-    const fGrand = fam('F_DAD', 'GDAD', 'GMOM', ['DAD'])
-    const f1 = fam('F1', 'DAD', 'MOM', ['ME'])
-    const f2 = fam('F2', 'ME', 'SPOUSE', ['CHILD'])
-    const people = [
-      person('GDAD', {ownFamilies: [fGrand]}),
-      person('GMOM', {ownFamilies: [fGrand]}),
-      person('DAD', {parentFamilies: [fGrand], ownFamilies: [f1]}),
-      person('MOM', {ownFamilies: [f1]}),
-      person('ME', {parentFamilies: [f1], ownFamilies: [f2]}),
-      person('SPOUSE', {ownFamilies: [f2]}),
-      person('CHILD', {parentFamilies: [f2]}),
-    ]
-    const {visibleHandles, chipCounts} = pruneGraph(
-      people,
-      new Set(['anc:DAD', 'union:F2:SPOUSE']),
-      'ME',
-      true
-    )
-    expect(chipCounts.get('anc:DAD')).toBe(2)
-    expect(chipCounts.get('union:F2:SPOUSE')).toBe(2)
-    expect(visibleHandles.has('GDAD')).toBe(false)
-    expect(visibleHandles.has('GMOM')).toBe(false)
-    expect(visibleHandles.has('SPOUSE')).toBe(false)
-    expect(visibleHandles.has('CHILD')).toBe(false)
-    expect(visibleHandles.has('ME')).toBe(true)
-    expect(visibleHandles.has('DAD')).toBe(true)
-    expect(visibleHandles.has('MOM')).toBe(true)
-  })
-
-  it('chipAnchors: anc:P anchors on P, union:F:hiddenSpouse anchors on the near spouse', () => {
-    const f1 = fam('F1', 'G', 'W1', ['DAD'])
-    const f2 = fam('F2', 'G', 'W2', ['UNCLE'])
-    const fMe = fam('FME', 'DAD', 'MOM', ['ME'])
-    const people = [
-      person('G', {ownFamilies: [f1, f2]}),
-      person('W1', {ownFamilies: [f1]}),
-      person('W2', {ownFamilies: [f2]}),
-      person('DAD', {parentFamilies: [f1], ownFamilies: [fMe]}),
-      person('MOM', {ownFamilies: [fMe]}),
-      person('UNCLE', {parentFamilies: [f2]}),
       person('ME', {parentFamilies: [fMe]}),
+      person('DAD', {ownFamilies: [fMe]}),
+      person('MOM', {ownFamilies: [fMe]}),
     ]
-    const {chipAnchors} = pruneGraph(
-      people,
-      new Set(['anc:DAD', 'union:F2:W2']),
-      'ME',
-      true
-    )
-    expect(chipAnchors.get('anc:DAD')).toEqual({
-      anchorHandle: 'DAD',
-      side: 'ancestors',
-    })
-    expect(chipAnchors.get('union:F2:W2')).toEqual({
-      anchorHandle: 'G',
-      side: 'marriage',
-    })
+    const {visibleHandles} = pruneGraph(people, new Set(['anc:ME']), 'ME', true)
+    expect(visibleHandles.has('ME')).toBe(true)
+  })
+})
+
+describe("'line' preset (direct blood line only)", () => {
+  // ME with ancestors DAD/GF and a sibling SIB, plus a descendant KID whose
+  // spouse SP brings an in-law parent SPF. Only ME + blood ancestors + blood
+  // descendants should survive.
+  const fMe = fam('F_ME', 'DAD', 'MOM', ['ME', 'SIB'])
+  const fDad = fam('F_DAD', 'GF', 'GM', ['DAD'])
+  const fKid = fam('F_KID', 'ME', 'SP', ['KID'])
+  const fSp = fam('F_SP', 'SPF', 'SPM', ['SP'])
+  const people = [
+    person('ME', {parentFamilies: [fMe], ownFamilies: [fKid]}),
+    person('SIB', {parentFamilies: [fMe]}),
+    person('DAD', {parentFamilies: [fDad], ownFamilies: [fMe]}),
+    person('MOM', {ownFamilies: [fMe]}),
+    person('GF', {ownFamilies: [fDad]}),
+    person('GM', {ownFamilies: [fDad]}),
+    person('SP', {parentFamilies: [fSp], ownFamilies: [fKid]}),
+    person('SPF', {ownFamilies: [fSp]}),
+    person('SPM', {ownFamilies: [fSp]}),
+    person('KID', {parentFamilies: [fKid]}),
+  ]
+
+  it('keeps root, blood ancestors and blood descendants; hides everyone else', () => {
+    const {visibleHandles} = pruneGraph(people, new Set(['line']), 'ME', true)
+    for (const keep of ['ME', 'DAD', 'MOM', 'GF', 'GM', 'KID']) {
+      expect(visibleHandles.has(keep)).toBe(true)
+    }
+    for (const hide of ['SIB', 'SP', 'SPF', 'SPM']) {
+      expect(visibleHandles.has(hide)).toBe(false)
+    }
+  })
+
+  it('emits boundary chips on kept people bordering hidden relatives', () => {
+    const {chips} = pruneGraph(people, new Set(['line']), 'ME', true)
+    // SIB hangs off DAD/MOM; the SP in-law family hangs off KID.
+    expect(chips.every(c => c.cutKey === 'line')).toBe(true)
+    expect(chipFor(chips, 'MOM')?.count).toBeGreaterThan(0)
+    expect(chipFor(chips, 'KID')?.count).toBeGreaterThan(0)
+  })
+})
+
+describe("'desc' preset (collapse all descendants)", () => {
+  const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+  const fMine = fam('F_MINE', 'ME', 'SP', ['KID'])
+  const fKid = fam('F_KID', 'KID', 'KSP', ['GKID'])
+  const people = [
+    person('DAD', {ownFamilies: [fMe]}),
+    person('MOM', {ownFamilies: [fMe]}),
+    person('ME', {parentFamilies: [fMe], ownFamilies: [fMine]}),
+    person('SP', {ownFamilies: [fMine]}),
+    person('KID', {parentFamilies: [fMine], ownFamilies: [fKid]}),
+    person('KSP', {ownFamilies: [fKid]}),
+    person('GKID', {parentFamilies: [fKid]}),
+  ]
+
+  it('hides descendants and their in-laws, keeps root, its spouse and ancestors', () => {
+    const {visibleHandles} = pruneGraph(people, new Set(['desc']), 'ME', true)
+    for (const keep of ['ME', 'SP', 'DAD', 'MOM']) {
+      expect(visibleHandles.has(keep)).toBe(true)
+    }
+    for (const hide of ['KID', 'KSP', 'GKID']) {
+      expect(visibleHandles.has(hide)).toBe(false)
+    }
   })
 })
 
 describe('directAncestorHandles', () => {
   it('collects blood ancestors through the direct line, excluding laterals', () => {
-    // GF/GM had DAD and AUNT. DAD married MOM -> ME (root).
-    const fGf = fam('F_GF', 'GF', 'GM', ['DAD', 'AUNT'])
-    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
+    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME', 'SIB'])
+    const fDad = fam('F_DAD', 'GF', 'GM', ['DAD', 'UNCLE'])
     const people = [
-      person('GF', {ownFamilies: [fGf]}),
-      person('GM', {ownFamilies: [fGf]}),
-      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
-      person('AUNT', {parentFamilies: [fGf]}),
-      person('MOM', {ownFamilies: [fMe]}),
       person('ME', {parentFamilies: [fMe]}),
+      person('SIB', {parentFamilies: [fMe]}),
+      person('DAD', {parentFamilies: [fDad], ownFamilies: [fMe]}),
+      person('MOM', {ownFamilies: [fMe]}),
+      person('UNCLE', {parentFamilies: [fDad]}),
+      person('GF', {ownFamilies: [fDad]}),
+      person('GM', {ownFamilies: [fDad]}),
     ]
-    const ancestors = directAncestorHandles(people, 'ME', true)
-    expect(ancestors).toEqual(new Set(['DAD', 'MOM', 'GF', 'GM']))
-    expect(ancestors.has('AUNT')).toBe(false)
-    expect(ancestors.has('ME')).toBe(false)
+    const anc = directAncestorHandles(people, 'ME', true)
+    expect([...anc].sort()).toEqual(['DAD', 'GF', 'GM', 'MOM'])
+    expect(anc.has('SIB')).toBe(false)
+    expect(anc.has('UNCLE')).toBe(false)
   })
 
   it('returns an empty set for a root with no known parents', () => {
     const people = [person('ME')]
-    expect(directAncestorHandles(people, 'ME', true)).toEqual(new Set())
+    expect(directAncestorHandles(people, 'ME', true).size).toBe(0)
   })
 })
 
-describe('presetCollapseDescendants', () => {
-  it("collapses each of root's children's own marriages, sparing root's own family", () => {
-    const fMe = fam('F_ME', 'ME', 'SPOUSE', ['KID'])
-    const fKid = fam('F_KID', 'KID', 'KIDSPOUSE', ['GRANDKID'])
-    const people = [
-      person('ME', {ownFamilies: [fMe]}),
-      person('SPOUSE', {ownFamilies: [fMe]}),
-      person('KID', {parentFamilies: [fMe], ownFamilies: [fKid]}),
-      person('KIDSPOUSE', {ownFamilies: [fKid]}),
-      person('GRANDKID', {parentFamilies: [fKid]}),
-    ]
-    const cuts = presetCollapseDescendants(people, 'ME', true)
-    expect(cuts).toEqual(new Set(['union:F_KID:KIDSPOUSE']))
-
-    // Applying the preset via pruneGraph keeps root's own family, hides the
-    // grandchild generation entirely (transitively, via the single cut).
-    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
-    expect(visibleHandles.has('ME')).toBe(true)
-    expect(visibleHandles.has('SPOUSE')).toBe(true)
-    expect(visibleHandles.has('KID')).toBe(true)
-    expect(visibleHandles.has('KIDSPOUSE')).toBe(false)
-    expect(visibleHandles.has('GRANDKID')).toBe(false)
+describe('presets return their single preset cut', () => {
+  it('presetDirectLineOnly -> {line}', () => {
+    expect([...presetDirectLineOnly([], 'ME', true)]).toEqual(['line'])
   })
-
-  it('produces no cuts when root has no children', () => {
-    const people = [person('ME')]
-    expect(presetCollapseDescendants(people, 'ME', true)).toEqual(new Set())
-  })
-})
-
-describe('presetDirectLineOnly', () => {
-  it('collapses ancestor siblings and side marriages, keeping the blood line and root family', () => {
-    // GF married GM (direct line, DAD+AUNT) and also OTHERW (side family,
-    // HALFUNCLE). DAD married MOM -> ME (root). AUNT married UNCLE -> COUSIN.
-    const fGf = fam('F_GF', 'GF', 'GM', ['DAD', 'AUNT'])
-    const fGfSide = fam('F_GF2', 'GF', 'OTHERW', ['HALFUNCLE'])
-    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
-    const fAunt = fam('F_AUNT', 'AUNT', 'UNCLE', ['COUSIN'])
-    const people = [
-      person('GF', {ownFamilies: [fGf, fGfSide]}),
-      person('GM', {ownFamilies: [fGf]}),
-      person('OTHERW', {ownFamilies: [fGfSide]}),
-      person('HALFUNCLE', {parentFamilies: [fGfSide]}),
-      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
-      person('AUNT', {parentFamilies: [fGf], ownFamilies: [fAunt]}),
-      person('UNCLE', {ownFamilies: [fAunt]}),
-      person('COUSIN', {parentFamilies: [fAunt]}),
-      person('MOM', {ownFamilies: [fMe]}),
-      person('ME', {parentFamilies: [fMe]}),
-    ]
-    const cuts = presetDirectLineOnly(people, 'ME', true)
-    expect(cuts).toEqual(
-      new Set(['anc:AUNT', 'union:F_AUNT:UNCLE', 'union:F_GF2:OTHERW'])
-    )
-
-    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
-    // Direct line + root's own generation stay visible.
-    expect(visibleHandles.has('ME')).toBe(true)
-    expect(visibleHandles.has('DAD')).toBe(true)
-    expect(visibleHandles.has('MOM')).toBe(true)
-    expect(visibleHandles.has('GF')).toBe(true)
-    expect(visibleHandles.has('GM')).toBe(true)
-    // The lateral (AUNT) stays visible as a leaf — the cut vocabulary has
-    // no way to hide one specific child of a still-visible family — but
-    // her own marriage (the actual source of width) collapses away, as
-    // does GF's side marriage.
-    expect(visibleHandles.has('AUNT')).toBe(true)
-    expect(visibleHandles.has('UNCLE')).toBe(false)
-    expect(visibleHandles.has('COUSIN')).toBe(false)
-    expect(visibleHandles.has('OTHERW')).toBe(false)
-    expect(visibleHandles.has('HALFUNCLE')).toBe(false)
-  })
-
-  it("keeps root's own spouse and children (focus family spared)", () => {
-    const fGf = fam('F_GF', 'GF', 'GM', ['DAD'])
-    const fMe = fam('F_ME', 'DAD', 'MOM', ['ME'])
-    const fMine = fam('F_MINE', 'ME', 'SPOUSE', ['CHILD'])
-    const people = [
-      person('GF', {ownFamilies: [fGf]}),
-      person('GM', {ownFamilies: [fGf]}),
-      person('DAD', {parentFamilies: [fGf], ownFamilies: [fMe]}),
-      person('MOM', {ownFamilies: [fMe]}),
-      person('ME', {parentFamilies: [fMe], ownFamilies: [fMine]}),
-      person('SPOUSE', {ownFamilies: [fMine]}),
-      person('CHILD', {parentFamilies: [fMine]}),
-    ]
-    const cuts = presetDirectLineOnly(people, 'ME', true)
-    expect([...cuts].some(c => c.includes('F_MINE'))).toBe(false)
-
-    const {visibleHandles} = pruneGraph(people, cuts, 'ME', true)
-    expect(visibleHandles.has('SPOUSE')).toBe(true)
-    expect(visibleHandles.has('CHILD')).toBe(true)
-  })
-
-  it('produces no cuts for a root with no known ancestors or siblings', () => {
-    const people = [person('ME')]
-    expect(presetDirectLineOnly(people, 'ME', true)).toEqual(new Set())
+  it('presetCollapseDescendants -> {desc}', () => {
+    expect([...presetCollapseDescendants([], 'ME', true)]).toEqual(['desc'])
   })
 })
