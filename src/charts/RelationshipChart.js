@@ -11,10 +11,15 @@ import {
   familyNodeExists,
   buildAdjacency,
 } from './adjacency.js'
-import {pruneGraph} from './collapse.js'
+import {pruneGraph, directAncestorHandles} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→parent edge; kept in sync with DASH_NON_BIRTH in TreeChart.js
+// Muted accent for the direct-ancestor-line highlight (Task 10) — additive
+// only, never the sole carrier of meaning (root itself already gets a
+// drop-shadow; laterals/in-laws get no accent at all).
+const DIRECT_LINE_COLOR =
+  'color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent)'
 
 const sexColor = {
   F: 'var(--color-girl)',
@@ -1142,11 +1147,40 @@ function remasterChart(
     )
   }
 
+  // Direct-ancestor-line highlight (Task 10): root's own blood-ancestor
+  // handles, computed once and reused for both the edge pass below and the
+  // person-box pass further down. Root itself is excluded (it already gets
+  // its own drop-shadow highlight) but IS included in the set used to
+  // decide which rendered *edges* qualify, since root's own edge to its
+  // parent family is part of the direct line too.
+  const directAncestors = directAncestorHandles(
+    graph.getData(),
+    graph.rootPerson?.handle,
+    graph.showAllParents
+  )
+  const directLineForEdges = new Set([
+    graph.rootPerson?.handle,
+    ...directAncestors,
+  ])
+  // Every rendered .edge element corresponds 1:1, IN ORDER, to one
+  // iteration of generateDot's own edges loop (one graph.getEdges() entry
+  // can expand into several rendered edges via getNodesOfPerson, when a
+  // person appears in more than one graphviz node — e.g. the fake-parent
+  // glue case). Mirroring that exact iteration here is what lets us zip a
+  // targetPerson handle back onto each DOM edge below, purely by index.
+  const flatEdgeTargets = []
+  for (const e of graph.getEdges()) {
+    const targetNodeCount = graph.getNodesOfPerson(e.targetPerson).length
+    for (let i = 0; i < targetNodeCount; i += 1) {
+      flatEdgeTargets.push(e.targetPerson)
+    }
+  }
+
   const linkGenerator = linkVertical()
     .x(d => d.x)
     .y(d => d.y)
   // copy edges
-  gvchartx.selectAll('.edge').each(function () {
+  gvchartx.selectAll('.edge').each(function (datum, i) {
     const group = select(this)
     const dashed = group.attr('class')?.includes(DASHED_EDGE_CLASS)
     const path = group.select('path')
@@ -1160,6 +1194,7 @@ function remasterChart(
     if (!points) {
       return
     }
+    const isDirectLine = directLineForEdges.has(flatEdgeTargets[i])
     // we replace the polyline with a smooth connector from start to end
     edges
       .append('path')
@@ -1172,8 +1207,11 @@ function remasterChart(
         })
       )
       .attr('fill', 'none')
-      .attr('stroke', 'var(--grampsjs-body-font-color-40)')
-      .attr('stroke-width', 1)
+      .attr(
+        'stroke',
+        isDirectLine ? DIRECT_LINE_COLOR : 'var(--grampsjs-body-font-color-40)'
+      )
+      .attr('stroke-width', isDirectLine ? 2 : 1)
       .attr('stroke-dasharray', dashed ? DASH_CHILD_EDGE : null)
   })
   // edges.selectAll('path').attr('stroke-opacity', '0.4')
@@ -1196,6 +1234,15 @@ function remasterChart(
       'filter',
       'drop-shadow(0 3px 8px var(--grampsjs-body-font-color-30))'
     )
+
+  // highlight direct blood ancestors of root (Task 10) — additive outline
+  // only; root itself already stands out via the drop-shadow above, so it
+  // is deliberately excluded here to avoid a redundant/competing accent.
+  nodes
+    .filter(d => d.nodetype === 'person' && directAncestors.has(d.handle))
+    .select('.personBox')
+    .attr('stroke', DIRECT_LINE_COLOR)
+    .attr('stroke-width', 2)
 
   addCollapseAffordances(
     nodes,
