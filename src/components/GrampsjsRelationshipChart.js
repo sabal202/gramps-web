@@ -114,7 +114,11 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         showMaidenName: this.showMaidenName,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
-        collapsed: this.collapsed,
+        // During a reroot, Lit paints once with the new grampsId but the old
+        // (stale) data before _fetchData resolves; rootHandle is then undefined
+        // and pruning against an unresolved root would over-hide the graph.
+        // Treat "no resolved root" as "no active cuts" for that transient paint.
+        collapsed: rootHandle ? this.collapsed : new Set(),
         rootHandle,
         unionStatusLabels: {
           married: this._('Married'),

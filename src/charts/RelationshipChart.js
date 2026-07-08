@@ -612,6 +612,7 @@ function addCollapseAffordances(
     const control = selection
       .append('g')
       .attr('class', isTouch ? 'collapse-control touch' : 'collapse-control')
+      .attr('role', 'button')
       .attr('aria-label', ariaLabel)
       .attr('transform', `translate(${dx}, ${dy})`)
       .style('cursor', 'pointer')
