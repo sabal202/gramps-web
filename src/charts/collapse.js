@@ -12,12 +12,14 @@
 // only appear in the chart because of it — bounded by a "keep" skeleton so it
 // can never eat root's own line.
 //
-//   anc:<P>       hide P's ancestral cone: ancestors root can no longer reach
-//                 going up once P's child->parent links are cut, plus their
-//                 collateral descendants and in-laws. Root, root's descendants
-//                 and the direct line up to P are kept.
-//   union:<F>:<S> hide far spouse S's cone and the F couple's descendants
-//                 (+ in-laws). Near spouse N and root's line kept.
+//   anc:<P>:<F>   hide P's ancestors reached going up specifically through P's
+//                 parent family F (F's parents + their up-cone + collaterals +
+//                 in-laws). Root, root's descendants and P's own subtree are
+//                 kept; P's OTHER parent families stay.
+//   spouse:<F>:<S> hide spouse S of family F and S's ancestral cone / in-laws,
+//                 KEEPING the couple's children (they stay attached to N).
+//   children:<F>  hide the descendant subtree of family F (children + their
+//                 descendants + in-laws), keeping BOTH spouses.
 //   line          preset: keep ONLY root + root's blood ancestors + root's
 //                 blood descendants; hide every collateral and in-law.
 //   desc          preset: hide everyone below root (descendants + their
@@ -91,6 +93,30 @@ function upClosure(ctx, seeds, blockUpOf = new Set()) {
   return seen
 }
 
+// Upward closure from `seeds`, but never traversing the child->parent step
+// through family `exceptFam` (a person still reaches their OTHER parent
+// families). Includes the seeds. Used to compute what root still reaches going
+// up when one specific parent family is cut off.
+function upClosureExceptFamily(ctx, seeds, exceptFam) {
+  const seen = new Set(seeds)
+  const stack = [...seeds]
+  while (stack.length) {
+    const cur = stack.pop()
+    for (const f of ctx.adj.ancEdges.get(cur) ?? []) {
+      if (f === exceptFam) continue
+      const rec = ctx.adj.familyNodes.get(f)
+      if (!rec) continue
+      for (const p of [rec.father, rec.mother]) {
+        if (p && !seen.has(p)) {
+          seen.add(p)
+          stack.push(p)
+        }
+      }
+    }
+  }
+  return seen
+}
+
 // Downward (parent -> children) closure from `seeds`. Includes the seeds.
 function downClosure(ctx, seeds) {
   const seen = new Set(seeds)
@@ -134,43 +160,79 @@ function component(ctx, seeds, keep) {
 // Per-cut hidden sets.
 // ---------------------------------------------------------------------------
 
-function parseUnionCut(cut) {
-  const rest = cut.slice('union:'.length)
+function parseAncCut(cut) {
+  const rest = cut.slice('anc:'.length)
   const idx = rest.indexOf(':')
-  return {family: rest.slice(0, idx), hiddenSpouse: rest.slice(idx + 1)}
+  return {person: rest.slice(0, idx), family: rest.slice(idx + 1)}
 }
 
-function hiddenAnc(ctx, rootHandle, P, protectDesc) {
-  const keepAnc = upClosure(ctx, [rootHandle], new Set([P]))
-  const upP = upClosure(ctx, [P])
-  upP.delete(P)
-  const lostAnc = [...upP].filter(h => !keepAnc.has(h))
+function parseSpouseCut(cut) {
+  const rest = cut.slice('spouse:'.length)
+  const idx = rest.indexOf(':')
+  return {family: rest.slice(0, idx), spouse: rest.slice(idx + 1)}
+}
+
+// Hide P's ancestors reached going UP specifically through P's parent family F
+// (F's parents + their up-cone + collaterals + in-laws). Anything root reaches
+// another way, root's descendants and P's own subtree are kept; P's OTHER
+// parent families stay. See design §4.1.
+function hiddenAncFamily(ctx, rootHandle, P, F) {
+  const rec = ctx.adj.familyNodes.get(F) || {}
+  const keepAnc = upClosureExceptFamily(ctx, [rootHandle], F)
+  const seeds = [rec.father, rec.mother].filter(h => h && !keepAnc.has(h))
   const keep = new Set([
     rootHandle,
     ...keepAnc,
-    ...protectDesc,
-    ...downClosure(ctx, [P]), // P's own subtree stays
+    ...downClosure(ctx, [rootHandle]),
+    ...downClosure(ctx, [P]), // P's own subtree stays (P may be != root)
   ])
-  const hidden = component(ctx, lostAnc, keep)
+  const hidden = component(ctx, seeds, keep)
   return {
     hidden,
     chips: [{count: hidden.size, anchorHandle: P, side: 'ancestors'}],
   }
 }
 
-function hiddenUnion(ctx, rootHandle, family, S, protectDesc) {
-  const rec = ctx.adj.familyNodes.get(family) || {}
+// Hide spouse S of family F and S's ancestral cone / in-laws, KEEPING the
+// couple's children (walled in `keep`, so they stay attached to the other
+// spouse N and the pair never visually breaks). See design §4.2.
+function hiddenSpouse(ctx, rootHandle, F, S) {
+  const rec = ctx.adj.familyNodes.get(F) || {}
   const N = rec.father === S ? rec.mother : rec.father
   const keepAnc = upClosure(ctx, [rootHandle], new Set([S]))
-  const upS = upClosure(ctx, [S])
-  const lostS = [...upS].filter(h => !keepAnc.has(h))
-  const kids = ctx.childrenOfFamily.get(family) ?? []
-  const keep = new Set([rootHandle, ...keepAnc, ...protectDesc])
+  const keep = new Set([
+    rootHandle,
+    ...keepAnc,
+    ...downClosure(ctx, [rootHandle]),
+    ...(ctx.childrenOfFamily.get(F) ?? []),
+  ])
   if (N) keep.add(N)
-  const hidden = component(ctx, [...lostS, ...kids], keep)
+  const hidden = component(ctx, [S], keep)
   return {
     hidden,
-    chips: [{count: hidden.size, anchorHandle: N, side: 'marriage'}],
+    chips: [{count: hidden.size, anchorHandle: N, side: 'spouse'}],
+  }
+}
+
+// Hide the descendant subtree of family F (children + their descendants +
+// in-laws married into them), keeping BOTH spouses. Same one-pass component()
+// pattern as hiddenDesc; for root's own single family it reduces to `desc`.
+// See design §4.3.
+function hiddenChildrenFam(ctx, rootHandle, F) {
+  const rec = ctx.adj.familyNodes.get(F) || {}
+  const keep = new Set([rootHandle, ...upClosure(ctx, [rootHandle])])
+  if (rec.father) keep.add(rec.father)
+  if (rec.mother) keep.add(rec.mother)
+  const hidden = component(ctx, ctx.childrenOfFamily.get(F) ?? [], keep)
+  return {
+    hidden,
+    chips: [
+      {
+        count: hidden.size,
+        anchorHandle: rec.father ?? rec.mother,
+        side: 'children',
+      },
+    ],
   }
 }
 
@@ -231,8 +293,8 @@ function hiddenDesc(ctx, rootHandle) {
  * set of collapse cuts.
  *
  * @param {object[]} people
- * @param {Set<string>} collapsed  Cut keys: "anc:<P>" | "union:<F>:<S>" |
- *   "line" | "desc".
+ * @param {Set<string>} collapsed  Cut keys: "anc:<P>:<F>" | "spouse:<F>:<S>" |
+ *   "children:<F>" | "line" | "desc".
  * @param {string} rootHandle
  * @param {boolean} showAllParents
  * @returns {{
@@ -242,7 +304,6 @@ function hiddenDesc(ctx, rootHandle) {
  */
 export function pruneGraph(people, collapsed, rootHandle, showAllParents) {
   const ctx = makeCtx(people, showAllParents)
-  const protectDesc = downClosure(ctx, [rootHandle])
 
   const hidden = new Set()
   const chips = []
@@ -256,10 +317,13 @@ export function pruneGraph(people, collapsed, rootHandle, showAllParents) {
       const {hidden: h, keep} = hiddenDesc(ctx, rootHandle)
       res = {hidden: h, chips: boundaryChips(ctx, keep, h, 'desc')}
     } else if (cut.startsWith('anc:')) {
-      res = hiddenAnc(ctx, rootHandle, cut.slice(4), protectDesc)
-    } else if (cut.startsWith('union:')) {
-      const {family, hiddenSpouse} = parseUnionCut(cut)
-      res = hiddenUnion(ctx, rootHandle, family, hiddenSpouse, protectDesc)
+      const {person, family} = parseAncCut(cut)
+      res = hiddenAncFamily(ctx, rootHandle, person, family)
+    } else if (cut.startsWith('spouse:')) {
+      const {family, spouse} = parseSpouseCut(cut)
+      res = hiddenSpouse(ctx, rootHandle, family, spouse)
+    } else if (cut.startsWith('children:')) {
+      res = hiddenChildrenFam(ctx, rootHandle, cut.slice('children:'.length))
     } else {
       continue
     }
@@ -273,6 +337,44 @@ export function pruneGraph(people, collapsed, rootHandle, showAllParents) {
     [...ctx.adj.personHandles].filter(h => !hidden.has(h))
   )
   return {visibleHandles, chips}
+}
+
+/**
+ * How many currently-visible persons a cut would additionally hide (for tab
+ * tooltips and mobile-sheet labels): |visible(collapsed) \
+ * visible(collapsed + cutKey)|.
+ *
+ * @param {object[]} people
+ * @param {Set<string>} collapsed
+ * @param {string} cutKey
+ * @param {string} rootHandle
+ * @param {boolean} showAllParents
+ * @returns {number}
+ */
+export function hiddenCountForCut(
+  people,
+  collapsed,
+  cutKey,
+  rootHandle,
+  showAllParents
+) {
+  const before = pruneGraph(
+    people,
+    collapsed,
+    rootHandle,
+    showAllParents
+  ).visibleHandles
+  const next = new Set(collapsed)
+  next.add(cutKey)
+  const after = pruneGraph(
+    people,
+    next,
+    rootHandle,
+    showAllParents
+  ).visibleHandles
+  let n = 0
+  for (const h of before) if (!after.has(h)) n += 1
+  return n
 }
 
 /**
