@@ -382,11 +382,95 @@ describe("'line' preset (direct blood line only)", () => {
     }
   })
 
-  it('emits boundary chips on kept people bordering hidden relatives', () => {
+  it('emits directional reveal pills at the frontier (progressive)', () => {
     const {chips} = pruneGraph(people, new Set(['line']), 'ME', true)
-    expect(chips.every(c => c.cutKey === 'line')).toBe(true)
-    expect(chipFor(chips, 'MOM')?.count).toBeGreaterThan(0)
-    expect(chipFor(chips, 'KID')?.count).toBeGreaterThan(0)
+    const has = k => chips.some(c => c.cutKey === k)
+    expect(has('revdown:MOM')).toBe(true) // reveal SIB (MOM's other child)
+    expect(has('revup:KID')).toBe(true) // reveal SP (KID's hidden parent)
+    expect(
+      chips.every(c => ['ancestors', 'spouse', 'children'].includes(c.side))
+    ).toBe(true)
+  })
+})
+
+describe("'line' preset — progressive one-hop reveal", () => {
+  const build = () => {
+    const FP = fam('FP', 'DAD', 'MOM', ['R', 'SIB'])
+    const FG = fam('FG', 'GF', 'GM', ['DAD'])
+    const FR = fam('FR', 'R', 'RS', ['K'])
+    const FK = fam('FK', 'K', 'KS', [])
+    const FRS = fam('FRS', 'RSF', 'RSM', ['RS'])
+    return [
+      person('R', {parentFamilies: [FP], ownFamilies: [FR]}),
+      person('SIB', {parentFamilies: [FP]}),
+      person('DAD', {parentFamilies: [FG], ownFamilies: [FP]}),
+      person('MOM', {ownFamilies: [FP]}),
+      person('GF', {ownFamilies: [FG]}),
+      person('GM', {ownFamilies: [FG]}),
+      person('RS', {parentFamilies: [FRS], ownFamilies: [FR]}),
+      person('RSF', {ownFamilies: [FRS]}),
+      person('RSM', {ownFamilies: [FRS]}),
+      person('K', {parentFamilies: [FR], ownFamilies: [FK]}),
+      person('KS', {ownFamilies: [FK]}),
+    ]
+  }
+
+  it('base line view = root + blood ancestors + blood descendants only', () => {
+    const {visibleHandles} = pruneGraph(build(), new Set(['line']), 'R', true)
+    for (const v of ['R', 'DAD', 'MOM', 'GF', 'GM', 'K']) {
+      expect(visibleHandles.has(v)).toBe(true)
+    }
+    for (const h of ['SIB', 'RS', 'RSF', 'RSM', 'KS']) {
+      expect(visibleHandles.has(h)).toBe(false)
+    }
+  })
+
+  it('one revsp reveals only the spouse (one hop), not their parents', () => {
+    const {visibleHandles} = pruneGraph(
+      build(),
+      new Set(['line', 'revsp:R']),
+      'R',
+      true
+    )
+    expect(visibleHandles.has('RS')).toBe(true)
+    expect(visibleHandles.has('RSF')).toBe(false)
+    expect(visibleHandles.has('RSM')).toBe(false)
+    expect(visibleHandles.has('SIB')).toBe(false) // unrelated branch untouched
+  })
+
+  it('chained reveal: spouse, then that spouse’s parents', () => {
+    const {visibleHandles} = pruneGraph(
+      build(),
+      new Set(['line', 'revsp:R', 'revup:RS']),
+      'R',
+      true
+    )
+    for (const v of ['RS', 'RSF', 'RSM']) {
+      expect(visibleHandles.has(v)).toBe(true)
+    }
+    expect(visibleHandles.has('SIB')).toBe(false)
+  })
+
+  it('a reveal token is inert while its anchor is still hidden', () => {
+    const {visibleHandles} = pruneGraph(
+      build(),
+      new Set(['line', 'revup:RS']), // no revsp:R, so RS never shows
+      'R',
+      true
+    )
+    expect(visibleHandles.has('RS')).toBe(false)
+    expect(visibleHandles.has('RSF')).toBe(false)
+  })
+
+  it('revdown reveals one generation of children (a sibling), no further', () => {
+    const {visibleHandles} = pruneGraph(
+      build(),
+      new Set(['line', 'revdown:DAD']),
+      'R',
+      true
+    )
+    expect(visibleHandles.has('SIB')).toBe(true)
+    expect(visibleHandles.has('RS')).toBe(false)
   })
 })
 

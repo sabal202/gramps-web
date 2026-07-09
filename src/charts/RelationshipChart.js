@@ -649,6 +649,12 @@ function addCollapseAffordances(
   const knownHandles = new Set(graph.getData().map(p => p.handle))
   const isTouch = window.matchMedia('(hover: none)').matches
   const reduceMotion = prefersReducedMotion()
+  // "Only direct line" is a progressive-exploration mode: the chart starts
+  // minimal and the reveal "+N" pills (from chips) open one hop at a time.
+  // In that mode we suppress the manual collapse tabs (A ancestors, B/C
+  // family) so the user only ever reveals outward — see collapse.js
+  // progressiveLine and the design notes.
+  const progressive = collapsed.has('line')
 
   // One adjacency build per render, shared by every tab/pill label AND every
   // hover preview: cutHidden(cutKey) -> the set of currently-visible persons
@@ -832,6 +838,7 @@ function addCollapseAffordances(
   nodes
     .filter(d => d.nodetype === 'person')
     .each(function eachPerson(d) {
+      if (progressive) return // reveal-only mode: no manual ancestor tabs
       const g = select(this)
       const families = visibleParentFamiliesOf(d.handle)
 
@@ -935,6 +942,7 @@ function addCollapseAffordances(
   nodes
     .filter(d => d.nodetype === 'family' && d.father && d.mother)
     .each(function eachFamily(d) {
+      if (progressive) return // reveal-only mode: no manual spouse/children tabs
       const g = select(this)
       const farSpouse = farSpouseOf(d)
       // Never offer to hide root itself or root's own blood line — that

@@ -288,6 +288,89 @@ function hiddenDesc(ctx, rootHandle) {
   return {hidden, keep}
 }
 
+// Progressive "explore from the direct line" mode. When the `line` preset is
+// active the chart starts minimal (root + blood ancestors + blood
+// descendants) and each directional reveal token opens exactly ONE hop:
+//   revup:<P>    reveal P's parents (one generation up)
+//   revsp:<P>    reveal P's spouse(s) / marriage
+//   revdown:<P>  reveal P's children (one generation down)
+// New "+N" reveal pills then appear at the widened frontier, so the tree is
+// explored step by step. A reveal token only fires while its anchor P is
+// itself visible, so removing a token (or whatever revealed P) cleanly
+// re-hides everything downstream. Used ONLY when `line` is present; the
+// default per-branch collapse model (anc/spouse/children, desc) is untouched.
+function progressiveLine(ctx, rootHandle, collapsed) {
+  const V = new Set([
+    rootHandle,
+    ...upClosure(ctx, [rootHandle]),
+    ...downClosure(ctx, [rootHandle]),
+  ])
+  const ups = []
+  const downs = []
+  const sps = []
+  for (const c of collapsed) {
+    if (c.startsWith('revup:')) ups.push(c.slice('revup:'.length))
+    else if (c.startsWith('revdown:')) downs.push(c.slice('revdown:'.length))
+    else if (c.startsWith('revsp:')) sps.push(c.slice('revsp:'.length))
+  }
+  // Fixpoint: a token fires only once its anchor is visible, so a chain of
+  // reveals (spouse -> that spouse's parents -> ...) settles in a few passes.
+  let changed = true
+  while (changed) {
+    changed = false
+    const grow = (anchors, neighborsOf) => {
+      for (const p of anchors) {
+        if (!V.has(p)) continue
+        for (const n of neighborsOf(p)) {
+          if (n && !V.has(n)) {
+            V.add(n)
+            changed = true
+          }
+        }
+      }
+    }
+    grow(ups, p => ctx.parentsOf(p))
+    grow(downs, p => ctx.childrenOf(p))
+    grow(sps, p => ctx.spousesOf(p))
+  }
+  // Directional "+N" reveal pills on every visible person still bordering
+  // hidden relatives one hop away.
+  const chips = []
+  for (const p of V) {
+    const hiddenParents = ctx.parentsOf(p).filter(h => !V.has(h))
+    const hiddenSpouses = ctx.spousesOf(p).filter(h => !V.has(h))
+    const hiddenChildren = ctx.childrenOf(p).filter(h => !V.has(h))
+    if (hiddenParents.length) {
+      chips.push({
+        cutKey: `revup:${p}`,
+        count: hiddenParents.length,
+        anchorHandle: p,
+        side: 'ancestors',
+      })
+    }
+    if (hiddenSpouses.length) {
+      chips.push({
+        cutKey: `revsp:${p}`,
+        count: hiddenSpouses.length,
+        anchorHandle: p,
+        side: 'spouse',
+      })
+    }
+    if (hiddenChildren.length) {
+      chips.push({
+        cutKey: `revdown:${p}`,
+        count: hiddenChildren.length,
+        anchorHandle: p,
+        side: 'children',
+      })
+    }
+  }
+  const visibleHandles = new Set(
+    [...ctx.adj.personHandles].filter(h => V.has(h))
+  )
+  return {visibleHandles, chips}
+}
+
 /**
  * Prunes the relationship-chart graph down to what should be visible given a
  * set of collapse cuts.
@@ -304,6 +387,13 @@ function hiddenDesc(ctx, rootHandle) {
  */
 export function pruneGraph(people, collapsed, rootHandle, showAllParents) {
   const ctx = makeCtx(people, showAllParents)
+
+  // "Only direct line" is a progressive-exploration mode, not a plain cut:
+  // start minimal and reveal one hop at a time (see progressiveLine). The
+  // default per-branch collapse model below is used only when `line` is off.
+  if (collapsed.has('line')) {
+    return progressiveLine(ctx, rootHandle, collapsed)
+  }
 
   const hidden = new Set()
   const chips = []
