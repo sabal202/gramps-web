@@ -106,6 +106,7 @@ const PAGE_TITLES = {
   settings: 'Settings',
   anniversaries: 'Anniversaries',
   relatives: 'Relatives',
+  'immich-import': 'Immich Import',
 }
 
 export class GrampsJs extends LitElement {

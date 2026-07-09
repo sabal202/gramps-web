@@ -26,6 +26,7 @@ import {
   mdiBellBadge,
   mdiTimelineOutline,
   mdiAccountGroup,
+  mdiImagePlus,
 } from '@mdi/js'
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -215,6 +216,18 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
       >
         ${this._icon(mdiImage, p === 'medialist')} ${this._('Media')}
       </md-list-item>
+      ${this.appState.permissions.canEdit
+        ? html`
+            <md-list-item
+              type="link"
+              href="${BASE_DIR}/immich-import"
+              ?selected="${p === 'immich-import'}"
+            >
+              ${this._icon(mdiImagePlus, p === 'immich-import')}
+              ${this._('Immich Import')}
+            </md-list-item>
+          `
+        : ''}
       ${this.canUseChat
         ? html`
             <md-list-item

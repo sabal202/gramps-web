@@ -642,6 +642,27 @@ export function getExporterDownloadUrl(url) {
   return `${__APIHOST__}${url}?jwt=${jwt}`
 }
 
+// Immich import: thumbnails are proxied through our own backend (the Immich
+// admin API key never reaches the browser), so `url` is expected to be a
+// same-origin, backend-relative path returned by the `/api/immich/...`
+// endpoints (e.g. `/api/immich/albums/<id>/assets/<assetId>/thumbnail`).
+// Same `?jwt=` auth convention as getExporterDownloadUrl/getMediaUrl. If the
+// backend ever returns an absolute URL (e.g. a presigned link) instead, it is
+// returned unchanged.
+export function getImmichAssetUrl(url) {
+  if (!url) {
+    return ''
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url
+  }
+  const jwt = localStorage.getItem('access_token')
+  const sep = url.includes('?') ? '&' : '?'
+  return jwt === null
+    ? `${__APIHOST__}${url}`
+    : `${__APIHOST__}${url}${sep}jwt=${jwt}`
+}
+
 export function getReportUrl(id, options) {
   const jwt = localStorage.getItem('access_token')
   const queryParam = `options=${encodeURIComponent(JSON.stringify(options))}`

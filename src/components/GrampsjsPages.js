@@ -60,6 +60,7 @@ import '../views/GrampsjsViewNewTask.js'
 import '../views/GrampsjsViewHelp.js'
 import '../views/GrampsjsViewTimeline.js'
 import '../views/GrampsjsViewRelatives.js'
+import '../views/GrampsjsViewImmichImport.js'
 
 class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -420,6 +421,15 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
         pageId="${this.appState.path.pageId}"
         .appState="${this.appState}"
       ></grampsjs-view-relatives>
+      ${this.appState.permissions.canEdit
+        ? html`
+            <grampsjs-view-immich-import
+              class="page"
+              ?active=${this.appState.path.page === 'immich-import'}
+              .appState="${this.appState}"
+            ></grampsjs-view-immich-import>
+          `
+        : ''}
     `
   }
 }
