@@ -424,5 +424,11 @@
     "chatSuggestRelatives": "Кто мои двоюродные братья и сёстры?",
     "chatSuggestAncestors": "Покажи моих предков",
     "chatSuggestBirthdays": "У кого скоро дни рождения?",
-    "chatSuggestStats": "Расскажи о нашем семейном дереве"
+    "chatSuggestStats": "Расскажи о нашем семейном дереве",
+    "Changes": "Изменения",
+    "Show changes": "Показать изменения",
+    "Hide changes": "Скрыть изменения",
+    "This object": "Этот объект",
+    "Whole page": "Вся страница",
+    "No changes found": "Изменения не найдены"
 }

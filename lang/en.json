@@ -446,5 +446,11 @@
   "Group by": "Group by",
   "Sort by": "Sort by",
   "Last updated": "Last updated",
-  "All": "All"
+  "All": "All",
+  "Changes": "Changes",
+  "Show changes": "Show changes",
+  "Hide changes": "Hide changes",
+  "This object": "This object",
+  "Whole page": "Whole page",
+  "No changes found": "No changes found"
 }
