@@ -1220,7 +1220,6 @@ function remasterChart(
   // and this person has one (see getMaidenSurname for when that is null).
   const withMaidenName = (text, d) =>
     showMaidenName && d.maidenSurname ? `${text} (${d.maidenSurname})` : text
-  gvchartx.selectAll('title').remove()
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
   gvchartx.selectAll('.node').each(function () {
@@ -1229,6 +1228,15 @@ function remasterChart(
     const x = textElement.attr('x')
     const y = textElement.attr('y')
     const c = e.attr('class')
+    // Graphviz preserves the quoted DOT node name as this <title> child (e.g.
+    // "node_<familyHandle>x<personHandle>" for a spouse, "node_<familyHandle>"
+    // for the marriage marker — see generateDot). Read it BEFORE stripping —
+    // it is the only place the family-cluster-qualified identity survives;
+    // the `class` attribute below only carries the bare person/family handle,
+    // which collides across the several node copies graphviz emits for a
+    // person who is a spouse in more than one family (see unionBarSpan).
+    const dotTitle = e.select('title').text()
+    e.select('title').remove()
     const found = c.match(/(?<handletype>family|person)_(?<handle>\S+)/)
     if (found.groups.handletype === 'person') {
       const d = graph.known(found.groups.handle)
@@ -1236,6 +1244,14 @@ function remasterChart(
       if (imageUrl) {
         imageCount += 1
       }
+      // dotTitle is exactly `node_${familyHandle}x${found.groups.handle}`
+      // (both generateDot cluster shapes use this same "<family>x<person>"
+      // node-name convention) — recover familyHandle by trimming the fixed
+      // prefix/suffix rather than a regex, since handles are plain lowercase
+      // hex and can't be reliably told apart from a family handle by shape.
+      const dotFamilyHandle = dotTitle
+        .slice('node_'.length)
+        .slice(0, -`x${found.groups.handle}`.length)
       nodedata.push({
         nodetype: d.profile.fake ? 'fake' : 'person',
         xCoord: x - boxWidth / 2 + 4,
@@ -1245,6 +1261,7 @@ function remasterChart(
         maidenSurname: getMaidenSurname(d.data),
         imageUrl: imageCount > maxImages ? '' : imageUrl,
         handle: found.groups.handle,
+        familyHandle: dotFamilyHandle,
       })
     } else if (found.groups.handletype === 'family') {
       const d = graph.getNode(found.groups.handle)
@@ -1419,14 +1436,25 @@ function remasterChart(
     .attr('xlink:href', d => d.imageUrl)
 
   // Absolute (family-node-local-frame-independent) left edge of every
-  // visible person card, keyed by handle — used below to size the union bar
-  // so it actually reaches both spouse cards. There are no spouse→family
+  // visible person card, keyed by the family-cluster-qualified identity
+  // "<familyHandle>x<personHandle>" — used below to size the union bar so
+  // it actually reaches both spouse cards. There are no spouse→family
   // graphviz edges (only child→family ones), so this bar is the ONLY visual
   // connector between the two cards; a fixed-width bar would float in the
   // gap once that gap's width (FAMILY_NODE_WIDTH_IN above) changes.
-  const personLeftXByHandle = new Map()
+  // Keying by bare handle would collide: a person who is a spouse in several
+  // families is rendered as one node COPY per family cluster (graphviz
+  // clusters, see generateDot), so a bare-handle map can only remember one
+  // copy's x — every other family's union bar would then reach for the
+  // wrong copy. Keying by "<family>x<person>" keeps each cluster's copy
+  // separate.
+  const personLeftXByFamilyPerson = new Map()
   for (const nd of nodedata) {
-    if (nd.nodetype === 'person') personLeftXByHandle.set(nd.handle, nd.xCoord)
+    if (nd.nodetype === 'person')
+      personLeftXByFamilyPerson.set(
+        `${nd.familyHandle}x${nd.handle}`,
+        nd.xCoord
+      )
   }
 
   // Union bar span, in the family node's own local coordinates (its <g> is
@@ -1440,8 +1468,8 @@ function remasterChart(
   // but guarded defensively since this is keyed off handles, not indices).
   const UNION_BAR_FALLBACK_HALF_WIDTH = 11
   const unionBarSpan = d => {
-    const fatherX = personLeftXByHandle.get(d.father)
-    const motherX = personLeftXByHandle.get(d.mother)
+    const fatherX = personLeftXByFamilyPerson.get(`${d.handle}x${d.father}`)
+    const motherX = personLeftXByFamilyPerson.get(`${d.handle}x${d.mother}`)
     if (fatherX === undefined || motherX === undefined) {
       return {
         x1: -UNION_BAR_FALLBACK_HALF_WIDTH,
