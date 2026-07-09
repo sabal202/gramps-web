@@ -333,37 +333,41 @@ function progressiveLine(ctx, rootHandle, collapsed) {
     grow(downs, p => ctx.childrenOf(p))
     grow(sps, p => ctx.spousesOf(p))
   }
-  // Directional "+N" reveal pills on every visible person still bordering
-  // hidden relatives one hop away.
+  // Per visible person and direction: a "+N" reveal pill while relatives are
+  // still hidden that way, OR — once this person has already revealed that
+  // direction (its token is active) and nothing more is hidden — a "collapse"
+  // pill so the reveal can be undone (removing the token re-hides that hop and,
+  // via the fixpoint above, everything opened beyond it).
   const chips = []
   for (const p of V) {
-    const hiddenParents = ctx.parentsOf(p).filter(h => !V.has(h))
-    const hiddenSpouses = ctx.spousesOf(p).filter(h => !V.has(h))
-    const hiddenChildren = ctx.childrenOf(p).filter(h => !V.has(h))
-    if (hiddenParents.length) {
-      chips.push({
-        cutKey: `revup:${p}`,
-        count: hiddenParents.length,
-        anchorHandle: p,
-        side: 'ancestors',
-      })
+    const emit = (dir, side, hiddenNeighbors) => {
+      const cutKey = `rev${dir}:${p}`
+      if (hiddenNeighbors.length) {
+        chips.push({
+          cutKey,
+          count: hiddenNeighbors.length,
+          anchorHandle: p,
+          side,
+        })
+      } else if (collapsed.has(cutKey)) {
+        chips.push({cutKey, count: 0, anchorHandle: p, side, collapse: true})
+      }
     }
-    if (hiddenSpouses.length) {
-      chips.push({
-        cutKey: `revsp:${p}`,
-        count: hiddenSpouses.length,
-        anchorHandle: p,
-        side: 'spouse',
-      })
-    }
-    if (hiddenChildren.length) {
-      chips.push({
-        cutKey: `revdown:${p}`,
-        count: hiddenChildren.length,
-        anchorHandle: p,
-        side: 'children',
-      })
-    }
+    emit(
+      'up',
+      'ancestors',
+      ctx.parentsOf(p).filter(h => !V.has(h))
+    )
+    emit(
+      'sp',
+      'spouse',
+      ctx.spousesOf(p).filter(h => !V.has(h))
+    )
+    emit(
+      'down',
+      'children',
+      ctx.childrenOf(p).filter(h => !V.has(h))
+    )
   }
   const visibleHandles = new Set(
     [...ctx.adj.personHandles].filter(h => V.has(h))

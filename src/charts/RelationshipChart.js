@@ -7,6 +7,7 @@ import {
   mdiChevronDown,
   mdiChevronLeft,
   mdiChevronRight,
+  mdiMinus,
 } from '@mdi/js'
 import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
@@ -1092,7 +1093,13 @@ function addCollapseAffordances(
     })
 
   const chipsPerAnchor = new Map()
-  for (const {cutKey, count, anchorHandle, side} of chips) {
+  for (const {
+    cutKey,
+    count,
+    anchorHandle,
+    side,
+    collapse: isCollapse,
+  } of chips) {
     if (!anchorHandle) continue
     const anchorSelection = personNodeSelectionByHandle.get(anchorHandle)
     if (!anchorSelection) continue
@@ -1117,8 +1124,13 @@ function addCollapseAffordances(
       dy = boxHeight + 12 + stagger
       iconPath = mdiChevronDown
     }
+    // Progressive reveal-mode "collapse" pill: this direction is already
+    // revealed; the pill undoes it. A minus glyph, no count.
+    if (isCollapse) iconPath = mdiMinus
 
-    const ariaLabel = collapseLabels.expandHidden?.(count) ?? `+${count}`
+    const ariaLabel = isCollapse
+      ? collapseLabels.collapseRevealed ?? 'Collapse'
+      : collapseLabels.expandHidden?.(count) ?? `+${count}`
     const chip = anchorSelection
       .append('g')
       .attr('class', 'collapse-chip')
@@ -1129,19 +1141,38 @@ function addCollapseAffordances(
       .style('cursor', 'pointer')
       .style('touch-action', 'manipulation')
     chip.append('title').text(ariaLabel)
+    const pillWidth = isCollapse ? 22 : 36
     chip
       .append('rect')
-      .attr('x', -18)
+      .attr('x', -pillWidth / 2)
       .attr('y', -10)
-      .attr('width', 36)
+      .attr('width', pillWidth)
       .attr('height', 20)
       .attr('rx', 10)
       .attr('ry', 10)
-      .attr('fill', 'var(--md-sys-color-primary-container)')
-      .attr('stroke', 'var(--md-sys-color-primary)')
+      .attr(
+        'fill',
+        isCollapse
+          ? 'var(--md-sys-color-surface-container-high)'
+          : 'var(--md-sys-color-primary-container)'
+      )
+      .attr(
+        'stroke',
+        isCollapse
+          ? 'var(--md-sys-color-outline)'
+          : 'var(--md-sys-color-primary)'
+      )
       .attr('stroke-dasharray', dashed ? '3,2' : null)
       .attr('stroke-width', 1)
-    if (iconPath) {
+    if (isCollapse) {
+      // Collapse pill: centred minus glyph, no count.
+      chip
+        .append('path')
+        .attr('d', mdiMinus)
+        .attr('fill', 'var(--md-sys-color-on-surface-variant)')
+        .attr('transform', 'translate(-8,-8) scale(0.7,0.7)')
+        .style('pointer-events', 'none')
+    } else if (iconPath) {
       chip
         .append('path')
         .attr('d', iconPath)

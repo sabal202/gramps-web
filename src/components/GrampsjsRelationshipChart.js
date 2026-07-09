@@ -134,6 +134,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
           childrenAria: count => this._('Hide children (%s hidden)', count),
           wholeMarriageAria: this._('Collapse whole marriage'),
           expandHidden: n => this._('Expand %s hidden', n),
+          collapseRevealed: this._('Collapse'),
           // Mobile bottom-sheet item labels — plain action names; the sheet
           // renders the count/dashed state itself (see
           // GrampsjsCollapseSheet).

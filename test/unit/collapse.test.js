@@ -472,6 +472,18 @@ describe("'line' preset — progressive one-hop reveal", () => {
     expect(visibleHandles.has('SIB')).toBe(true)
     expect(visibleHandles.has('RS')).toBe(false)
   })
+
+  it('once a direction is revealed it emits a collapse pill to undo it', () => {
+    // Reveal R's spouse; R now has no hidden spouse, so instead of a +N pill
+    // the frontier offers a collapse pill (same cutKey) to re-hide it.
+    const {chips} = pruneGraph(build(), new Set(['line', 'revsp:R']), 'R', true)
+    const c = chips.find(x => x.cutKey === 'revsp:R')
+    expect(c).toBeTruthy()
+    expect(c.collapse).toBe(true)
+    // And toggling the token off (what the collapse pill dispatches) re-hides.
+    const {visibleHandles} = pruneGraph(build(), new Set(['line']), 'R', true)
+    expect(visibleHandles.has('RS')).toBe(false)
+  })
 })
 
 describe("'desc' preset (collapse all descendants)", () => {
