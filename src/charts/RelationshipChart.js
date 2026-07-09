@@ -1282,6 +1282,9 @@ function remasterChart(
       })
     }
   })
+  // container for edges
+  const edges = targetsvg.append('g').attr('class', 'edges')
+
   // build d3 based nodes with data bound to them
   const nodes = targetsvg
     .selectAll('.node')
@@ -1649,22 +1652,6 @@ function remasterChart(
     graph.rootPerson?.handle,
     ...directAncestors,
   ])
-
-  // Container for edges — appended now, AFTER every node <g> (bodies were
-  // built above; addCollapseAffordances below appends the collapse controls
-  // as further children of those same, already-existing node <g>'s). SVG
-  // paints in document order, so a later-appended sibling of `targetsvg`
-  // paints on top of earlier ones; this used to be created before the nodes
-  // (i.e. it painted UNDER everything), which meant the whole-marriage ring,
-  // ▶/◀ spouse tab, ▼ children tab, and the persistent reopen "+N" pills —
-  // all children of a node <g> — fully occluded the union bar and
-  // child-descent lines they sit on/near. Moving it here fixes that: lines
-  // now render on top, so they read as continuous, with a control's opaque
-  // pill background simply showing a thin stroke crossing it (reads as "the
-  // connector passes behind the badge", not "the line is broken"). The only
-  // other overlap this introduces is the pixel or two where an edge already
-  // touched a node's own box border — imperceptible, same as before.
-  const edges = targetsvg.append('g').attr('class', 'edges')
 
   const linkGenerator = linkVertical()
     .x(d => d.x)
