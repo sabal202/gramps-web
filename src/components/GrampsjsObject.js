@@ -25,6 +25,7 @@ import './GrampsjsPlaceNames.js'
 import './GrampsjsGallery.js'
 import './GrampsjsMap.js'
 import './GrampsjsMapMarker.js'
+import './GrampsjsObjectHistory.js'
 import './GrampsjsParticipants.js'
 import './GrampsjsReferences.js'
 import './GrampsjsRelationships.js'
@@ -148,6 +149,11 @@ const _allTabs = {
   references: {
     title: 'References',
     condition: data => Object.keys(data?.backlinks)?.length > 0,
+    conditionEdit: data => false,
+  },
+  history: {
+    title: 'Changes',
+    condition: data => Boolean(data?.handle),
     conditionEdit: data => false,
   },
 }
@@ -866,6 +872,12 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           .data=${[this.data?.extended?.backlinks]}
           .profile=${this.data?.profile?.references || {}}
         ></grampsjs-references>`
+      case 'history':
+        return html`<grampsjs-object-history
+          .appState="${this.appState}"
+          namespace="${this._objectEndpoint}"
+          handle="${this.data?.handle ?? ''}"
+        ></grampsjs-object-history>`
       default:
         break
     }
@@ -881,7 +893,8 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
     return Object.keys(_allTabs).filter(
       key =>
         _allTabs[key].condition(this.data) &&
-        (this._showReferences || key !== 'references')
+        (this._showReferences || key !== 'references') &&
+        (key !== 'history' || this.appState.permissions.canViewPrivate)
     )
   }
 

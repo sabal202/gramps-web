@@ -373,5 +373,11 @@
     "End date must be after start date": "Дата окончания должна быть после даты начала",
     "End date is required": "Требуется указать дату окончания",
     "No issues found": "Ошибки не найдены",
-    "Add Participant": "Добавить участника"
+    "Add Participant": "Добавить участника",
+    "Changes": "Изменения",
+    "Show changes": "Показать изменения",
+    "Hide changes": "Скрыть изменения",
+    "This object": "Этот объект",
+    "Whole page": "Вся страница",
+    "No changes found": "Изменения не найдены"
 }

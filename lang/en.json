@@ -373,5 +373,11 @@
   "End date is required": "End date is required",
   "No issues found": "No issues found",
   "issues found": "issues found",
-  "Severity": "Severity"
+  "Severity": "Severity",
+  "Changes": "Changes",
+  "Show changes": "Show changes",
+  "Hide changes": "Hide changes",
+  "This object": "This object",
+  "Whole page": "Whole page",
+  "No changes found": "No changes found"
 }
