@@ -894,7 +894,7 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
       key =>
         _allTabs[key].condition(this.data) &&
         (this._showReferences || key !== 'references') &&
-        (key !== 'history' || this.appState.permissions.canViewPrivate)
+        (key !== 'history' || this.appState.permissions.canEdit)
     )
   }
 
