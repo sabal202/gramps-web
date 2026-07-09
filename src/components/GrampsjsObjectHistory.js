@@ -124,7 +124,7 @@ export class GrampsjsObjectHistory extends GrampsjsConnectedComponent {
   }
 
   render() {
-    if (!this.appState?.permissions?.canViewPrivate) {
+    if (!this.appState?.permissions?.canEdit) {
       return html``
     }
     if (!this.namespace || !this.handle) {
