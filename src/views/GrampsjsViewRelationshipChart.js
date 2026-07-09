@@ -1,9 +1,17 @@
 import {html, css} from 'lit'
+import {
+  mdiFamilyTree,
+  mdiArrowCollapseVertical,
+  mdiArrowExpandVertical,
+} from '@mdi/js'
 
+import '@material/web/iconbutton/icon-button.js'
 import {GrampsjsViewTreeChartBase} from './GrampsjsViewTreeChartBase.js'
 import '../components/GrampsjsRelationshipChart.js'
 import '../components/GrampsjsTreeChartAddPerson.js'
 import '../components/GrampsjsCollapseSheet.js'
+import '../components/GrampsjsIcon.js'
+import '../components/GrampsjsTooltip.js'
 import {
   presetCollapseDescendants,
   presetDirectLineOnly,
@@ -16,6 +24,22 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
       css`
         :host {
           margin: 0;
+        }
+
+        /* Always-visible corner shortcuts for the collapse/expand presets
+           (see renderCollapseCorner) — same look as the top-left #controls
+           bar in GrampsjsViewTreeChartBase, mirrored to the top-right corner
+           of the chart area so it doesn't collide with the home/back/person/
+           settings buttons there. */
+        .collapse-corner-controls {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 1;
+          display: flex;
+          background-color: var(--md-sys-color-surface-container-low);
+          border-radius: 16px;
+          padding: 0 4px;
         }
       `,
     ]
@@ -290,6 +314,51 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
         },
       ],
     }
+  }
+
+  // Always-visible corner shortcuts for the three collapse/expand presets,
+  // in addition to the same actions already reachable via the settings
+  // dialog (see _setCollapsePresets in GrampsjsViewTreeChartBase) — those
+  // stay as-is, this is purely additive. Reuses the exact same handlers, so
+  // there is no duplicated collapse logic here, only the buttons.
+  renderCollapseCorner() {
+    return html`
+      <div class="collapse-corner-controls">
+        <md-icon-button
+          id="btn-direct-line-only"
+          @click="${this._handleDirectLineOnly}"
+        >
+          <grampsjs-icon .path="${mdiFamilyTree}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-direct-line-only"
+          .appState="${this.appState}"
+          >${this._('Show only direct line')}</grampsjs-tooltip
+        >
+        <md-icon-button
+          id="btn-collapse-all-descendants"
+          @click="${this._handleCollapseAllDescendants}"
+        >
+          <grampsjs-icon .path="${mdiArrowCollapseVertical}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-collapse-all-descendants"
+          .appState="${this.appState}"
+          >${this._('Collapse all descendants')}</grampsjs-tooltip
+        >
+        <md-icon-button
+          id="btn-expand-all-collapsed"
+          @click="${this._handleExpandAllCollapsed}"
+        >
+          <grampsjs-icon .path="${mdiArrowExpandVertical}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-expand-all-collapsed"
+          .appState="${this.appState}"
+          >${this._('Expand all')}</grampsjs-tooltip
+        >
+      </div>
+    `
   }
 
   renderChart() {

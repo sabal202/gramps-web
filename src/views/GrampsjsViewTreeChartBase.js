@@ -201,11 +201,23 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
   renderContent() {
     return html`<div style="position: relative;">
         <div id="controls">${this.renderControls()}</div>
+        ${this.renderCollapseCorner()}
         <div id="chart">${this.renderChart()}</div>
       </div>
       ${this.appState.permissions.canEdit && !this._editMode
         ? this.renderFab()
         : ''}`
+  }
+
+  // Neutral no-op, like renderChart() below; only GrampsjsViewRelationshipChart
+  // (the one subclass with _setCollapsePresets = true) overrides this with the
+  // always-visible corner buttons for the collapse/expand presets. Rendered as
+  // a sibling of #controls/#chart (inside the shared position:relative
+  // wrapper) so its own absolute positioning is relative to the whole chart
+  // area, not just the top-left #controls button row.
+  // eslint-disable-next-line class-methods-use-this
+  renderCollapseCorner() {
+    return ''
   }
 
   renderFab() {
