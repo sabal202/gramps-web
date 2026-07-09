@@ -67,6 +67,14 @@ export class GrampsjsStatistics extends GrampsjsTableBase {
             </tr>
           `
         }, this)}
+        ${this.data.unique_surnames === undefined
+          ? ''
+          : html`
+              <tr>
+                <td>${this.data.unique_surnames}</td>
+                <th>${this._('Unique surnames')}</th>
+              </tr>
+            `}
       </table>
     `
   }
