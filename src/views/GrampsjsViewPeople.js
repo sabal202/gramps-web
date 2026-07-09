@@ -26,6 +26,7 @@ export class GrampsjsViewPeople extends GrampsjsViewObjectsBase {
       {name: 'Gramps ID', key: 'grampsId', sortKey: 'gramps_id'},
       {name: 'Surname', key: 'surname', sortKey: 'surname'},
       {name: 'Given name', key: 'given'},
+      {name: 'Patronymic', key: 'patronymic'},
       {name: 'Birth Date', key: 'birth', sortKey: 'birth'},
       {name: 'Birth Place', key: 'birthPlace', defaultVisible: false},
       {
@@ -68,6 +69,7 @@ export class GrampsjsViewPeople extends GrampsjsViewObjectsBase {
       grampsId: row.gramps_id,
       surname: row?.profile?.name_surname,
       given: row?.profile?.name_given,
+      patronymic: row?.profile?.name_patronymic,
       birth: birthDate,
       birthPlace: row?.profile?.birth?.place_name,
       death: deathDate,
