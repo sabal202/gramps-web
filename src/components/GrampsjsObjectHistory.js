@@ -64,6 +64,14 @@ export class GrampsjsObjectHistory extends GrampsjsConnectedComponent {
           padding: 24px 0;
         }
 
+        /* Keep the current list in place while paginating/scope-switching so
+           the section height stays stable and the scroll position doesn't
+           jump; a subtle dim signals the in-flight fetch. */
+        md-list.loading {
+          opacity: 0.55;
+          transition: opacity 0.1s ease;
+        }
+
         md-divider {
           --md-divider-thickness: 1px;
           --md-divider-color: var(--grampsjs-body-font-color-10);
@@ -168,7 +176,7 @@ export class GrampsjsObjectHistory extends GrampsjsConnectedComponent {
           @click="${() => this._setScope('page')}"
         ></md-filter-chip>
       </div>
-      ${this.loading
+      ${this.loading && !this._data?.length
         ? html`<div class="history-loading">
             <md-circular-progress indeterminate></md-circular-progress>
           </div>`
@@ -187,7 +195,7 @@ export class GrampsjsObjectHistory extends GrampsjsConnectedComponent {
       return html`<p class="history-empty">${this._('No changes found')}</p>`
     }
     return html`
-      <md-list>
+      <md-list class="${this.loading ? 'loading' : ''}">
         <md-divider></md-divider>
         ${this._data.map(txn =>
           renderRevisionListItem({
