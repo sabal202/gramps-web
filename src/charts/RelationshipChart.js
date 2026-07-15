@@ -1252,7 +1252,12 @@ function remasterChart(
 ) {
   const gvchartx = divhidden.select('svg')
   const nodedata = []
-  const imgRadius = (boxHeight - imgPadding * 2) / 2
+  // The avatar bitmap is a fixed 70x70 (see the image pattern below), so the
+  // circle must stay 35px radius regardless of boxHeight. Deriving it from
+  // boxHeight made the "show maiden name" taller box (108) blow the circle up
+  // to 44px — larger than the 70px bitmap (which then sat top-left, mismatched)
+  // and eating the name's horizontal room. Keep it pinned to the photo size.
+  const imgRadius = 70 / 2
   const textPadding = d =>
     d.imageUrl ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
   const boxWidthTotal = d => boxWidth - textPadding(d)

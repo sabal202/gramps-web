@@ -219,7 +219,10 @@ function TreeChartCore(
       .on('click', triangleClicked)
   }
 
-  const imgRadius = (boxHeight - imgPadding * 2) / 2
+  // Pinned to the fixed 70x70 avatar bitmap (see image pattern below): must NOT
+  // scale with boxHeight, else the taller "show maiden name" box enlarges the
+  // circle past the bitmap and squeezes the name. See RelationshipChart.js.
+  const imgRadius = 70 / 2
   const textPadding = d =>
     getImageUrl(d) ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
 

@@ -108,7 +108,9 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         showAllParents: this.showAllParents,
         showMaidenName: this.showMaidenName,
         maidenLabel: this._('née'),
-        boxWidth: this.showMaidenName ? 206 : 190,
+        // Only grow the box HEIGHT for the extra maiden-name line; keep the
+        // default width (190) so the graph doesn't sprawl horizontally and the
+        // pinned-size avatar leaves the name its full width.
         boxHeight: this.showMaidenName ? 108 : 90,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
