@@ -62,16 +62,39 @@ function TreeChartCore(
     showMaidenName = false,
   } = {}
 ) {
-  // Per-node box height: grow to the tall box ONLY for a person who actually
-  // has a maiden-name line; everyone else keeps the original 90px 4-line box.
-  // This height drives BOTH the drawing (rect + content, below) AND the layout's
-  // separation accessor (see tree() below), so a short box is not only drawn
-  // shorter but also packed tighter against its neighbours — toggling the maiden
-  // line on does not inflate the whole tree's vertical rhythm, only the specific
-  // rows that actually need the extra line.
-  const SHORT_BOX_HEIGHT = 90
-  const nodeBoxHeight = d =>
-    showMaidenName && d.data.name_maiden_surname ? boxHeight : SHORT_BOX_HEIGHT
+  // Content-adaptive box height. Each card is exactly as tall as the rows it
+  // actually shows — 2 name lines, then a maiden-name line, a birth date and a
+  // death date, each only when present — packed with no gaps and no reserved
+  // slots for absent rows. Floored by the avatar height so a photo always fits.
+  // This height drives BOTH the drawing (rect + rows, below) AND the layout's
+  // separation accessor (tree() below), so short cards are drawn shorter AND
+  // packed tighter: toggling the maiden line on grows only the rows that gain a
+  // line, not the whole tree, and a woman missing dates does not reserve their
+  // rows.
+  const imgRadius = 70 / 2 // half the fixed 70x70 avatar bitmap; see image pattern
+  const LINE_STEP = 17
+  const FIRST_BASELINE = 25 // first text baseline, from the box top
+  const LAST_LINE_MARGIN = 14 // space below the last baseline to the box bottom
+  const PHOTO_HEIGHT = 2 * imgRadius + 2 * imgPadding
+  const hasName = d => !!(d.data.name_given || d.data.name_surname)
+  const hasMaiden = d => showMaidenName && !!d.data.name_maiden_surname
+  const hasBirth = d => !!d.data.person?.profile?.birth?.date
+  const hasDeath = d => !!d.data.person?.profile?.death?.date
+  // 0-based packed row index of each optional line (name lines are rows 0 & 1).
+  const maidenRow = 2
+  const birthRow = d => 2 + (hasMaiden(d) ? 1 : 0)
+  const deathRow = d => birthRow(d) + (hasBirth(d) ? 1 : 0)
+  const rowCount = d =>
+    (hasName(d) ? 2 : 0) +
+    (hasMaiden(d) ? 1 : 0) +
+    (hasBirth(d) ? 1 : 0) +
+    (hasDeath(d) ? 1 : 0)
+  const nodeBoxHeight = d => {
+    const n = rowCount(d)
+    const textHeight =
+      n > 0 ? FIRST_BASELINE + (n - 1) * LINE_STEP + LAST_LINE_MARGIN : 0
+    return Math.max(textHeight, getImageUrl(d) ? PHOTO_HEIGHT : 0)
+  }
 
   // Create a hierarchical data structure based on the input data
   const root = hierarchy(data)
@@ -240,10 +263,6 @@ function TreeChartCore(
       .on('click', triangleClicked)
   }
 
-  // Pinned to the fixed 70x70 avatar bitmap (see image pattern below): must NOT
-  // scale with boxHeight, else the taller "show maiden name" box enlarges the
-  // circle past the bitmap and squeezes the name. See RelationshipChart.js.
-  const imgRadius = 70 / 2
   const textPadding = d =>
     getImageUrl(d) ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
 
@@ -266,12 +285,6 @@ function TreeChartCore(
     getImageUrl(d)
       ? boxWidth - 2 * imgPadding - 2 * imgRadius
       : boxWidth - 2 * imgPadding
-
-  // When a maiden line is rendered (toggle on + person has one — see
-  // getMaidenSurname for when that is null), the birth/death date lines need
-  // to shift down by one text row so they don't collide with it.
-  const maidenShift = d =>
-    showMaidenName && d.data.name_maiden_surname ? 14 : 0
 
   node
     .append('text')
@@ -335,7 +348,10 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => showMaidenName && d.data.name_maiden_surname)
-    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 2)
+    .attr(
+      'y',
+      d => -nodeBoxHeight(d) / 2 + FIRST_BASELINE + LINE_STEP * maidenRow
+    )
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-size', '13px')
@@ -347,7 +363,10 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.person?.profile?.birth?.date)
-    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 2 + maidenShift(d))
+    .attr(
+      'y',
+      d => -nodeBoxHeight(d) / 2 + FIRST_BASELINE + LINE_STEP * birthRow(d)
+    )
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')
@@ -358,7 +377,10 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.person?.profile?.death?.date)
-    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 3 + maidenShift(d))
+    .attr(
+      'y',
+      d => -nodeBoxHeight(d) / 2 + FIRST_BASELINE + LINE_STEP * deathRow(d)
+    )
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')
