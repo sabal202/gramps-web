@@ -25,6 +25,23 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
         :host {
           margin: 0;
         }
+
+        /* display:contents keeps the three preset buttons as direct flex
+           children of .corner-controls (no layout change on desktop). */
+        .collapse-presets {
+          display: contents;
+        }
+
+        /* On phones the left nav bar and the right corner bar don't both fit,
+           so the buttons overlap (the corner bar starts under the nav bar).
+           Hide the collapse/expand presets there — they stay reachable via the
+           settings dialog (Collapse/expand branches) and the per-node
+           long-press sheet. The maiden-name toggle stays on-canvas. */
+        @media (max-width: 500px) {
+          .collapse-presets {
+            display: none;
+          }
+        }
       `,
     ]
   }
@@ -310,37 +327,41 @@ export class GrampsjsViewRelationshipChart extends GrampsjsViewTreeChartBase {
   // own here anymore.
   renderCollapsePresetButtons() {
     return html`
-      <md-icon-button
-        id="btn-direct-line-only"
-        @click="${this._handleDirectLineOnly}"
-      >
-        <grampsjs-icon .path="${mdiFamilyTree}"></grampsjs-icon>
-      </md-icon-button>
-      <grampsjs-tooltip for="btn-direct-line-only" .appState="${this.appState}"
-        >${this._('Show only direct line')}</grampsjs-tooltip
-      >
-      <md-icon-button
-        id="btn-collapse-all-descendants"
-        @click="${this._handleCollapseAllDescendants}"
-      >
-        <grampsjs-icon .path="${mdiArrowCollapseVertical}"></grampsjs-icon>
-      </md-icon-button>
-      <grampsjs-tooltip
-        for="btn-collapse-all-descendants"
-        .appState="${this.appState}"
-        >${this._('Collapse all descendants')}</grampsjs-tooltip
-      >
-      <md-icon-button
-        id="btn-expand-all-collapsed"
-        @click="${this._handleExpandAllCollapsed}"
-      >
-        <grampsjs-icon .path="${mdiArrowExpandVertical}"></grampsjs-icon>
-      </md-icon-button>
-      <grampsjs-tooltip
-        for="btn-expand-all-collapsed"
-        .appState="${this.appState}"
-        >${this._('Expand all')}</grampsjs-tooltip
-      >
+      <span class="collapse-presets">
+        <md-icon-button
+          id="btn-direct-line-only"
+          @click="${this._handleDirectLineOnly}"
+        >
+          <grampsjs-icon .path="${mdiFamilyTree}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-direct-line-only"
+          .appState="${this.appState}"
+          >${this._('Show only direct line')}</grampsjs-tooltip
+        >
+        <md-icon-button
+          id="btn-collapse-all-descendants"
+          @click="${this._handleCollapseAllDescendants}"
+        >
+          <grampsjs-icon .path="${mdiArrowCollapseVertical}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-collapse-all-descendants"
+          .appState="${this.appState}"
+          >${this._('Collapse all descendants')}</grampsjs-tooltip
+        >
+        <md-icon-button
+          id="btn-expand-all-collapsed"
+          @click="${this._handleExpandAllCollapsed}"
+        >
+          <grampsjs-icon .path="${mdiArrowExpandVertical}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip
+          for="btn-expand-all-collapsed"
+          .appState="${this.appState}"
+          >${this._('Expand all')}</grampsjs-tooltip
+        >
+      </span>
     `
   }
 
