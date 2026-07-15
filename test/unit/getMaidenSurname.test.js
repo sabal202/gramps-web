@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest'
-import {getMaidenSurname} from '../../src/charts/util.js'
+import {getMaidenSurname} from '../../src/util.js'
 
 const surname = (value, origintype = '') => ({surname: value, origintype})
 
