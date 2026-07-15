@@ -60,6 +60,7 @@ function TreeChartCore(
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     canEdit = false,
     showMaidenName = false,
+    maidenLabel = '',
   } = {}
 ) {
   // Create a hierarchical data structure based on the input data
@@ -242,12 +243,11 @@ function TreeChartCore(
       ? boxWidth - 2 * imgPadding - 2 * imgRadius
       : boxWidth - 2 * imgPadding
 
-  // Appends "(maiden surname)" to a rendered surname when the toggle is on
-  // and this person has one (see getMaidenSurname for when that is null).
-  const withMaidenName = (text, d) =>
-    showMaidenName && d.data.name_maiden_surname
-      ? `${text} (${d.data.name_maiden_surname})`
-      : text
+  // When a maiden line is rendered (toggle on + person has one — see
+  // getMaidenSurname for when that is null), the birth/death date lines need
+  // to shift down by one text row so they don't collide with it.
+  const maidenShift = d =>
+    showMaidenName && d.data.name_maiden_surname ? 17 : 0
 
   node
     .append('text')
@@ -261,7 +261,7 @@ function TreeChartCore(
     .text(d =>
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? `${withMaidenName(d.data.name_surname || '…', d)},`
+          ? `${d.data.name_surname || '…'},`
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
           ? [d.data.name_given, d.data.name_patronymic]
@@ -269,10 +269,7 @@ function TreeChartCore(
               .join(' ') || '…'
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? withMaidenName(
-              d.data.name_family_surname || d.data.name_surname || '…',
-              d
-            )
+          ? d.data.name_family_surname || d.data.name_surname || '…'
           : d.data.name_given || '…',
         textWidth(d)
       )
@@ -297,24 +294,38 @@ function TreeChartCore(
           ? d.data.name_given || '…'
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
-          ? withMaidenName(
-              d.data.name_family_surname || d.data.name_surname || '…',
-              d
-            )
+          ? d.data.name_family_surname || d.data.name_surname || '…'
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
           ? [d.data.name_given, d.data.name_patronymic]
               .filter(Boolean)
               .join(' ') || '…'
-          : withMaidenName(d.data.name_surname || '…', d),
+          : d.data.name_surname || '…',
         textWidth(d)
       )
+    )
+
+  // Dedicated maiden-name line, rendered below the two name lines when the
+  // toggle is on and this person has one (see getMaidenSurname). Smaller and
+  // subtler than the name lines so it reads as a secondary detail.
+  node
+    .append('text')
+    .filter(d => showMaidenName && d.data.name_maiden_surname)
+    .attr('y', -boxHeight / 2 + 25 + 17 * 2)
+    .attr('x', d => -boxWidth / 2 + textPadding(d))
+    .attr('text-anchor', 'start')
+    .attr('font-size', '13px')
+    .attr('font-weight', '350')
+    .attr('fill', 'var(--grampsjs-body-font-color-70)')
+    .attr('paint-order', 'stroke')
+    .text(d =>
+      clipString(`(${maidenLabel} ${d.data.name_maiden_surname})`, textWidth(d))
     )
 
   node
     .append('text')
     .filter(d => d.data.person?.profile?.birth?.date)
-    .attr('y', -boxHeight / 2 + 25 + 17 * 2)
+    .attr('y', d => -boxHeight / 2 + 25 + 17 * 2 + maidenShift(d))
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')
@@ -325,7 +336,7 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.person?.profile?.death?.date)
-    .attr('y', -boxHeight / 2 + 25 + 17 * 3)
+    .attr('y', d => -boxHeight / 2 + 25 + 17 * 3 + maidenShift(d))
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')

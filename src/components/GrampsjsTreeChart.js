@@ -117,6 +117,9 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         showMaidenName: this.showMaidenName,
+        maidenLabel: this._('née'),
+        boxWidth: this.showMaidenName ? 206 : 190,
+        boxHeight: this.showMaidenName ? 108 : 90,
       })}
     `
   }

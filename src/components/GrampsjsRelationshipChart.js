@@ -107,6 +107,9 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         showUnionDates: this.showUnionDates,
         showAllParents: this.showAllParents,
         showMaidenName: this.showMaidenName,
+        maidenLabel: this._('née'),
+        boxWidth: this.showMaidenName ? 206 : 190,
+        boxHeight: this.showMaidenName ? 108 : 90,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         // During a reroot, Lit paints once with the new grampsId but the old

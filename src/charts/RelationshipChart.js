@@ -1232,6 +1232,7 @@ function remasterChart(
   showUnionDates = false,
   unionStatusLabels = {},
   showMaidenName = false,
+  maidenLabel = '',
   // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
   // as ⊕N chips below.
   chips = [],
@@ -1255,10 +1256,10 @@ function remasterChart(
   const textPadding = d =>
     d.imageUrl ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
   const boxWidthTotal = d => boxWidth - textPadding(d)
-  // Appends "(maiden surname)" to a rendered surname when the toggle is on
-  // and this person has one (see getMaidenSurname for when that is null).
-  const withMaidenName = (text, d) =>
-    showMaidenName && d.maidenSurname ? `${text} (${d.maidenSurname})` : text
+  // When a maiden line is rendered (toggle on + person has one — see
+  // getMaidenSurname for when that is null), the birth/death date lines
+  // need to shift down by one text row so they don't collide with it.
+  const maidenShift = d => (showMaidenName && d.maidenSurname ? 17 : 0)
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
   gvchartx.selectAll('.node').each(function () {
@@ -1373,7 +1374,7 @@ function remasterChart(
     .text(d =>
       clipString(
         nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? `${withMaidenName(d.profile?.name_surname, d)},`
+          ? `${d.profile?.name_surname},`
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
           ? [d.profile?.name_given, getPatronymic(d.primaryName)]
@@ -1381,10 +1382,7 @@ function remasterChart(
               .join(' ')
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? withMaidenName(
-              getFamilySurname(d.primaryName) || d.profile?.name_surname,
-              d
-            )
+          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
           : d.profile?.name_given,
         boxWidthTotal(d)
       )
@@ -1411,18 +1409,32 @@ function remasterChart(
           ? d.profile?.name_given
           : nameDisplayFormat ===
             chartNameDisplayFormat.givenPatronymicThenSurname
-          ? withMaidenName(
-              getFamilySurname(d.primaryName) || d.profile?.name_surname,
-              d
-            )
+          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
           : nameDisplayFormat ===
             chartNameDisplayFormat.surnameThenGivenPatronymic
           ? [d.profile?.name_given, getPatronymic(d.primaryName)]
               .filter(Boolean)
               .join(' ')
-          : withMaidenName(d.profile?.name_surname, d),
+          : d.profile?.name_surname,
         boxWidthTotal(d)
       )
+    )
+
+  // Dedicated maiden-name line, rendered below the two name lines when the
+  // toggle is on and this person has one (see getMaidenSurname). Smaller and
+  // subtler than the name lines so it reads as a secondary detail.
+  nodes
+    .filter(d => showMaidenName && d.maidenSurname && d.nodetype === 'person')
+    .append('text')
+    .attr('text-anchor', 'start')
+    .attr('font-size', '13px')
+    .attr('font-weight', '350')
+    .attr('fill', 'var(--grampsjs-body-font-color-70)')
+    .attr('paint-order', 'stroke')
+    .attr('x', d => textPadding(d))
+    .attr('y', 25 + 17 * 2)
+    .text(d =>
+      clipString(`(${maidenLabel} ${d.maidenSurname})`, boxWidthTotal(d))
     )
 
   nodes
@@ -1433,7 +1445,7 @@ function remasterChart(
     .attr('fill', 'var(--grampsjs-body-font-color-90)')
     .attr('paint-order', 'stroke')
     .attr('x', d => textPadding(d))
-    .attr('y', 25 + 17 * 2)
+    .attr('y', d => 25 + 17 * 2 + maidenShift(d))
     .text(d => clipString(`*${d.profile.birth.date}`, boxWidthTotal(d)))
 
   nodes
@@ -1444,7 +1456,7 @@ function remasterChart(
     .attr('fill', 'var(--grampsjs-body-font-color-90)')
     .attr('paint-order', 'stroke')
     .attr('x', d => textPadding(d))
-    .attr('y', 25 + 17 * 3)
+    .attr('y', d => 25 + 17 * 3 + maidenShift(d))
     .text(d => clipString(`†${d.profile.death.date}`, boxWidthTotal(d)))
 
   // images
@@ -1809,6 +1821,7 @@ export function RelationshipChart(
     initialZoom = null,
     unionStatusLabels = {},
     showMaidenName = false,
+    maidenLabel = '',
     // Collapse/expand (see collapse.js): collapsed is a Set of cut keys,
     // rootHandle is the handle (not gramps_id) of the person named by
     // grampsId above — the caller derives it once and passes both down so
@@ -1874,6 +1887,7 @@ export function RelationshipChart(
       showUnionDates,
       unionStatusLabels,
       showMaidenName,
+      maidenLabel,
       chips,
       svg,
       zoomBehavior,
