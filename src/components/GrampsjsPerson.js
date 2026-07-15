@@ -16,7 +16,7 @@ import './GrampsjsEditGender.js'
 import './GrampsjsPersonRelationship.js'
 import './GrampsjsCommonAncestors.js'
 import './GrampsjsFormExternalSearch.js'
-import {fireEvent, personProfileDisplayName} from '../util.js'
+import {fireEvent, personProfileDisplayName, getMaidenSurname} from '../util.js'
 import {buildExternalSearchData} from '../externalSearch.js'
 import {getCurrentAgeInfo} from './personListUtils.js'
 
@@ -36,6 +36,11 @@ export class GrampsjsPerson extends GrampsjsObject {
           --md-sys-color-on-secondary-container: var(
             --md-sys-color-on-surface-variant
           );
+        }
+
+        .maiden-name {
+          font-weight: 400;
+          color: var(--grampsjs-body-font-color-60);
         }
       `,
     ]
@@ -87,30 +92,41 @@ export class GrampsjsPerson extends GrampsjsObject {
     if (!this.data.profile) {
       return ''
     }
+    let base
     // Prefer the server-formatted name so the configured Gramps name-format is
     // applied. The manual given-first build below is a fallback and cannot
     // reproduce an arbitrary configured order. Note: name_display is a plain
     // string, so the call-name highlight span below is not applied to it (the
     // server is expected to render the name inline).
     if (this.data.profile.name_display) {
-      return this.data.profile.name_display
+      base = this.data.profile.name_display
+    } else {
+      const surname = this.data.profile.name_surname || '…'
+      const suffix = this.data.profile.name_suffix || ''
+      const call = this.data?.primary_name?.call
+      let given = this.data.profile.name_given || call || '…'
+      const callIndex = call && call !== given ? given.search(call) : -1
+      given =
+        callIndex > -1
+          ? html`
+              ${given.substring(0, callIndex)}
+              <span class="given-name"
+                >${given.substring(callIndex, callIndex + call.length)}</span
+              >
+              ${given.substring(callIndex + call.length)}
+            `
+          : given
+      base = html`${given} ${surname} ${suffix}`
     }
-    const surname = this.data.profile.name_surname || '…'
-    const suffix = this.data.profile.name_suffix || ''
-    const call = this.data?.primary_name?.call
-    let given = this.data.profile.name_given || call || '…'
-    const callIndex = call && call !== given ? given.search(call) : -1
-    given =
-      callIndex > -1
-        ? html`
-            ${given.substring(0, callIndex)}
-            <span class="given-name"
-              >${given.substring(callIndex, callIndex + call.length)}</span
-            >
-            ${given.substring(callIndex + call.length)}
-          `
-        : given
-    return html`${given} ${surname} ${suffix}`
+
+    const maiden = getMaidenSurname(this.data)
+    const showMaiden =
+      !!this.appState?.settings?.chartShowMaidenName && !!maiden
+    if (!showMaiden) {
+      return base
+    }
+    return html`${base}
+      <span class="maiden-name">(${this._('née')} ${maiden})</span>`
   }
 
   _renderBirth() {
