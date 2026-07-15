@@ -1,5 +1,9 @@
+/* eslint-disable lit-a11y/click-events-have-key-events */
+// The touch-mode scrim is a plain dismiss backdrop (same pattern as
+// GrampsjsCollapseSheet); the card's actions are reachable via the real
+// buttons/anchor inside it, so keyboard listeners on the scrim aren't needed.
 import {LitElement, css, html, nothing} from 'lit'
-import {mdiOpenInNew} from '@mdi/js'
+import {mdiOpenInNew, mdiTargetAccount} from '@mdi/js'
 
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {fireEvent} from '../util.js'
@@ -76,6 +80,9 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       #popup {
         position: fixed;
         width: ${POPUP_WIDTH}px;
+        max-width: calc(100vw - 16px);
+        max-height: calc(100dvh - 16px);
+        z-index: 2;
         background: var(--md-sys-color-surface);
         color: var(--md-sys-color-on-surface);
         border: 1px solid var(--md-sys-color-outline-variant);
@@ -93,6 +100,17 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       #popup.visible {
         visibility: visible;
         opacity: 1;
+        pointer-events: auto;
+      }
+
+      /* Full-screen catcher shown only in touch mode so a tap outside the card
+         dismisses it (touch has no mouseleave). Mirrors the collapse-sheet
+         scrim pattern. */
+      #scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: var(--grampsjs-body-font-color-10);
         pointer-events: auto;
       }
 
@@ -116,12 +134,37 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         background: var(--grampsjs-body-font-color-10);
       }
 
+      /* "Make this person the chart root" — shown only in touch mode, to the
+         left of the open button. On touch, a tap opens the card instead of
+         re-rooting, so re-rooting moves here. */
+      #root-btn {
+        position: absolute;
+        top: 4px;
+        right: 52px;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--md-sys-color-on-surface-variant);
+        cursor: pointer;
+      }
+
       #content {
         height: 100%;
         overflow-y: auto;
         padding: 16px;
         padding-right: 56px;
         box-sizing: border-box;
+      }
+
+      /* Reserve room for the second (make-root) button in touch mode. */
+      #popup.touch #content {
+        padding-right: 100px;
       }
     `
   }
@@ -136,6 +179,7 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       _y: {type: Number},
       _referenceHandle: {type: String},
       _referenceName: {type: String},
+      _touch: {type: Boolean},
     }
   }
 
@@ -149,6 +193,7 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     this._y = 0
     this._referenceHandle = ''
     this._referenceName = ''
+    this._touch = false
     this._cache = new Map()
     this._showTimer = null
     this._hideTimer = null
@@ -193,6 +238,12 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     const detail = e.detail
     clearTimeout(this._hideTimer)
     clearTimeout(this._showTimer)
+    // A touch tap is a deliberate single action — show immediately rather than
+    // waiting out the hover-sweep debounce.
+    if (detail.touch) {
+      this._showPreview(detail)
+      return
+    }
     this._showTimer = setTimeout(() => {
       this._showPreview(detail)
     }, SHOW_DELAY)
@@ -204,11 +255,13 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     anchorRect,
     referenceHandle = '',
     referenceName = '',
+    touch = false,
   }) {
     this._objectType = objectType
     this._grampsId = grampsId
     this._referenceHandle = referenceHandle
     this._referenceName = referenceName
+    this._touch = touch
     this._position(anchorRect)
     this._visible = true
     this.updateComplete.then(() => {
@@ -347,6 +400,26 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     fireEvent(this, 'nav', {path: `${this._objectType}/${this._grampsId}`})
   }
 
+  // Touch: dismiss the card when the user taps outside it.
+  _handleScrimClick() {
+    this._visible = false
+  }
+
+  // Touch: re-root the chart on this person (the action a plain tap performs on
+  // desktop). Fires the same event the chart's own click handler dispatches.
+  _handleMakeRoot() {
+    const grampsId = this._grampsId
+    this._visible = false
+    this._touch = false
+    window.dispatchEvent(
+      new CustomEvent('pedigree:person-selected', {
+        bubbles: true,
+        composed: true,
+        detail: {grampsId},
+      })
+    )
+  }
+
   _renderContent() {
     if (!this._data) return nothing
     switch (this._objectType) {
@@ -416,16 +489,30 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
   }
 
   render() {
+    const showRootBtn = this._touch && this._objectType === 'person'
     return html`
+      ${this._visible && this._touch
+        ? html`<div id="scrim" @click="${this._handleScrimClick}"></div>`
+        : nothing}
       <div
         id="popup"
-        class="${this._visible ? 'visible' : ''}"
+        class="${this._visible ? 'visible' : ''} ${this._touch ? 'touch' : ''}"
         style="left:${this._x}px;top:${this._y}px;height:${getPopupHeight(
           this._objectType
         )}px"
         @mouseenter="${this._handlePopupMouseEnter}"
         @mouseleave="${this._handlePopupMouseLeave}"
       >
+        ${showRootBtn
+          ? html`<button
+              id="root-btn"
+              @click="${this._handleMakeRoot}"
+              title="${this._('Make root')}"
+              aria-label="${this._('Make root')}"
+            >
+              <grampsjs-icon path="${mdiTargetAccount}"></grampsjs-icon>
+            </button>`
+          : nothing}
         <a
           id="open-btn"
           href="${this._objectPath()}"

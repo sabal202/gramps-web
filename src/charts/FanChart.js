@@ -367,11 +367,28 @@ export function FanChart(
       d.data.id.slice(-1) === 'm' ? 'var(--color-girl)' : 'var(--color-boy)'
     )
   function clicked(event, d) {
+    const grampsId = d.data?.person?.gramps_id
+    if (window.matchMedia('(hover: none)').matches) {
+      // Touch: show the preview card (with a "Make root" button) instead of
+      // immediately re-rooting.
+      if (!grampsId) return
+      window.dispatchEvent(
+        new CustomEvent('object:preview-show', {
+          detail: {
+            objectType: 'person',
+            grampsId,
+            anchorRect: this.getBoundingClientRect(),
+            touch: true,
+          },
+        })
+      )
+      return
+    }
     dispatchEvent(
       new CustomEvent('pedigree:person-selected', {
         bubbles: true,
         composed: true,
-        detail: {grampsId: d.data?.person?.gramps_id},
+        detail: {grampsId},
       })
     )
   }

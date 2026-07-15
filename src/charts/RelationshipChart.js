@@ -1694,6 +1694,37 @@ function remasterChart(
               touchState.suppressClick = false
               return
             }
+            if (window.matchMedia('(hover: none)').matches) {
+              // Touch has no hover, so a plain tap would silently re-root with
+              // no way to glance at the person first. Show the preview card
+              // instead; re-rooting is offered as a button inside it.
+              const grampsId = d.profile?.gramps_id
+              if (!grampsId) return
+              const rootPerson = rootHandle ? graph.known(rootHandle) : false
+              const referenceName = rootPerson
+                ? rootPerson.profile?.name_display ||
+                  [
+                    rootPerson.profile?.name_given,
+                    rootPerson.profile?.name_surname,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                : ''
+              window.dispatchEvent(
+                new CustomEvent('object:preview-show', {
+                  detail: {
+                    objectType: 'person',
+                    grampsId,
+                    anchorRect: this.getBoundingClientRect(),
+                    touch: true,
+                    ...(rootHandle
+                      ? {referenceHandle: rootHandle, referenceName}
+                      : {}),
+                  },
+                })
+              )
+              return
+            }
             clicked(event, d)
           }
     )
