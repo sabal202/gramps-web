@@ -59,11 +59,24 @@ class GrampsjsFormSelectDate extends GrampsjsAppStateMixin(LitElement) {
         }
 
         span.dateform {
-          white-space: nowrap;
+          display: inline-flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 4px 6px;
         }
 
         span.dateform mwc-textfield {
           margin-bottom: 10px;
+        }
+
+        /* On narrow screens shrink the three fields so a full date row
+           (year + month + day + calendar button) fits without horizontal
+           overflow; they still wrap gracefully if it can't. */
+        @media (max-width: 480px) {
+          span.dateform mwc-textfield,
+          span.dateform mwc-select {
+            width: 4.7em !important;
+          }
         }
       `,
     ]
