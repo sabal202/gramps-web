@@ -1263,7 +1263,7 @@ function remasterChart(
   // When a maiden line is rendered (toggle on + person has one — see
   // getMaidenSurname for when that is null), the birth/death date lines
   // need to shift down by one text row so they don't collide with it.
-  const maidenShift = d => (showMaidenName && d.maidenSurname ? 17 : 0)
+  const maidenShift = d => (showMaidenName && d.maidenSurname ? 14 : 0)
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
   gvchartx.selectAll('.node').each(function () {

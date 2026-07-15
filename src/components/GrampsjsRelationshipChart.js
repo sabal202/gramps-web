@@ -107,10 +107,12 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
         showUnionDates: this.showUnionDates,
         showAllParents: this.showAllParents,
         showMaidenName: this.showMaidenName,
-        // Only grow the box HEIGHT for the extra maiden-name line; keep the
-        // default width (190) so the graph doesn't sprawl horizontally and the
-        // pinned-size avatar leaves the name its full width.
-        boxHeight: this.showMaidenName ? 108 : 90,
+        // Wider boxes when the maiden line is on give long Russian
+        // name+patronymic more room and reduce clipping; taller boxes make
+        // room for the extra maiden-name line (uniform across all nodes here
+        // — the union bar assumes equal box heights, see RelationshipChart.js).
+        boxWidth: this.showMaidenName ? 210 : 190,
+        boxHeight: this.showMaidenName ? 104 : 90,
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         // During a reroot, Lit paints once with the new grampsId but the old

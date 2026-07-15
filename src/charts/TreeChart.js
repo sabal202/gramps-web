@@ -62,6 +62,16 @@ function TreeChartCore(
     showMaidenName = false,
   } = {}
 ) {
+  // Per-node box height: grow to the tall box ONLY for a person who actually
+  // has a maiden-name line; everyone else keeps the original 90px 4-line box
+  // so nodes without all rows don't show empty space. The d3.tree layout below
+  // still reserves the uniform (max) `boxHeight` slot so variable-height boxes
+  // never overlap; each box is drawn centred on its node, so a short box just
+  // gets a little extra air in its slot.
+  const SHORT_BOX_HEIGHT = 90
+  const nodeBoxHeight = d =>
+    showMaidenName && d.data.name_maiden_surname ? boxHeight : SHORT_BOX_HEIGHT
+
   // Create a hierarchical data structure based on the input data
   const root = hierarchy(data)
 
@@ -158,12 +168,12 @@ function TreeChartCore(
       d => genderColor[d.data?.person?.gender] ?? 'var(--color-unknown)'
     )
     .attr('width', 24)
-    .attr('height', boxHeight - 1)
+    .attr('height', d => nodeBoxHeight(d) - 1)
     .attr('rx', 12)
     .attr('ry', 12)
     .attr(
       'transform',
-      `translate(${-boxWidth / 2 - 4},${-boxHeight / 2 + 0.5})`
+      d => `translate(${-boxWidth / 2 - 4},${-nodeBoxHeight(d) / 2 + 0.5})`
     )
     .attr('id', d => d.data.id) // Unique id for each rect
 
@@ -182,10 +192,13 @@ function TreeChartCore(
     .filter(d => d.data.person)
     .attr('fill', 'var(--grampsjs-color-shade-230)')
     .attr('width', boxWidth)
-    .attr('height', boxHeight)
+    .attr('height', d => nodeBoxHeight(d))
     .attr('rx', 8)
     .attr('ry', 8)
-    .attr('transform', `translate(${-boxWidth / 2},${-boxHeight / 2})`)
+    .attr(
+      'transform',
+      d => `translate(${-boxWidth / 2},${-nodeBoxHeight(d) / 2})`
+    )
     .attr('id', d => d.data.id) // Unique id for each slice
 
   function triangleClicked(e) {
@@ -249,12 +262,12 @@ function TreeChartCore(
   // getMaidenSurname for when that is null), the birth/death date lines need
   // to shift down by one text row so they don't collide with it.
   const maidenShift = d =>
-    showMaidenName && d.data.name_maiden_surname ? 17 : 0
+    showMaidenName && d.data.name_maiden_surname ? 14 : 0
 
   node
     .append('text')
     .filter(d => d.data.name_given || d.data.name_surname)
-    .attr('y', -boxHeight / 2 + 25)
+    .attr('y', d => -nodeBoxHeight(d) / 2 + 25)
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '500')
@@ -280,7 +293,7 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.name_given || d.data.name_surname)
-    .attr('y', -boxHeight / 2 + 25 + 17)
+    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17)
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('width', 50)
     .attr('text-anchor', 'start')
@@ -313,7 +326,7 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => showMaidenName && d.data.name_maiden_surname)
-    .attr('y', -boxHeight / 2 + 25 + 17 * 2)
+    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 2)
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-size', '13px')
@@ -325,7 +338,7 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.person?.profile?.birth?.date)
-    .attr('y', d => -boxHeight / 2 + 25 + 17 * 2 + maidenShift(d))
+    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 2 + maidenShift(d))
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')
@@ -336,7 +349,7 @@ function TreeChartCore(
   node
     .append('text')
     .filter(d => d.data.person?.profile?.death?.date)
-    .attr('y', d => -boxHeight / 2 + 25 + 17 * 3 + maidenShift(d))
+    .attr('y', d => -nodeBoxHeight(d) / 2 + 25 + 17 * 3 + maidenShift(d))
     .attr('x', d => -boxWidth / 2 + textPadding(d))
     .attr('text-anchor', 'start')
     .attr('font-weight', '350')
@@ -358,7 +371,7 @@ function TreeChartCore(
     .filter(getImageUrl)
     .append('circle')
     .attr('r', imgRadius)
-    .attr('cy', -boxHeight / 2 + imgRadius + imgPadding)
+    .attr('cy', d => -nodeBoxHeight(d) / 2 + imgRadius + imgPadding)
     .attr('cx', -boxWidth / 2 + imgRadius + imgPadding)
     .attr('fill', d => `url(#imgpattern-${d.data.id})`)
 

@@ -117,10 +117,12 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         showMaidenName: this.showMaidenName,
-        // Only grow the box HEIGHT for the extra maiden-name line; keep the
-        // default width (190) so the tree doesn't sprawl horizontally and the
-        // pinned-size avatar leaves the name its full width.
-        boxHeight: this.showMaidenName ? 108 : 90,
+        // Wider boxes when the maiden line is on give long Russian
+        // name+patronymic more room and reduce clipping; taller boxes make
+        // room for the extra maiden-name line (only applied per-node to
+        // people who actually have one — see TreeChart.js nodeBoxHeight).
+        boxWidth: this.showMaidenName ? 210 : 190,
+        boxHeight: this.showMaidenName ? 104 : 90,
       })}
     `
   }
