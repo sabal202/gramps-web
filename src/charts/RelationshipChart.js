@@ -1106,6 +1106,13 @@ function addCollapseAffordances(
     const seq = chipsPerAnchor.get(anchorHandle) ?? 0
     chipsPerAnchor.set(anchorHandle, seq + 1)
     const stagger = seq * 22
+    // Anchor's actual (content-adaptive) box height, not the uniform
+    // graphviz slot — so spouse/children pills sit flush against a shorter
+    // card instead of floating below empty space. anchorSelection wraps the
+    // person's own <g> (bound to its nodedata, which now carries boxH — see
+    // personBoxHeight above); falls back to the uniform boxHeight if ever
+    // missing.
+    const anchorBoxH = anchorSelection.datum()?.boxH ?? boxHeight
 
     let dx = boxWidth / 2
     let dy = -10 - stagger
@@ -1118,10 +1125,10 @@ function addCollapseAffordances(
       dashed = dashedForAncCut(P, F)
     } else if (side === 'spouse') {
       dx = boxWidth + 14
-      dy = boxHeight / 2 - 10 - stagger
+      dy = anchorBoxH / 2 - 10 - stagger
       iconPath = mdiChevronRight
     } else if (side === 'children') {
-      dy = boxHeight + 12 + stagger
+      dy = anchorBoxH + 12 + stagger
       iconPath = mdiChevronDown
     }
     // Progressive reveal-mode "collapse" pill: this direction is already
@@ -1260,10 +1267,32 @@ function remasterChart(
   const textPadding = d =>
     d.imageUrl ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
   const boxWidthTotal = d => boxWidth - textPadding(d)
-  // When a maiden line is rendered (toggle on + person has one — see
-  // getMaidenSurname for when that is null), the birth/death date lines
-  // need to shift down by one text row so they don't collide with it.
-  const maidenShift = d => (showMaidenName && d.maidenSurname ? 14 : 0)
+  // Content-adaptive per-node box height (mirrors TreeChart.js's
+  // nodeBoxHeight/rowCount packing): each card is exactly as tall as the
+  // rows it actually shows — 2 name lines, then a maiden-name line, a birth
+  // date and a death date, each only when present — packed with no gaps,
+  // floored at 90 (avatar + union-bar clearance) and capped at the uniform
+  // graphviz slot `boxHeight` so a card never exceeds its layout slot. The
+  // graphviz layout itself (heightInches in generateDot) stays uniform —
+  // only the drawn box is shrunk and centered on the graphviz position, so
+  // spouse alignment and the union bar are unaffected.
+  const REL_LINE_STEP = 17
+  const REL_FIRST_BASELINE = 25
+  const REL_LAST_MARGIN = 11 // 5-row card => 104 (matches the uniform slot)
+  const relHasName = p => !!(p?.name_given || p?.name_surname)
+  const relRowCount = d =>
+    (relHasName(d.profile) ? 2 : 0) +
+    (showMaidenName && d.maidenSurname ? 1 : 0) +
+    (d.profile?.birth?.date ? 1 : 0) +
+    (d.profile?.death?.date ? 1 : 0)
+  const personBoxHeight = d => {
+    const n = relRowCount(d)
+    const textH =
+      n > 0 ? REL_FIRST_BASELINE + (n - 1) * REL_LINE_STEP + REL_LAST_MARGIN : 0
+    return Math.min(Math.max(90, textH), boxHeight)
+  }
+  const relBirthRow = d => 2 + (showMaidenName && d.maidenSurname ? 1 : 0)
+  const relDeathRow = d => relBirthRow(d) + (d.profile?.birth?.date ? 1 : 0)
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
   gvchartx.selectAll('.node').each(function () {
@@ -1296,16 +1325,23 @@ function remasterChart(
       const dotFamilyHandle = dotTitle
         .slice('node_'.length)
         .slice(0, -`x${found.groups.handle}`.length)
+      const maidenSurname = getMaidenSurname(d.data)
+      // Content-adaptive box height, centered on the graphviz-computed
+      // point `y` (the graphviz slot itself, heightInches, stays uniform —
+      // see personBoxHeight above), so shorter cards float centered inside
+      // their uniform layout slot instead of hanging from its top.
+      const boxH = personBoxHeight({profile: d.profile, maidenSurname})
       nodedata.push({
         nodetype: d.profile.fake ? 'fake' : 'person',
         xCoord: x - boxWidth / 2 + 4,
-        yCoord: y - boxHeight / 2,
+        yCoord: y - boxH / 2,
         profile: d.profile,
         primaryName: d.data?.primary_name,
-        maidenSurname: getMaidenSurname(d.data),
+        maidenSurname,
         imageUrl: imageCount > maxImages ? '' : imageUrl,
         handle: found.groups.handle,
         familyHandle: dotFamilyHandle,
+        boxH,
       })
     } else if (found.groups.handletype === 'family') {
       const d = graph.getNode(found.groups.handle)
@@ -1343,7 +1379,7 @@ function remasterChart(
     .append('rect')
     .attr('fill', d => sexColor[d.profile?.sex] ?? 'var(--color-unknown)')
     .attr('width', 24)
-    .attr('height', boxHeight - 1)
+    .attr('height', d => d.boxH - 1)
     .attr('x', -4)
     .attr('y', 0)
     .attr('rx', 12)
@@ -1353,7 +1389,7 @@ function remasterChart(
     .filter(d => d.nodetype === 'person')
     .append('rect', ':first-child')
     .attr('width', boxWidth)
-    .attr('height', boxHeight)
+    .attr('height', d => d.boxH)
     .attr('class', 'personBox')
     .attr('x', 0)
     .attr('y', 0)
@@ -1447,7 +1483,7 @@ function remasterChart(
     .attr('fill', 'var(--grampsjs-body-font-color-90)')
     .attr('paint-order', 'stroke')
     .attr('x', d => textPadding(d))
-    .attr('y', d => 25 + 17 * 2 + maidenShift(d))
+    .attr('y', d => REL_FIRST_BASELINE + REL_LINE_STEP * relBirthRow(d))
     .text(d => clipString(`*${d.profile.birth.date}`, boxWidthTotal(d)))
 
   nodes
@@ -1458,7 +1494,7 @@ function remasterChart(
     .attr('fill', 'var(--grampsjs-body-font-color-90)')
     .attr('paint-order', 'stroke')
     .attr('x', d => textPadding(d))
-    .attr('y', d => 25 + 17 * 3 + maidenShift(d))
+    .attr('y', d => REL_FIRST_BASELINE + REL_LINE_STEP * relDeathRow(d))
     .text(d => clipString(`†${d.profile.death.date}`, boxWidthTotal(d)))
 
   // images
