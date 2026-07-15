@@ -6,8 +6,14 @@ import '@material/web/dialog/dialog.js'
 import '@material/web/button/text-button.js'
 import '@material/web/fab/fab.js'
 import '@material/web/switch/switch.js'
+import '@material/web/iconbutton/icon-button.js'
 
-import {mdiAccountDetails, mdiHomeAccount, mdiPencil} from '@mdi/js'
+import {
+  mdiAccountDetails,
+  mdiHomeAccount,
+  mdiHumanFemale,
+  mdiPencil,
+} from '@mdi/js'
 import '../components/GrampsjsIcon.js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
@@ -50,6 +56,23 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
           --mdc-theme-text-disabled-on-light: var(
             --grampsjs-body-font-color-10
           );
+        }
+
+        /* Always-visible top-right corner bar: the maiden-name toggle
+           (all chart views) followed by any collapse/expand preset buttons
+           (relationship chart only, see renderCollapsePresetButtons). Mirrors
+           the top-left #controls bar's look, moved to the opposite corner so
+           it doesn't collide with the home/back/person/settings buttons. */
+        .corner-controls {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          background-color: var(--md-sys-color-surface-container-low);
+          border-radius: 16px;
+          padding: 0 4px;
         }
 
         #menu-controls mwc-textfield {
@@ -201,7 +224,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
   renderContent() {
     return html`<div style="position: relative;">
         <div id="controls">${this.renderControls()}</div>
-        ${this.renderCollapseCorner()}
+        ${this.renderCornerControls()}
         <div id="chart">${this.renderChart()}</div>
       </div>
       ${this.appState.permissions.canEdit && !this._editMode
@@ -209,14 +232,39 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
         : ''}`
   }
 
-  // Neutral no-op, like renderChart() below; only GrampsjsViewRelationshipChart
-  // (the one subclass with _setCollapsePresets = true) overrides this with the
-  // always-visible corner buttons for the collapse/expand presets. Rendered as
-  // a sibling of #controls/#chart (inside the shared position:relative
-  // wrapper) so its own absolute positioning is relative to the whole chart
-  // area, not just the top-left #controls button row.
+  // Always-visible top-right corner bar. Leftmost is the maiden-name toggle,
+  // shared by ALL chart views (it drives the same showMaidenName flag as the
+  // settings-dialog switch above); anything after it is chart-specific preset
+  // buttons, see renderCollapsePresetButtons (a no-op here, overridden only by
+  // GrampsjsViewRelationshipChart). Rendered as a sibling of #controls/#chart
+  // (inside the shared position:relative wrapper) so its own absolute
+  // positioning is relative to the whole chart area, not just the top-left
+  // #controls button row.
+  renderCornerControls() {
+    return html`
+      <div class="corner-controls">
+        <md-icon-button
+          toggle
+          id="btn-maiden-name"
+          ?selected=${this.showMaidenName}
+          @input=${this._handleChangeShowMaidenName}
+        >
+          <grampsjs-icon .path="${mdiHumanFemale}"></grampsjs-icon>
+        </md-icon-button>
+        <grampsjs-tooltip for="btn-maiden-name" .appState="${this.appState}"
+          >${this._('Show maiden name')}</grampsjs-tooltip
+        >
+        ${this.renderCollapsePresetButtons()}
+      </div>
+    `
+  }
+
+  // Neutral no-op; only GrampsjsViewRelationshipChart (the one subclass with
+  // _setCollapsePresets = true) overrides this with the collapse/expand
+  // preset buttons, rendered after the maiden-name toggle inside the shared
+  // .corner-controls bar built by renderCornerControls above.
   // eslint-disable-next-line class-methods-use-this
-  renderCollapseCorner() {
+  renderCollapsePresetButtons() {
     return ''
   }
 
