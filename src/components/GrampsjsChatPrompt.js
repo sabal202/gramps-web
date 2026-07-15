@@ -61,12 +61,21 @@ class GrampsjsChatPrompt extends GrampsjsAppStateMixin(LitElement) {
     this.loading = false
   }
 
+  // On touch devices the virtual keyboard's return key never carries a
+  // shiftKey modifier, so intercepting plain Enter to submit would make it
+  // impossible to type a newline. There, Enter inserts a newline and the send
+  // button submits; on desktop, Enter submits and Shift+Enter inserts a newline.
+  get _isCoarsePointer() {
+    return window.matchMedia('(pointer: coarse)').matches
+  }
+
   render() {
     return html`
       <div class="container">
         <md-outlined-text-field
           type="textarea"
           rows="${this.nRows}"
+          enterkeyhint="${this._isCoarsePointer ? 'enter' : 'send'}"
           placeholder="${this._('Ask something about your ancestors')}"
           value="${this.value}"
           @input="${this._handleInput}"
@@ -94,7 +103,7 @@ class GrampsjsChatPrompt extends GrampsjsAppStateMixin(LitElement) {
   }
 
   _handleKey(event) {
-    if (event.code === 'Enter' && !event.shiftKey) {
+    if (event.code === 'Enter' && !event.shiftKey && !this._isCoarsePointer) {
       event.preventDefault()
       event.stopPropagation()
       this._submit()
