@@ -63,11 +63,12 @@ function TreeChartCore(
   } = {}
 ) {
   // Per-node box height: grow to the tall box ONLY for a person who actually
-  // has a maiden-name line; everyone else keeps the original 90px 4-line box
-  // so nodes without all rows don't show empty space. The d3.tree layout below
-  // still reserves the uniform (max) `boxHeight` slot so variable-height boxes
-  // never overlap; each box is drawn centred on its node, so a short box just
-  // gets a little extra air in its slot.
+  // has a maiden-name line; everyone else keeps the original 90px 4-line box.
+  // This height drives BOTH the drawing (rect + content, below) AND the layout's
+  // separation accessor (see tree() below), so a short box is not only drawn
+  // shorter but also packed tighter against its neighbours — toggling the maiden
+  // line on does not inflate the whole tree's vertical rhythm, only the specific
+  // rows that actually need the extra line.
   const SHORT_BOX_HEIGHT = 90
   const nodeBoxHeight = d =>
     showMaidenName && d.data.name_maiden_surname ? boxHeight : SHORT_BOX_HEIGHT
@@ -81,9 +82,17 @@ function TreeChartCore(
   // go that far back
   const trueDepth = Math.min(countDepthOfTree(data), depth)
 
+  // Adaptive vertical packing. With the breadth cell size set to 1px, the
+  // separation accessor returns the exact centre-to-centre distance between two
+  // adjacent nodes = half of each one's own box height + the gap. Short (4-line)
+  // boxes therefore pack tightly while a tall (maiden-line) box gets exactly the
+  // room it needs — no overlap and no wasted air. With the toggle off every
+  // nodeBoxHeight is 90, so this reduces to the former uniform 90+gapY spacing.
   tree()
-    .nodeSize([boxHeight + gapY, boxWidth + gapX])
-    .separation((a, b) => (a.parent === b.parent ? 1 : 1))(root)
+    .nodeSize([1, boxWidth + gapX])
+    .separation((a, b) => (nodeBoxHeight(a) + nodeBoxHeight(b)) / 2 + gapY)(
+    root
+  )
 
   // Center the tree.
   let x0 = Infinity
