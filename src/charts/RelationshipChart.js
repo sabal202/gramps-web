@@ -1232,7 +1232,6 @@ function remasterChart(
   showUnionDates = false,
   unionStatusLabels = {},
   showMaidenName = false,
-  maidenLabel = '',
   // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
   // as ⊕N chips below.
   chips = [],
@@ -1438,9 +1437,7 @@ function remasterChart(
     .attr('paint-order', 'stroke')
     .attr('x', d => textPadding(d))
     .attr('y', 25 + 17 * 2)
-    .text(d =>
-      clipString(`(${maidenLabel} ${d.maidenSurname})`, boxWidthTotal(d))
-    )
+    .text(d => clipString(`(${d.maidenSurname})`, boxWidthTotal(d)))
 
   nodes
     .filter(d => d.profile?.birth?.date && d.nodetype === 'person')
@@ -1826,7 +1823,6 @@ export function RelationshipChart(
     initialZoom = null,
     unionStatusLabels = {},
     showMaidenName = false,
-    maidenLabel = '',
     // Collapse/expand (see collapse.js): collapsed is a Set of cut keys,
     // rootHandle is the handle (not gramps_id) of the person named by
     // grampsId above — the caller derives it once and passes both down so
@@ -1892,7 +1888,6 @@ export function RelationshipChart(
       showUnionDates,
       unionStatusLabels,
       showMaidenName,
-      maidenLabel,
       chips,
       svg,
       zoomBehavior,

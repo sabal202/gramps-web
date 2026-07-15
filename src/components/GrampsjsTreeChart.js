@@ -117,7 +117,6 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
         canEdit: this.canEdit,
         initialZoom: this._savedZoom,
         showMaidenName: this.showMaidenName,
-        maidenLabel: this._('née'),
         // Only grow the box HEIGHT for the extra maiden-name line; keep the
         // default width (190) so the tree doesn't sprawl horizontally and the
         // pinned-size avatar leaves the name its full width.

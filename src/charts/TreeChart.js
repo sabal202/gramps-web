@@ -60,7 +60,6 @@ function TreeChartCore(
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     canEdit = false,
     showMaidenName = false,
-    maidenLabel = '',
   } = {}
 ) {
   // Create a hierarchical data structure based on the input data
@@ -321,9 +320,7 @@ function TreeChartCore(
     .attr('font-weight', '350')
     .attr('fill', 'var(--grampsjs-body-font-color-70)')
     .attr('paint-order', 'stroke')
-    .text(d =>
-      clipString(`(${maidenLabel} ${d.data.name_maiden_surname})`, textWidth(d))
-    )
+    .text(d => clipString(`(${d.data.name_maiden_surname})`, textWidth(d)))
 
   node
     .append('text')

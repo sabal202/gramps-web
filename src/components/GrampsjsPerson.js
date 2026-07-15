@@ -125,8 +125,7 @@ export class GrampsjsPerson extends GrampsjsObject {
     if (!showMaiden) {
       return base
     }
-    return html`${base}
-      <span class="maiden-name">(${this._('née')} ${maiden})</span>`
+    return html`${base} <span class="maiden-name">(${maiden})</span>`
   }
 
   _renderBirth() {
