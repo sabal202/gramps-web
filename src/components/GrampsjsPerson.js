@@ -42,6 +42,12 @@ export class GrampsjsPerson extends GrampsjsObject {
           font-weight: 400;
           color: var(--grampsjs-body-font-color-60);
         }
+
+        .preview-gramps-id {
+          color: var(--grampsjs-body-font-color-50);
+          font-size: 0.85em;
+          margin: -0.4em 0 0.4em 0;
+        }
       `,
     ]
   }
@@ -49,6 +55,7 @@ export class GrampsjsPerson extends GrampsjsObject {
   static get properties() {
     return {
       homePersonDetails: {type: Object},
+      referencePerson: {type: Object},
       timelineData: {type: Array},
       _showFamilyEvents: {type: Boolean},
       _showRelatedEvents: {type: Boolean},
@@ -58,6 +65,7 @@ export class GrampsjsPerson extends GrampsjsObject {
   constructor() {
     super()
     this.homePersonDetails = {}
+    this.referencePerson = {}
     this._objectsName = 'People'
     this._objectEndpoint = 'people'
     this._objectIcon = 'person'
@@ -76,8 +84,11 @@ export class GrampsjsPerson extends GrampsjsObject {
         ></grampsjs-edit-gender>
         ${this._displayName()}
       </h2>
+      ${this.preview && this.data.gramps_id
+        ? html`<div class="preview-gramps-id">${this.data.gramps_id}</div>`
+        : ''}
       ${this._renderBirth()} ${this._renderDeath()} ${this._renderCurrentAge()}
-      ${this._renderRelation()}
+      ${this._renderRelation()} ${this._renderReferenceRelation()}
       ${this.preview
         ? ''
         : html`<p class="button-list">
@@ -198,6 +209,25 @@ export class GrampsjsPerson extends GrampsjsObject {
             ></grampsjs-common-ancestors>
           `}
     `
+  }
+
+  _renderReferenceRelation() {
+    if (
+      !this.referencePerson?.handle ||
+      this.referencePerson.handle === this.data.handle
+    ) {
+      return ''
+    }
+    return html`<dl>
+      <dt>${this._('Relationship to %s', this.referencePerson.name || '')}</dt>
+      <dd>
+        <grampsjs-person-relationship
+          person1="${this.referencePerson.handle}"
+          person2="${this.data.handle}"
+          .appState="${this.appState}"
+        ></grampsjs-person-relationship>
+      </dd>
+    </dl>`
   }
 
   _renderAllRelativesBtn() {

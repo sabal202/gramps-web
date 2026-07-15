@@ -1,7 +1,6 @@
 import {LitElement, css, html, nothing} from 'lit'
 import {mdiOpenInNew} from '@mdi/js'
 
-import '@material/web/iconbutton/icon-button.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {fireEvent} from '../util.js'
 import './GrampsjsIcon.js'
@@ -14,6 +13,9 @@ import './GrampsjsCitation.js'
 import './GrampsjsRepository.js'
 import './GrampsjsNote.js'
 import './GrampsjsMediaObject.js'
+
+// Replaced at build time by rollup
+const BASE_DIR = ''
 
 const SHOW_DELAY = 200
 const HIDE_DELAY = 250
@@ -41,7 +43,7 @@ const NOTE_LINK_FORMAT = encodeURIComponent(
 
 const URLS = {
   person: (id, lang) =>
-    `/api/people/?gramps_id=${id}&locale=${lang}&profile=all&backlinks=true&extend=all&precision=1`,
+    `/api/people/?gramps_id=${id}&locale=${lang}&profile=all,current_age&backlinks=true&extend=all&precision=1`,
   family: (id, lang) =>
     `/api/families/?gramps_id=${id}&locale=${lang}&profile=all&backlinks=true&extend=all&precision=1`,
   place: (id, lang) =>
@@ -99,6 +101,19 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         top: 4px;
         right: 8px;
         z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        color: var(--md-sys-color-on-surface-variant);
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      #open-btn:hover {
+        background: var(--grampsjs-body-font-color-10);
       }
 
       #content {
@@ -119,6 +134,8 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       _data: {type: Object},
       _x: {type: Number},
       _y: {type: Number},
+      _referenceHandle: {type: String},
+      _referenceName: {type: String},
     }
   }
 
@@ -130,6 +147,8 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     this._data = null
     this._x = 0
     this._y = 0
+    this._referenceHandle = ''
+    this._referenceName = ''
     this._cache = new Map()
     this._showTimer = null
     this._hideTimer = null
@@ -179,9 +198,17 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     }, SHOW_DELAY)
   }
 
-  _showPreview({objectType, grampsId, anchorRect}) {
+  _showPreview({
+    objectType,
+    grampsId,
+    anchorRect,
+    referenceHandle = '',
+    referenceName = '',
+  }) {
     this._objectType = objectType
     this._grampsId = grampsId
+    this._referenceHandle = referenceHandle
+    this._referenceName = referenceName
     this._position(anchorRect)
     this._visible = true
     this.updateComplete.then(() => {
@@ -305,7 +332,17 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     }, HIDE_DELAY)
   }
 
-  _handleOpen() {
+  _objectPath() {
+    return `${BASE_DIR}/${this._objectType}/${this._grampsId}`
+  }
+
+  _handleOpen(e) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      // Let the browser handle middle-click / modified click natively
+      // (open in a new tab/window) via the anchor's href.
+      return
+    }
+    e.preventDefault()
     this._visible = false
     fireEvent(this, 'nav', {path: `${this._objectType}/${this._grampsId}`})
   }
@@ -318,6 +355,10 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
           .data=${this._data}
           .appState=${this.appState}
           .homePersonDetails=${{}}
+          .referencePerson=${{
+            handle: this._referenceHandle,
+            name: this._referenceName,
+          }}
           .timelineData=${[]}
           ?preview=${true}
         ></grampsjs-person>`
@@ -385,14 +426,15 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         @mouseenter="${this._handlePopupMouseEnter}"
         @mouseleave="${this._handlePopupMouseLeave}"
       >
-        <md-icon-button
+        <a
           id="open-btn"
+          href="${this._objectPath()}"
           @click="${this._handleOpen}"
           title="${this._('_Open')}"
           aria-label="${this._('_Open')}"
         >
           <grampsjs-icon path="${mdiOpenInNew}"></grampsjs-icon>
-        </md-icon-button>
+        </a>
         <div id="content">${this._renderContent()}</div>
       </div>
     `

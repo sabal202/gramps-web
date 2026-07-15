@@ -1702,12 +1702,20 @@ function remasterChart(
       if (window.matchMedia('(hover: none)').matches) return
       const grampsId = d.profile?.gramps_id
       if (!grampsId) return
+      const rootPerson = rootHandle ? graph.known(rootHandle) : false
+      const referenceName = rootPerson
+        ? rootPerson.profile?.name_display ||
+          [rootPerson.profile?.name_given, rootPerson.profile?.name_surname]
+            .filter(Boolean)
+            .join(' ')
+        : ''
       window.dispatchEvent(
         new CustomEvent('object:preview-show', {
           detail: {
             objectType: 'person',
             grampsId,
             anchorRect: this.getBoundingClientRect(),
+            ...(rootHandle ? {referenceHandle: rootHandle, referenceName} : {}),
           },
         })
       )
