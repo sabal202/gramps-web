@@ -33,6 +33,20 @@ class GrampsjsTabBar extends GrampsjsAppStateMixin(LitElement) {
           margin: 20px;
           width: max-content;
           max-width: 100%;
+          /* Fade the right edge as an affordance that more tabs are scrollable
+             off-screen (the native scrollbar is hidden by MD3). The fade only
+             reads as visible when content actually reaches the edge — when all
+             tabs fit, it falls over empty space. */
+          -webkit-mask-image: linear-gradient(
+            to right,
+            black calc(100% - 20px),
+            transparent
+          );
+          mask-image: linear-gradient(
+            to right,
+            black calc(100% - 20px),
+            transparent
+          );
         }
 
         md-primary-tab {

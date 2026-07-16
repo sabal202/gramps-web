@@ -81,8 +81,8 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
 
         md-fab {
           position: fixed;
-          bottom: 32px;
-          right: 32px;
+          bottom: calc(32px + env(safe-area-inset-bottom));
+          right: calc(32px + env(safe-area-inset-right));
         }
       `,
     ]
