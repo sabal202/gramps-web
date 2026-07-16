@@ -10,6 +10,7 @@ import {fireEvent} from '../util.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {renderPersonListItem} from './personListUtils.js'
 import {sharedStyles} from '../SharedStyles.js'
+import {buildDistantLabel} from './relativesLabels.js'
 
 /**
  * Map from stable category_key (sent by backend) to the i18n string key used
@@ -322,7 +323,8 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   }
 
   _categoryLabel(key) {
-    return this._(categoryLabelKey(key))
+    const lang = this.appState?.i18n?.lang || ''
+    return buildDistantLabel(key, lang) ?? this._(categoryLabelKey(key))
   }
 
   _handleClick(grampsId) {
