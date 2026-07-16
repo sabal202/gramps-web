@@ -49,14 +49,17 @@ class GrampsjsTabBar extends GrampsjsAppStateMixin(LitElement) {
     super.disconnectedCallback()
   }
 
-  // The md-tabs host is itself the horizontal scroller (overflow:auto), so
-  // scrollWidth > clientWidth means some tabs are off-screen.
+  // The md-tabs host is clamped to max-width:100%; the actual horizontal
+  // scroller is its internal `.tabs` element, so measure that. If MD3's
+  // internal structure ever changes, the query returns null and the fade
+  // simply never shows (graceful — no crash).
   _checkOverflow() {
     const el = this.renderRoot?.querySelector('md-tabs')
-    if (!el) {
+    const scroller = el?.shadowRoot?.querySelector('.tabs')
+    if (!scroller) {
       return
     }
-    this._overflowing = el.scrollWidth > el.clientWidth + 1
+    this._overflowing = scroller.scrollWidth > scroller.clientWidth + 1
   }
 
   updated() {
