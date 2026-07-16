@@ -44,7 +44,7 @@ export class GrampsjsViewTreeChartBase extends GrampsjsStaleDataMixin(
         }
 
         #chart {
-          height: calc(100vh - 165px);
+          height: calc(100dvh - 165px);
           margin-left: -40px;
           margin-right: -40px;
           margin-bottom: -25px;

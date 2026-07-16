@@ -20,7 +20,7 @@ export class GrampsjsTimeline extends GrampsjsAppStateMixin(LitElement) {
       css`
         :host {
           display: block;
-          height: calc(100vh - 64px - 36px);
+          height: calc(100dvh - 64px - 36px);
           outline: none;
         }
 

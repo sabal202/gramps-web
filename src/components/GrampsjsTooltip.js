@@ -68,6 +68,9 @@ export class GrampsjsTooltip extends GrampsjsAppStateMixin(LitElement) {
       content: this.innerHTML,
       allowHTML: true,
       zIndex: 19999,
+      // Tooltips are a hover affordance; on touch they only flash before the
+      // tap's real action fires, so suppress them there entirely.
+      touch: false,
     }
     if (this.theme) {
       options.theme = this.theme

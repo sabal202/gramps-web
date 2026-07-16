@@ -25,24 +25,35 @@ class GrampsjsFormEditLatLong extends GrampsjsNominatimSearchMixin(
         md-dialog {
           min-width: 80vw;
         }
+
+        /* Latitude/Longitude side by side, stacking to one column on narrow
+           screens (replaces a non-collapsing float layout). */
+        .latlong-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 20px;
+        }
+
+        .latlong-row > div {
+          flex: 1 1 200px;
+        }
       `,
     ]
   }
 
   renderForm() {
     return html`
-      <div>
-        <div style="width:calc(50% - 20px);margin-right:20px;float:left;">
+      <div class="latlong-row">
+        <div>
           <grampsjs-form-string
             @formdata:changed="${this._handleFormData}"
             fullwidth
             id="lat"
             value="${this.data.lat || ''}"
             label="${this._('Latitude')}"
-            style="width:50%;"
           ></grampsjs-form-string>
         </div>
-        <div style="width:50%;float:left;">
+        <div>
           <grampsjs-form-string
             fullwidth
             @formdata:changed="${this._handleFormData}"
@@ -52,7 +63,7 @@ class GrampsjsFormEditLatLong extends GrampsjsNominatimSearchMixin(
           ></grampsjs-form-string>
         </div>
       </div>
-      <div style="clear:left; height: 20px;"></div>
+      <div style="height: 20px;"></div>
       ${this._renderSearchBox()} ${this._renderSearchResults()}
       <p
         style="color:var(--grampsjs-body-font-color-40);font-size:0.9em;margin-bottom:0.25em;"
