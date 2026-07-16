@@ -586,7 +586,10 @@ export async function apiRegisterUser(
         resJson?.error?.message || resp.statusText || `Error ${resp.status}`
       )
     }
-    return {}
+    // The 201 body may carry {email_confirmation_required: false} on instances
+    // that provision self-registered accounts immediately; pass it through so
+    // the UI can show the right post-registration message.
+    return resJson || {}
   } catch (error) {
     return {error: error.message}
   }

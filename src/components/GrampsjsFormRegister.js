@@ -58,6 +58,7 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
       emailError: {type: String},
       register: {type: Boolean},
       tree: {type: String},
+      emailConfirmationRequired: {type: Boolean},
     }
   }
 
@@ -68,6 +69,7 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
     this.email = ''
     this.emailError = ''
     this.tree = ''
+    this.emailConfirmationRequired = true
   }
 
   render() {
@@ -143,9 +145,19 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
             <mwc-icon>check_circle</mwc-icon><br />
             ${this._('New account registered successfully.')}
             <br />
-            ${this._(
-              'Please confirm your e-mail address by clicking the link in the e-mail you received and then wait for the tree owner to activate your account.'
-            )}
+            ${this.emailConfirmationRequired
+              ? this._(
+                  'Please confirm your e-mail address by clicking the link in the e-mail you received and then wait for the tree owner to activate your account.'
+                )
+              : html`
+                  ${this._(
+                    'You can now log in with your username and password.'
+                  )}
+                  <br />
+                  <span class="link" @click="${this._handleClickLogin}">
+                    ${this._('login')}
+                  </span>
+                `}
           </p>
           <p class="reset-link">
             ${this._('Already have an account?')}
@@ -234,6 +246,10 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
     if ('error' in res) {
       this._showError(res.error)
     } else {
+      // Instances that provision the account immediately return
+      // {email_confirmation_required: false}; default to the stock two-step
+      // (e-mail confirmation) message when the flag is absent.
+      this.emailConfirmationRequired = res.email_confirmation_required !== false
       divSuccess.style.display = 'block'
       innerForm.style.display = 'none'
     }

@@ -107,6 +107,7 @@
     "reset password": "сброс пароля",
     "Please confirm your e-mail address by clicking the link in the e-mail you received and then wait for the tree owner to activate your account.": "Подтвердите свой адрес эл. почты, нажав на ссылку в полученном письме, а потом дождитесь, когда владелец древа активирует вашу учётную запись.",
     "New account registered successfully.": "Новая учётная запись зарегистрирована успешно.",
+    "You can now log in with your username and password.": "Теперь вы можете войти, используя своё имя пользователя и пароль.",
     "Copy URL": "Копировать адрес URL",
     "Upload a ZIP archive with files for existing media objects.": "Загрузить ZIP-архив с файлами для уже созданных медиа-объектов.",
     "Import Media Files": "Импортировать медиа-файлы",
