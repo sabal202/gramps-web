@@ -1895,6 +1895,16 @@ function remasterChart(
   gvchartx.remove()
 }
 
+// The relationship chart's viewBox is a pure function of the container size:
+// a box of the container's dimensions, centred on the origin (root sits at
+// 0,0). It does NOT depend on the graphviz layout, so a container resize only
+// needs the viewBox updated — not a full relayout. Exported so the host
+// component can apply it imperatively on resize (see GrampsjsRelationshipChart
+// shouldUpdate) using the exact same formula as the initial build below.
+export function relationshipViewBox(bboxWidth, bboxHeight) {
+  return [-bboxWidth / 2, -bboxHeight / 2, bboxWidth, bboxHeight]
+}
+
 export function RelationshipChart(
   data,
   {
@@ -1990,12 +2000,7 @@ export function RelationshipChart(
       rootHandle,
       showAllParents
     )
-    svg.attr('viewBox', [
-      -bboxWidth / 2,
-      -bboxHeight / 2,
-      bboxWidth,
-      bboxHeight,
-    ])
+    svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
     if (shrinkToFit) {
       const bbox = svg.node().getBBox()
       if (bbox.height > bboxHeight) {

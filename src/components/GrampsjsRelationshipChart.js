@@ -5,7 +5,10 @@ import '@material/mwc-menu'
 import '@material/mwc-list/mwc-list-item'
 
 import {GrampsjsChartBase} from './GrampsjsChartBase.js'
-import {RelationshipChart} from '../charts/RelationshipChart.js'
+import {
+  RelationshipChart,
+  relationshipViewBox,
+} from '../charts/RelationshipChart.js'
 import {getImageUrl} from '../charts/util.js'
 
 class GrampsjsRelationshipChart extends GrampsjsChartBase {
@@ -78,6 +81,36 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     this.gapX = 30
     this._savedZoom = null
     this.collapsed = new Set()
+  }
+
+  shouldUpdate(changed) {
+    // A container resize only changes the SVG viewBox (a pure function of the
+    // container size — see relationshipViewBox), NOT the graphviz layout. So
+    // when the ONLY changed properties are the container dimensions, patch the
+    // existing SVG's viewBox imperatively and skip the update entirely, instead
+    // of rebuilding the whole chart (graphviz relayout + full DOM rebuild) on
+    // every ResizeObserver tick.
+    const onlyResize = [...changed.keys()].every(
+      k => k === 'containerWidth' || k === 'containerHeight'
+    )
+    if (
+      onlyResize &&
+      (changed.has('containerWidth') || changed.has('containerHeight'))
+    ) {
+      const svg = this.renderRoot
+        ?.getElementById('container')
+        ?.querySelector('svg')
+      if (svg && this.containerWidth > 0 && this.containerHeight > 0) {
+        svg.setAttribute(
+          'viewBox',
+          relationshipViewBox(this.containerWidth, this.containerHeight).join(
+            ' '
+          )
+        )
+      }
+      return false
+    }
+    return true
   }
 
   willUpdate() {
