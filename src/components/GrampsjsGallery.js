@@ -61,14 +61,15 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           border-radius: 50%;
         }
 
-        /* Edit-mode move/delete overlay buttons crowd a photo-tile corner; on
-           touch give them a 44px tap target so delete isn't a fat-finger risk.
-           The standard md-icon-button sizes its hit area via the state layer,
-           not the container width/height. */
+        /* Edit-mode reorder/delete buttons share a tight tile corner. On touch,
+           widen the gap so the (already ~40px) hit areas separate cleanly and
+           Delete isn't a mis-tap risk next to the reorder buttons — enlarging
+           them instead would overlap in a small tile and make that worse.
+           (A structural fix — Delete in its own corner / a confirm step — is
+           still worth doing later.) */
         @media (pointer: coarse) {
-          .tile-overlay md-icon-button {
-            --md-icon-button-state-layer-width: 44px;
-            --md-icon-button-state-layer-height: 44px;
+          .tile-overlay {
+            gap: 8px;
           }
         }
 

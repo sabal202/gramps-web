@@ -50,6 +50,16 @@ export class GrampsjsBreadcrumbs extends GrampsjsAppStateMixin(LitElement) {
         .breadcrumb .action-buttons {
           margin-left: 10px;
           gap: 7px;
+          flex-shrink: 0;
+        }
+
+        /* The label link truncates rather than pushing the (larger on touch)
+           action buttons off the row on narrow screens with long labels. */
+        .breadcrumb a {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .breadcrumb span {
@@ -79,7 +89,8 @@ export class GrampsjsBreadcrumbs extends GrampsjsAppStateMixin(LitElement) {
             height: 44px;
             width: 44px;
           }
-          .breadcrumb .action-buttons grampsjs-share-url,
+          /* share-url bumps itself at its own source (parent overrides can't
+             reach its internal rule); bookmark-button honours this one. */
           .breadcrumb .action-buttons grampsjs-bookmark-button {
             --mdc-icon-button-size: 44px;
           }

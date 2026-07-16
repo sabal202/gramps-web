@@ -11,7 +11,7 @@ class GrampsjsLightbox extends LitElement {
         :host {
           --grampsjs-lightbox-toolbar-height: 70px;
           --grampsjs-img-max-height: calc(
-            100vh - var(--grampsjs-lightbox-toolbar-height)
+            100dvh - var(--grampsjs-lightbox-toolbar-height)
           );
         }
 
@@ -44,7 +44,7 @@ class GrampsjsLightbox extends LitElement {
           left: 0;
           top: 0;
           right: 0;
-          min-height: 100vh;
+          min-height: 100dvh;
           width: 100vw;
           z-index: 10000;
           overflow: hidden;
@@ -67,7 +67,7 @@ class GrampsjsLightbox extends LitElement {
           position: absolute;
           box-sizing: border-box;
           width: 100%;
-          top: calc(100vh - var(--grampsjs-lightbox-toolbar-height));
+          top: calc(100dvh - var(--grampsjs-lightbox-toolbar-height));
           left: 0;
           background-color: var(--md-sys-color-surface);
           color: var(--md-sys-color-on-surface);

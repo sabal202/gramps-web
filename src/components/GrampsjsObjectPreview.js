@@ -83,6 +83,8 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         max-width: calc(100vw - 16px);
         max-height: calc(100dvh - 16px);
         z-index: 2;
+        display: flex;
+        flex-direction: column;
         background: var(--md-sys-color-surface);
         color: var(--md-sys-color-on-surface);
         border: 1px solid var(--md-sys-color-outline-variant);
@@ -134,37 +136,40 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         background: var(--grampsjs-body-font-color-10);
       }
 
-      /* "Make this person the chart root" — shown only in touch mode, to the
-         left of the open button. On touch, a tap opens the card instead of
-         re-rooting, so re-rooting moves here. */
-      #root-btn {
-        position: absolute;
-        top: 4px;
-        right: 52px;
-        z-index: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        border: none;
-        border-radius: 50%;
-        background: transparent;
-        color: var(--md-sys-color-on-surface-variant);
-        cursor: pointer;
-      }
-
       #content {
-        height: 100%;
+        flex: 1;
+        min-height: 0;
         overflow-y: auto;
         padding: 16px;
         padding-right: 56px;
         box-sizing: border-box;
       }
 
-      /* Reserve room for the second (make-root) button in touch mode. */
-      #popup.touch #content {
-        padding-right: 100px;
+      /* Touch: a clearly-labelled "make this person the chart root" action bar
+         at the bottom of the card. On touch a tap opens the card instead of
+         re-rooting, so re-rooting lives here — an explicit labelled button is
+         far more discoverable for non-technical users than a corner icon. */
+      .touch-actions {
+        flex-shrink: 0;
+        padding: 8px;
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+      }
+
+      .root-action {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 44px;
+        border: none;
+        border-radius: 22px;
+        background: var(--md-sys-color-secondary-container);
+        color: var(--md-sys-color-on-secondary-container);
+        font-family: inherit;
+        font-size: 0.95em;
+        font-weight: 500;
+        cursor: pointer;
       }
     `
   }
@@ -503,16 +508,6 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         @mouseenter="${this._handlePopupMouseEnter}"
         @mouseleave="${this._handlePopupMouseLeave}"
       >
-        ${showRootBtn
-          ? html`<button
-              id="root-btn"
-              @click="${this._handleMakeRoot}"
-              title="${this._('Make root')}"
-              aria-label="${this._('Make root')}"
-            >
-              <grampsjs-icon path="${mdiTargetAccount}"></grampsjs-icon>
-            </button>`
-          : nothing}
         <a
           id="open-btn"
           href="${this._objectPath()}"
@@ -523,6 +518,14 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
           <grampsjs-icon path="${mdiOpenInNew}"></grampsjs-icon>
         </a>
         <div id="content">${this._renderContent()}</div>
+        ${showRootBtn
+          ? html`<div class="touch-actions">
+              <button class="root-action" @click="${this._handleMakeRoot}">
+                <grampsjs-icon path="${mdiTargetAccount}"></grampsjs-icon>
+                ${this._('Make root')}
+              </button>
+            </div>`
+          : nothing}
       </div>
     `
   }
