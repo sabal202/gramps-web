@@ -19,6 +19,14 @@ export function appendAddPersonButton(nodeSelection, cx, cy, getHandle) {
     })
     .on('pointerdown', e => e.stopPropagation())
 
+  // Invisible larger hit area so the button is a comfortable ~44px touch
+  // target while the visible "+" glyph stays small (20px).
+  btn
+    .append('circle')
+    .attr('r', 22)
+    .attr('fill', 'transparent')
+    .style('pointer-events', 'all')
+
   btn
     .append('circle')
     .attr('r', r)

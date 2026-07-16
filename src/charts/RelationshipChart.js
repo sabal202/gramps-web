@@ -995,7 +995,7 @@ function addCollapseAffordances(
         }
         g.append('circle')
           .attr('class', 'collapse-touch-hit')
-          .attr('r', 22)
+          .attr('r', 24)
           .attr('cx', 0)
           .attr('cy', boxHeight / 2 + FAMILY_ANCHOR_Y_OFFSET)
           .attr('fill', 'transparent')
@@ -1149,6 +1149,17 @@ function addCollapseAffordances(
       .style('touch-action', 'manipulation')
     chip.append('title').text(ariaLabel)
     const pillWidth = isCollapse ? 22 : 36
+    // Invisible larger hit area so the small pill is easier to tap. Height is
+    // kept near the vertical stagger (22px) so stacked chips don't overlap.
+    const hitWidth = Math.max(pillWidth, 40)
+    chip
+      .append('rect')
+      .attr('x', -hitWidth / 2)
+      .attr('y', -12)
+      .attr('width', hitWidth)
+      .attr('height', 24)
+      .attr('fill', 'transparent')
+      .style('pointer-events', 'all')
     chip
       .append('rect')
       .attr('x', -pillWidth / 2)
@@ -1929,6 +1940,7 @@ export function RelationshipChart(
   const svg = resultnode
     .append('svg')
     .call(zoomBehavior)
+    .style('touch-action', 'none')
     .attr('font-family', 'Inter var')
     .attr('font-size', 13)
 

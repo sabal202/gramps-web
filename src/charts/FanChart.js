@@ -333,7 +333,7 @@ export function FanChart(
         svg.select('#chart-content').attr('transform', e.transform)
       )
     )
-    .attr('style', 'max-width: 100%; height: auto;')
+    .attr('style', 'max-width: 100%; height: auto; touch-action: none;')
     .attr('font-family', 'Inter var')
     .attr('font-size', 12)
     .attr('text-anchor', 'middle')

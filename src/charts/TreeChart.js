@@ -478,6 +478,7 @@ export function TreeChart(dataDescendants, dataAncestors, chartsettings) {
         svg.select('#chart-content').attr('transform', e.transform)
       )
     )
+    .style('touch-action', 'none')
     .attr('font-family', 'Inter var')
     .attr('font-size', 13)
 
