@@ -57,8 +57,18 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           flex: 1;
           overflow-y: auto;
           display: flex;
-          flex-direction: column-reverse;
+          flex-direction: column;
           padding: 0 10px 20px 10px;
+        }
+
+        /* Messages are laid out in natural (oldest→newest) DOM order so that
+           selecting across bubbles copies text in reading order — a reversed
+           DOM (the old column-reverse trick) serialises the clipboard
+           backwards. margin-top:auto keeps a short conversation pinned to the
+           bottom; it collapses to 0 once the content overflows, so the top
+           stays scrollable. */
+        .messages {
+          margin-top: auto;
         }
 
         .prompt {
@@ -162,6 +172,10 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     this._liveToolCalls = []
     this._liveStatus = ''
     this._liveText = ''
+    // Whether the conversation should re-pin to the bottom after the next
+    // render. Captured before each update so we only auto-scroll when the user
+    // was already reading the latest messages (not when they scrolled up).
+    this._stickToBottom = true
   }
 
   get _homePersonName() {
@@ -231,27 +245,8 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           : ''}
         <div class="container">
           <div class="conversation">
-            ${this.loading
-              ? html`<grampsjs-chat-message
-                  type="ai"
-                  .message="${this._liveText}"
-                  .metadata="${this._liveMetadata}"
-                  .status="${this._liveStatus}"
-                  ?live="${true}"
-                  .appState="${this.appState}"
-                >
-                  ${this._liveText
-                    ? ''
-                    : html`<div class="loading" slot="no-wrap">
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                      </div>`}
-                </grampsjs-chat-message>`
-              : ''}
-            ${this.messages
-              .toReversed()
-              .map(
+            <div class="messages">
+              ${this.messages.map(
                 message => html`
                   <grampsjs-chat-message
                     type="${message.role}"
@@ -261,6 +256,25 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
                   ></grampsjs-chat-message>
                 `
               )}
+              ${this.loading
+                ? html`<grampsjs-chat-message
+                    type="ai"
+                    .message="${this._liveText}"
+                    .metadata="${this._liveMetadata}"
+                    .status="${this._liveStatus}"
+                    ?live="${true}"
+                    .appState="${this.appState}"
+                  >
+                    ${this._liveText
+                      ? ''
+                      : html`<div class="loading" slot="no-wrap">
+                          <div class="dot"></div>
+                          <div class="dot"></div>
+                          <div class="dot"></div>
+                        </div>`}
+                  </grampsjs-chat-message>`
+                : ''}
+            </div>
           </div>
           ${this.messages.length === 0 && !this.loading
             ? html`<div class="suggestions">
@@ -386,7 +400,8 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         receivedAny = true
         if (ev.type === 'delta') {
           this._liveText += ev.text || ''
-          this._scrollToLastMessage()
+          // Re-pinning to the bottom is handled by updated() (respecting the
+          // user's scroll position); no explicit scroll needed here.
         } else if (ev.type === 'tool') {
           if (ev.name && !this._liveToolCalls.some(t => t.step === ev.step)) {
             this._liveToolCalls = [
@@ -530,6 +545,27 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     setChatHistory(this.messages)
     setChatTaskId(null)
     setChatMessageHistoryRaw(null)
+  }
+
+  _isNearBottom() {
+    const conversationDiv = this.renderRoot.querySelector('.conversation')
+    if (conversationDiv == null) {
+      return true
+    }
+    const {scrollHeight, scrollTop, clientHeight} = conversationDiv
+    return scrollHeight - scrollTop - clientHeight < 80
+  }
+
+  // Capture the scroll intent BEFORE the DOM grows, so a new message only
+  // yanks the view to the bottom when the user was already there.
+  willUpdate() {
+    this._stickToBottom = this._isNearBottom()
+  }
+
+  updated() {
+    if (this._stickToBottom) {
+      this._scrollToLastMessage()
+    }
   }
 
   _scrollToLastMessage() {
