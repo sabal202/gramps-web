@@ -570,8 +570,11 @@ function prefersReducedMotion() {
 function bfsDistances(rootHandle, neighbors) {
   const dist = new Map([[rootHandle, 0]])
   const queue = [rootHandle]
-  while (queue.length) {
-    const cur = queue.shift()
+  // Index pointer instead of Array.shift() (which is O(n) per dequeue and
+  // turns this BFS into O(V^2) on large visible graphs).
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head++]
     for (const nxt of neighbors.get(cur) ?? []) {
       if (!dist.has(nxt)) {
         dist.set(nxt, dist.get(cur) + 1)
@@ -1693,6 +1696,9 @@ function remasterChart(
   // sets suppressClick, so the click the browser still generates on
   // pointer-release does not ALSO reroot to this person.
   const touchState = {suppressClick: false}
+  // Touch devices have no hover; evaluate the media query once per render
+  // instead of on every click/mouseenter/mouseleave that fires.
+  const isTouchDevice = window.matchMedia('(hover: none)').matches
   nodes
     .filter(d => d.nodetype === 'person')
     .style('cursor', canEdit ? 'default' : 'pointer')
@@ -1705,7 +1711,7 @@ function remasterChart(
               touchState.suppressClick = false
               return
             }
-            if (window.matchMedia('(hover: none)').matches) {
+            if (isTouchDevice) {
               // Touch has no hover, so a plain tap would silently re-root with
               // no way to glance at the person first. Show the preview card
               // instead; re-rooting is offered as a button inside it.
@@ -1741,7 +1747,7 @@ function remasterChart(
     )
     .on('mouseenter', function (event, d) {
       if (canEdit) return
-      if (window.matchMedia('(hover: none)').matches) return
+      if (isTouchDevice) return
       const grampsId = d.profile?.gramps_id
       if (!grampsId) return
       const rootPerson = rootHandle ? graph.known(rootHandle) : false
@@ -1763,7 +1769,7 @@ function remasterChart(
       )
     })
     .on('mouseleave', () => {
-      if (window.matchMedia('(hover: none)').matches) return
+      if (isTouchDevice) return
       window.dispatchEvent(new CustomEvent('object:preview-hide'))
     })
 
