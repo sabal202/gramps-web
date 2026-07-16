@@ -83,8 +83,12 @@ class GrampsjsChatToolCalls extends LitElement {
         }
 
         /* Keep the visible pill small but expand the tap target to ~40px on
-           touch (the icon stays 14px). */
+           touch (the icon stays 14px). Gap grows to 14px so the two 7px
+           expansions of adjacent pills meet without overlapping. */
         @media (pointer: coarse) {
+          .pills {
+            gap: 14px;
+          }
           .pill::before {
             content: '';
             position: absolute;

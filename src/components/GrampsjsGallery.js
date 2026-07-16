@@ -62,11 +62,13 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
         }
 
         /* Edit-mode move/delete overlay buttons crowd a photo-tile corner; on
-           touch give them a 40px tap target so delete isn't a fat-finger risk. */
+           touch give them a 44px tap target so delete isn't a fat-finger risk.
+           The standard md-icon-button sizes its hit area via the state layer,
+           not the container width/height. */
         @media (pointer: coarse) {
           .tile-overlay md-icon-button {
-            --md-icon-button-container-width: 40px;
-            --md-icon-button-container-height: 40px;
+            --md-icon-button-state-layer-width: 44px;
+            --md-icon-button-state-layer-height: 44px;
           }
         }
 

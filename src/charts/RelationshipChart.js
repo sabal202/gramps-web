@@ -1155,9 +1155,9 @@ function addCollapseAffordances(
     chip
       .append('rect')
       .attr('x', -hitWidth / 2)
-      .attr('y', -12)
+      .attr('y', -11)
       .attr('width', hitWidth)
-      .attr('height', 24)
+      .attr('height', 22)
       .attr('fill', 'transparent')
       .style('pointer-events', 'all')
     chip

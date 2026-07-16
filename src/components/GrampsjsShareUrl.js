@@ -30,6 +30,14 @@ export class GrampsjsShareUrl extends GrampsjsAppStateMixin(LitElement) {
           --mdc-icon-button-size: 28px;
           position: relative;
         }
+
+        /* Touch: comfortable tap target (parent custom-property overrides can't
+           reach this internal rule, so bump it here at the source). */
+        @media (pointer: coarse) {
+          mwc-icon-button {
+            --mdc-icon-button-size: 44px;
+          }
+        }
       `,
     ]
   }

@@ -25,6 +25,49 @@ const tabs = {
 }
 
 class GrampsjsTabBar extends GrampsjsAppStateMixin(LitElement) {
+  static get properties() {
+    return {
+      _overflowing: {state: true},
+    }
+  }
+
+  constructor() {
+    super()
+    this._overflowing = false
+    this._resizeObserver = new ResizeObserver(() => this._checkOverflow())
+    this._boundCheckOverflow = () => this._checkOverflow()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    window.addEventListener('resize', this._boundCheckOverflow)
+  }
+
+  disconnectedCallback() {
+    this._resizeObserver.disconnect()
+    window.removeEventListener('resize', this._boundCheckOverflow)
+    super.disconnectedCallback()
+  }
+
+  // The md-tabs host is itself the horizontal scroller (overflow:auto), so
+  // scrollWidth > clientWidth means some tabs are off-screen.
+  _checkOverflow() {
+    const el = this.renderRoot?.querySelector('md-tabs')
+    if (!el) {
+      return
+    }
+    this._overflowing = el.scrollWidth > el.clientWidth + 1
+  }
+
+  updated() {
+    const el = this.renderRoot?.querySelector('md-tabs')
+    if (el) {
+      this._resizeObserver.disconnect()
+      this._resizeObserver.observe(el)
+    }
+    this._checkOverflow()
+  }
+
   static get styles() {
     return [
       sharedStyles,
@@ -33,10 +76,13 @@ class GrampsjsTabBar extends GrampsjsAppStateMixin(LitElement) {
           margin: 20px;
           width: max-content;
           max-width: 100%;
-          /* Fade the right edge as an affordance that more tabs are scrollable
-             off-screen (the native scrollbar is hidden by MD3). The fade only
-             reads as visible when content actually reaches the edge — when all
-             tabs fit, it falls over empty space. */
+        }
+
+        /* Fade the right edge as an affordance that more tabs are scrollable
+           off-screen (the native scrollbar is hidden by MD3). Applied ONLY when
+           the tabs actually overflow (see the ResizeObserver below) — otherwise
+           the fade would wash out the last tab when everything fits. */
+        md-tabs.overflowing {
           -webkit-mask-image: linear-gradient(
             to right,
             black calc(100% - 20px),
@@ -81,7 +127,10 @@ class GrampsjsTabBar extends GrampsjsAppStateMixin(LitElement) {
       this._permissionToSeeTab(this.appState.path.page, key)
     )
     return html`
-      <md-tabs .activeTabIndex=${filteredTabKeys.indexOf(currentKey)}>
+      <md-tabs
+        class="${this._overflowing ? 'overflowing' : ''}"
+        .activeTabIndex=${filteredTabKeys.indexOf(currentKey)}
+      >
         ${filteredTabKeys.map(
           key =>
             html`
