@@ -27,6 +27,7 @@ import {
   mdiTimelineOutline,
   mdiAccountGroup,
   mdiImagePlus,
+  mdiCalendarExport,
 } from '@mdi/js'
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -283,6 +284,14 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
         ?selected="${p === 'export'}"
       >
         ${this._icon(mdiDownload, p === 'export')} ${this._('Export')}
+      </md-list-item>
+      <md-list-item
+        type="link"
+        href="${BASE_DIR}/calendar"
+        ?selected="${p === 'calendar'}"
+      >
+        ${this._icon(mdiCalendarExport, p === 'calendar')}
+        ${this._('Calendar subscription')}
       </md-list-item>
       <md-divider inset></md-divider>
       ${this.appState.permissions.canViewPrivate

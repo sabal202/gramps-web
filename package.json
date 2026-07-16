@@ -165,6 +165,7 @@
     "marked": "^18.0.4",
     "pwa-helper-components": "^0.2.10",
     "pwa-helpers": "^0.9.1",
+    "qrcode-generator": "^2.0.4",
     "tippy.js": "^6.3.7"
   }
 }

@@ -19,6 +19,7 @@ import '../views/GrampsjsViewNotes.js'
 import '../views/GrampsjsViewMediaObjects.js'
 import '../views/GrampsjsViewChat.js'
 import '../views/GrampsjsViewExport.js'
+import '../views/GrampsjsViewCalendar.js'
 import '../views/GrampsjsViewPerson.js'
 import '../views/GrampsjsViewFamily.js'
 import '../views/GrampsjsViewPlace.js'
@@ -277,6 +278,11 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
         ?active=${this.appState.path.page === 'reports'}
         .appState="${this.appState}"
       ></grampsjs-view-reports>
+      <grampsjs-view-calendar
+        class="page"
+        ?active=${this.appState.path.page === 'calendar'}
+        .appState="${this.appState}"
+      ></grampsjs-view-calendar>
       <grampsjs-view-search
         class="page"
         ?active=${this.appState.path.page === 'search'}

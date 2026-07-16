@@ -98,6 +98,7 @@ const PAGE_TITLES = {
   notifications: 'Notifications',
   tags: 'Tags',
   export: 'Export',
+  calendar: 'Calendar subscription',
   reports: '_Reports',
   report: '_Reports',
   revisions: 'Revisions',
