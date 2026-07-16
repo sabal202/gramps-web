@@ -33,7 +33,7 @@ class GrampsjsChatToolCalls extends LitElement {
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           min-height: 26px;
           margin-bottom: 12px;
         }
@@ -78,7 +78,19 @@ class GrampsjsChatToolCalls extends LitElement {
           cursor: pointer;
           line-height: 0;
           flex-shrink: 0;
+          position: relative;
           animation: popIn 0.2s ease-out both;
+        }
+
+        /* Keep the visible pill small but expand the tap target to ~40px on
+           touch (the icon stays 14px). */
+        @media (pointer: coarse) {
+          .pill::before {
+            content: '';
+            position: absolute;
+            inset: -7px;
+            border-radius: 50%;
+          }
         }
 
         .pill.open {

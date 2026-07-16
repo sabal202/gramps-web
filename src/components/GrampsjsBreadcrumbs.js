@@ -71,6 +71,20 @@ export class GrampsjsBreadcrumbs extends GrampsjsAppStateMixin(LitElement) {
           position: relative;
         }
 
+        /* These sit next to each other and toggle privacy/bookmark/share, so
+           on touch bump them to a comfortable 44px tap target (they're 28px,
+           fine for a mouse, too small for a fingertip). */
+        @media (pointer: coarse) {
+          .breadcrumb .action-buttons md-icon-button {
+            height: 44px;
+            width: 44px;
+          }
+          .breadcrumb .action-buttons grampsjs-share-url,
+          .breadcrumb .action-buttons grampsjs-bookmark-button {
+            --mdc-icon-button-size: 44px;
+          }
+        }
+
         .breadcrumb .action-buttons grampsjs-bookmark-button {
           --mdc-icon-size: 17px;
         }

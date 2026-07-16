@@ -49,6 +49,14 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
           --md-list-item-one-line-container-height: 40px;
         }
 
+        /* The drawer is the primary navigation; on touch, restore the 48px
+           Material minimum tap target (40px is fine for a mouse). */
+        @media (pointer: coarse) {
+          md-list-item {
+            --md-list-item-one-line-container-height: 48px;
+          }
+        }
+
         md-list-item[selected] {
           --md-list-item-label-text-color: var(--grampsjs-color-icon-selected);
           --md-list-item-label-text-weight: 500;

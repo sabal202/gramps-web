@@ -336,6 +336,12 @@ class GrampsjsFormExternalSearch extends GrampsjsObjectForm {
           width: 32px;
           height: 32px;
         }
+        @media (pointer: coarse) {
+          md-icon-button {
+            width: 40px;
+            height: 40px;
+          }
+        }
         .item-hidden {
           opacity: 0.4;
         }

@@ -61,6 +61,15 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           border-radius: 50%;
         }
 
+        /* Edit-mode move/delete overlay buttons crowd a photo-tile corner; on
+           touch give them a 40px tap target so delete isn't a fat-finger risk. */
+        @media (pointer: coarse) {
+          .tile-overlay md-icon-button {
+            --md-icon-button-container-width: 40px;
+            --md-icon-button-container-height: 40px;
+          }
+        }
+
         .edit-actions {
           margin-top: 8px;
         }
