@@ -1962,6 +1962,14 @@ export function RelationshipChart(
 
   const chartContent = svg.append('g').attr('id', 'chart-content')
 
+  // Set the viewBox synchronously: it is a pure function of the container
+  // size (relationshipViewBox), independent of the async graphviz layout, so
+  // it must NOT be set inside the .then() below — otherwise a resize handled
+  // while a layout is still pending (notably the initial -1 -> real size
+  // transition) would be clobbered back to the stale build-time dimensions.
+  // The shrinkToFit branch still overrides post-layout for its consumers.
+  svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
+
   if (initialZoom) {
     svg.node().__zoom = initialZoom
     chartContent.attr('transform', initialZoom.toString())
@@ -2000,7 +2008,6 @@ export function RelationshipChart(
       rootHandle,
       showAllParents
     )
-    svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
     if (shrinkToFit) {
       const bbox = svg.node().getBBox()
       if (bbox.height > bboxHeight) {
