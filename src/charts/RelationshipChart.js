@@ -1272,39 +1272,12 @@ function addCollapseAffordances(
       })
   }
 }
-function remasterChart(
-  divhidden,
-  targetsvg,
-  graph,
-  boxWidth,
-  boxHeight,
-  imgPadding,
-  getImageUrl,
-  maxImages,
-  nameDisplayFormat,
-  canEdit = false,
-  showUnionDates = false,
-  unionStatusLabels = {},
-  showMaidenName = false,
-  // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
-  // as ⊕N chips below.
-  chips = [],
-  // Outer <svg> selection + its d3-zoom behavior, so a focused node can
-  // pan/recentre itself into view (best-effort; see focusPanToNode below).
-  svg = null,
-  zoomBehavior = null,
-  collapseLabels = {},
-  // Same values the factory passed to pruneGraph (see collapse.js) — needed
-  // again here (in addition to the already-pruned `graph`) so
-  // addCollapseAffordances can answer "what would cut X additionally hide"
-  // against the FULL tree, not just the currently-visible subset.
-  data = [],
-  collapsed = new Set(),
-  rootHandle = undefined,
-  showAllParents = false
-) {
-  const gvchartx = divhidden.select('svg')
-  const nodedata = []
+// Per-node geometry + text helpers shared by every render pass. All pure
+// functions of the layout params; grouped into one ctx object so the render
+// functions below take a small explicit context instead of ~20 positional
+// arguments (see remasterChart / addCollapseAffordances).
+function buildRenderContext(params) {
+  const {boxWidth, boxHeight, imgPadding, showMaidenName} = params
   // The avatar bitmap is a fixed 70x70 (see the image pattern below), so the
   // circle must stay 35px radius regardless of boxHeight. Deriving it from
   // boxHeight made the "show maiden name" taller box (108) blow the circle up
@@ -1340,6 +1313,34 @@ function remasterChart(
   }
   const relBirthRow = d => 2 + (showMaidenName && d.maidenSurname ? 1 : 0)
   const relDeathRow = d => relBirthRow(d) + (d.profile?.birth?.date ? 1 : 0)
+  // Vertical center of the union marker row (bar/rings/slash/cross/date). y
+  // stays fixed at boxHeight/2 - 10: family nodes share a graphviz rank (same
+  // cluster) with their spouses, so their yCoord already lines up with the
+  // spouse cards' vertical mid — only the horizontal span needed fixing.
+  const unionMarkerY = boxHeight / 2 - 10
+  return {
+    ...params,
+    imgRadius,
+    textPadding,
+    boxWidthTotal,
+    REL_LINE_STEP,
+    REL_FIRST_BASELINE,
+    personBoxHeight,
+    relBirthRow,
+    relDeathRow,
+    unionMarkerY,
+  }
+}
+
+// Parse graphviz's hidden layout <svg> into an array of node-data records
+// (person cards + family marriage-marker nodes), reading each node's
+// graphviz-preserved <title> for its family-cluster-qualified identity. Returns
+// the records plus the hidden graphviz selection (the caller copies its edges
+// from it and removes it once drawing is done).
+function deriveNodeData(divhidden, ctx) {
+  const {graph, boxWidth, getImageUrl, maxImages, personBoxHeight} = ctx
+  const gvchartx = divhidden.select('svg')
+  const nodedata = []
   // based on graphviz created nodes build array containing node data to be bound to d3 nodes
   let imageCount = 0
   gvchartx.selectAll('.node').each(function () {
@@ -1409,17 +1410,26 @@ function remasterChart(
       })
     }
   })
-  // container for edges
-  const edges = targetsvg.append('g').attr('class', 'edges')
+  return {nodedata, gvchartx}
+}
 
-  // build d3 based nodes with data bound to them
-  const nodes = targetsvg
-    .selectAll('.node')
-    .data(nodedata)
-    .enter()
-    .append('g')
-    .attr('transform', d => `translate(${d.xCoord} ${d.yCoord})`)
-    .attr('class', d => `node ${d.nodetype}`)
+// Person cards: the two coloured rects (sex bar + card), the two name lines,
+// the optional maiden line, birth/death dates, and the avatar image pattern.
+// Appends onto the already-created, data-bound `nodes` selection.
+function renderPersonNodes(nodes, targetsvg, nodedata, ctx) {
+  const {
+    boxWidth,
+    imgPadding,
+    imgRadius,
+    textPadding,
+    boxWidthTotal,
+    nameDisplayFormat,
+    showMaidenName,
+    relBirthRow,
+    relDeathRow,
+    REL_FIRST_BASELINE,
+    REL_LINE_STEP,
+  } = ctx
 
   nodes
     .filter(d => d.nodetype === 'person')
@@ -1547,6 +1557,13 @@ function remasterChart(
     .attr('height', 70)
     .attr('width', 70)
     .attr('xlink:href', d => d.imageUrl)
+}
+
+// Family marriage-marker nodes: the union bar (sized to actually reach both
+// spouse cards), the accessible status label, the ring/slash/cross glyphs and
+// the optional union-date label.
+function renderUnionMarkers(nodes, nodedata, ctx) {
+  const {boxWidth, unionMarkerY, showUnionDates, unionStatusLabels} = ctx
 
   // Absolute (family-node-local-frame-independent) left edge of every
   // visible person card, keyed by the family-cluster-qualified identity
@@ -1596,17 +1613,14 @@ function remasterChart(
 
   // Union bar — draw for every family node; unknown status → plain bar, no ring/decoration.
   // The bar is always drawn first (insert ':first-child') so rings/overlays render on top.
-  // y stays fixed (boxHeight/2 - 10): family nodes share a graphviz rank
-  // (same cluster) with their spouses, so their yCoord already lines up with
-  // the spouse cards' vertical mid — only the horizontal span needed fixing.
   nodes
     .filter(d => d.nodetype === 'family')
     .insert('line', ':first-child')
     .attr('class', 'union-bar')
     .attr('x1', d => unionBarSpan(d).x1)
     .attr('x2', d => unionBarSpan(d).x2)
-    .attr('y1', boxHeight / 2 - 10)
-    .attr('y2', boxHeight / 2 - 10)
+    .attr('y1', unionMarkerY)
+    .attr('y2', unionMarkerY)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
     .attr('stroke-width', 1)
     .attr('stroke-dasharray', d => (d.markerDesc.dashed ? '3,2' : null))
@@ -1628,7 +1642,7 @@ function remasterChart(
     .attr('class', 'union-ring union-ring-left')
     .attr('r', 5)
     .attr('cx', d => (d.markerDesc.rings === 2 ? -5 : 0))
-    .attr('cy', boxHeight / 2 - 10)
+    .attr('cy', unionMarkerY)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
     .attr('stroke-width', 1)
     .attr('fill', d =>
@@ -1642,7 +1656,7 @@ function remasterChart(
     .attr('class', 'union-ring union-ring-right')
     .attr('r', 5)
     .attr('cx', 5)
-    .attr('cy', boxHeight / 2 - 10)
+    .attr('cy', unionMarkerY)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
     .attr('stroke-width', 1)
     .attr('fill', d =>
@@ -1656,20 +1670,20 @@ function remasterChart(
     .attr('class', 'union-slash')
     .attr('x1', -8)
     .attr('x2', 8)
-    .attr('y1', boxHeight / 2 - 10 + 6)
-    .attr('y2', boxHeight / 2 - 10 - 6)
+    .attr('y1', unionMarkerY + 6)
+    .attr('y2', unionMarkerY - 6)
     .attr('stroke', 'var(--md-sys-color-error)')
     .attr('stroke-width', 1.5)
 
-  // Widowed cross — ✝ sits 5–11 px above the ring centre (cy = boxHeight/2 - 10)
+  // Widowed cross — ✝ sits 5–11 px above the ring centre (cy = unionMarkerY)
   nodes
     .filter(d => d.nodetype === 'family' && d.markerDesc.cross)
     .append('line')
     .attr('class', 'union-cross-v')
     .attr('x1', 0)
     .attr('x2', 0)
-    .attr('y1', boxHeight / 2 - 10 - 5)
-    .attr('y2', boxHeight / 2 - 10 - 11)
+    .attr('y1', unionMarkerY - 5)
+    .attr('y2', unionMarkerY - 11)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
     .attr('stroke-width', 1.5)
 
@@ -1679,8 +1693,8 @@ function remasterChart(
     .attr('class', 'union-cross-h')
     .attr('x1', -3)
     .attr('x2', 3)
-    .attr('y1', boxHeight / 2 - 10 - 8)
-    .attr('y2', boxHeight / 2 - 10 - 8)
+    .attr('y1', unionMarkerY - 8)
+    .attr('y2', unionMarkerY - 8)
     .attr('stroke', 'var(--grampsjs-body-font-color-40)')
     .attr('stroke-width', 1.5)
 
@@ -1694,15 +1708,17 @@ function remasterChart(
       .attr('font-size', '10px')
       .attr('fill', 'var(--grampsjs-body-font-color-90)')
       .attr('x', 0)
-      .attr('y', boxHeight / 2 - 10 + 16)
+      .attr('y', unionMarkerY + 16)
       .text(d => d.unionLabel)
   }
+}
 
-  // Shared with addCollapseAffordances' touch long-press handling below: a
-  // long-press on a person card dispatches the mobile collapse-menu AND
-  // sets suppressClick, so the click the browser still generates on
-  // pointer-release does not ALSO reroot to this person.
-  const touchState = {suppressClick: false}
+// Person-card interactions: reroot on click (desktop) / preview-then-reroot on
+// touch, hover preview on desktop, and the add-person button in edit mode.
+// `touchState` is shared with the collapse affordances' long-press so a
+// long-press can suppress the click it also generates.
+function wireNodeInteractions(nodes, ctx, touchState) {
+  const {canEdit, graph, rootHandle, boxWidth} = ctx
   // Touch devices have no hover; evaluate the media query once per render
   // instead of on every click/mouseenter/mouseleave that fires.
   const isTouchDevice = window.matchMedia('(hover: none)').matches
@@ -1788,23 +1804,11 @@ function remasterChart(
       d => d.handle
     )
   }
+}
 
-  // Direct-ancestor-line highlight (Task 10): root's own blood-ancestor
-  // handles, computed once and reused for both the edge pass below and the
-  // person-box pass further down. Root itself is excluded (it already gets
-  // its own drop-shadow highlight) but IS included in the set used to
-  // decide which rendered *edges* qualify, since root's own edge to its
-  // parent family is part of the direct line too.
-  const directAncestors = directAncestorHandles(
-    graph.getData(),
-    graph.rootPerson?.handle,
-    graph.showAllParents
-  )
-  const directLineForEdges = new Set([
-    graph.rootPerson?.handle,
-    ...directAncestors,
-  ])
-
+// Convert graphviz's polyline edges into smooth vertical D3 connectors, styled
+// with a heavier accent along root's direct blood line (see directLineForEdges).
+function renderEdges(gvchartx, edges, directLineForEdges) {
   const linkGenerator = linkVertical()
     .x(d => d.x)
     .y(d => d.y)
@@ -1851,7 +1855,13 @@ function remasterChart(
       .attr('stroke-width', isDirectLine ? 2 : 1)
       .attr('stroke-dasharray', dashed ? DASH_CHILD_EDGE : null)
   })
-  // edges.selectAll('path').attr('stroke-opacity', '0.4')
+}
+
+// Recentre the layout on the root person, give root a drop-shadow, and outline
+// root's direct blood ancestors (additive accent only — root itself already
+// stands out via the drop-shadow, so it is excluded from the outline).
+function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
+  const {graph, boxWidth, boxHeight} = ctx
 
   // move root person to center
   nodes
@@ -1880,6 +1890,108 @@ function remasterChart(
     .select('.personBox')
     .attr('stroke', DIRECT_LINE_COLOR)
     .attr('stroke-width', 2)
+}
+
+// Orchestrates one full (re)draw of the chart from graphviz's hidden layout
+// output: derive node-data, create the data-bound node <g> selection, then run
+// each render pass (person cards, union markers, interactions, edges, root/
+// direct-line highlight, collapse affordances). Each pass is a small function
+// taking the shared ctx, so an incremental keyed-join redraw can reuse them.
+function remasterChart(
+  divhidden,
+  targetsvg,
+  graph,
+  boxWidth,
+  boxHeight,
+  imgPadding,
+  getImageUrl,
+  maxImages,
+  nameDisplayFormat,
+  canEdit = false,
+  showUnionDates = false,
+  unionStatusLabels = {},
+  showMaidenName = false,
+  // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
+  // as ⊕N chips below.
+  chips = [],
+  // Outer <svg> selection + its d3-zoom behavior, so a focused node can
+  // pan/recentre itself into view (best-effort; see focusPanToNode below).
+  svg = null,
+  zoomBehavior = null,
+  collapseLabels = {},
+  // Same values the factory passed to pruneGraph (see collapse.js) — needed
+  // again here (in addition to the already-pruned `graph`) so
+  // addCollapseAffordances can answer "what would cut X additionally hide"
+  // against the FULL tree, not just the currently-visible subset.
+  data = [],
+  collapsed = new Set(),
+  rootHandle = undefined,
+  showAllParents = false
+) {
+  const ctx = buildRenderContext({
+    graph,
+    boxWidth,
+    boxHeight,
+    imgPadding,
+    getImageUrl,
+    maxImages,
+    nameDisplayFormat,
+    canEdit,
+    showUnionDates,
+    unionStatusLabels,
+    showMaidenName,
+    chips,
+    svg,
+    zoomBehavior,
+    collapseLabels,
+    data,
+    collapsed,
+    rootHandle,
+    showAllParents,
+  })
+
+  const {nodedata, gvchartx} = deriveNodeData(divhidden, ctx)
+
+  // container for edges (appended before the nodes so edges render behind them)
+  const edges = targetsvg.append('g').attr('class', 'edges')
+
+  // build d3 based nodes with data bound to them
+  const nodes = targetsvg
+    .selectAll('.node')
+    .data(nodedata)
+    .enter()
+    .append('g')
+    .attr('transform', d => `translate(${d.xCoord} ${d.yCoord})`)
+    .attr('class', d => `node ${d.nodetype}`)
+
+  renderPersonNodes(nodes, targetsvg, nodedata, ctx)
+  renderUnionMarkers(nodes, nodedata, ctx)
+
+  // Shared with addCollapseAffordances' touch long-press handling: a
+  // long-press on a person card dispatches the mobile collapse-menu AND sets
+  // suppressClick, so the click the browser still generates on pointer-release
+  // does not ALSO reroot to this person.
+  const touchState = {suppressClick: false}
+  wireNodeInteractions(nodes, ctx, touchState)
+
+  // Direct-ancestor-line highlight (Task 10): root's own blood-ancestor
+  // handles, computed once and reused for the edge pass below, the person-box
+  // pass and the collapse affordances. Root itself is excluded from the
+  // ancestor set (it already gets its own drop-shadow) but IS included in the
+  // set used to decide which rendered *edges* qualify, since root's own edge
+  // to its parent family is part of the direct line too.
+  const directAncestors = directAncestorHandles(
+    graph.getData(),
+    graph.rootPerson?.handle,
+    graph.showAllParents
+  )
+  const directLineForEdges = new Set([
+    graph.rootPerson?.handle,
+    ...directAncestors,
+  ])
+
+  renderEdges(gvchartx, edges, directLineForEdges)
+  renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx)
 
   addCollapseAffordances(
     nodes,
