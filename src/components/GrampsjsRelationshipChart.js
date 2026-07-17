@@ -1,5 +1,4 @@
-import {html, css} from 'lit'
-import {zoomTransform} from 'd3-zoom'
+import {css} from 'lit'
 
 import '@material/mwc-menu'
 import '@material/mwc-list/mwc-list-item'
@@ -80,7 +79,10 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     super()
     this.grampsId = ''
     this.gapX = 30
-    this._savedZoom = null
+    // The persistent chart controller ({node, update}) from RelationshipChart.
+    // Created on first draw and reused: structural changes call its update()
+    // (keyed-join redraw on the same SVG) instead of rebuilding a new node.
+    this._chart = null
     this.collapsed = new Set()
   }
 
@@ -132,78 +134,78 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     return true
   }
 
-  willUpdate() {
-    // Save zoom transform before Lit replaces the SVG node
-    const svg = this.renderRoot
-      ?.getElementById('container')
-      ?.querySelector('svg')
-    this._savedZoom = svg ? zoomTransform(svg) : null
-  }
-
   renderChart() {
     if (this.data.length === 0 || !this.grampsId) {
+      // No chart to show — drop the controller so a later (re)mount rebuilds.
+      this._chart = null
       return ''
     }
     const rootHandle = this.data.find(
       p => p.gramps_id === this.grampsId
     )?.handle
-    return html`
-      ${RelationshipChart(this.data, {
-        nAnc: this.nAnc,
-        maxImages: this.nMaxImages,
-        grampsId: this.grampsId,
-        getImageUrl: d => getImageUrl(d?.data || {}, 100),
-        bboxWidth: this.containerWidth,
-        bboxHeight: this.containerHeight,
-        nameDisplayFormat: this.nameDisplayFormat,
-        showUnionDates: this.showUnionDates,
-        showAllParents: this.showAllParents,
-        showMaidenName: this.showMaidenName,
-        // Wider boxes when the maiden line is on give long Russian
-        // name+patronymic more room and reduce clipping; taller boxes make
-        // room for the extra maiden-name line (uniform across all nodes here
-        // — the union bar assumes equal box heights, see RelationshipChart.js).
-        boxWidth: this.showMaidenName ? 210 : 190,
-        boxHeight: this.showMaidenName ? 104 : 90,
-        canEdit: this.canEdit,
-        initialZoom: this._savedZoom,
-        // During a reroot, Lit paints once with the new grampsId but the old
-        // (stale) data before _fetchData resolves; rootHandle is then undefined
-        // and pruning against an unresolved root would over-hide the graph.
-        // Treat "no resolved root" as "no active cuts" for that transient paint.
-        collapsed: rootHandle ? this.collapsed : new Set(),
-        rootHandle,
-        unionStatusLabels: {
-          married: this._('Married'),
-          divorced: this._('Divorced'),
-          widowed: this._('Widowed'),
-          partners: this._('Unmarried partners'),
-        },
-        collapseLabels: {
-          // Desktop tab/ring aria-labels + tooltips — embed the count so a
-          // screen reader or native <title> tooltip states the effect
-          // up-front, before activating the control.
-          ancestorsAria: (familyLabel, count) =>
-            familyLabel
-              ? this._('Collapse ancestors: %s (%s hidden)', familyLabel, count)
-              : this._('Collapse ancestors (%s hidden)', count),
-          spouseAria: count =>
-            this._("Hide spouse's branch (%s hidden)", count),
-          childrenAria: count => this._('Hide children (%s hidden)', count),
-          wholeMarriageAria: this._('Collapse whole marriage'),
-          expandHidden: n => this._('Expand %s hidden', n),
-          collapseRevealed: this._('Collapse'),
-          // Mobile bottom-sheet item labels — plain action names; the sheet
-          // renders the count/dashed state itself (see
-          // GrampsjsCollapseSheet).
-          spouseTab: this._("Hide spouse's branch"),
-          childrenTab: this._('Hide children'),
-          wholeMarriage: this._('Collapse whole marriage'),
-          makeHomePerson: this._('Make home person'),
-          familySheetTitle: this._('Family'),
-        },
-      })}
-    `
+    const opts = {
+      nAnc: this.nAnc,
+      maxImages: this.nMaxImages,
+      grampsId: this.grampsId,
+      getImageUrl: d => getImageUrl(d?.data || {}, 100),
+      bboxWidth: this.containerWidth,
+      bboxHeight: this.containerHeight,
+      nameDisplayFormat: this.nameDisplayFormat,
+      showUnionDates: this.showUnionDates,
+      showAllParents: this.showAllParents,
+      showMaidenName: this.showMaidenName,
+      // Wider boxes when the maiden line is on give long Russian
+      // name+patronymic more room and reduce clipping; taller boxes make
+      // room for the extra maiden-name line (uniform across all nodes here
+      // — the union bar assumes equal box heights, see RelationshipChart.js).
+      boxWidth: this.showMaidenName ? 210 : 190,
+      boxHeight: this.showMaidenName ? 104 : 90,
+      canEdit: this.canEdit,
+      // During a reroot, Lit paints once with the new grampsId but the old
+      // (stale) data before _fetchData resolves; rootHandle is then undefined
+      // and pruning against an unresolved root would over-hide the graph.
+      // Treat "no resolved root" as "no active cuts" for that transient paint.
+      collapsed: rootHandle ? this.collapsed : new Set(),
+      rootHandle,
+      unionStatusLabels: {
+        married: this._('Married'),
+        divorced: this._('Divorced'),
+        widowed: this._('Widowed'),
+        partners: this._('Unmarried partners'),
+      },
+      collapseLabels: {
+        // Desktop tab/ring aria-labels + tooltips — embed the count so a
+        // screen reader or native <title> tooltip states the effect
+        // up-front, before activating the control.
+        ancestorsAria: (familyLabel, count) =>
+          familyLabel
+            ? this._('Collapse ancestors: %s (%s hidden)', familyLabel, count)
+            : this._('Collapse ancestors (%s hidden)', count),
+        spouseAria: count => this._("Hide spouse's branch (%s hidden)", count),
+        childrenAria: count => this._('Hide children (%s hidden)', count),
+        wholeMarriageAria: this._('Collapse whole marriage'),
+        expandHidden: n => this._('Expand %s hidden', n),
+        collapseRevealed: this._('Collapse'),
+        // Mobile bottom-sheet item labels — plain action names; the sheet
+        // renders the count/dashed state itself (see
+        // GrampsjsCollapseSheet).
+        spouseTab: this._("Hide spouse's branch"),
+        childrenTab: this._('Hide children'),
+        wholeMarriage: this._('Collapse whole marriage'),
+        makeHomePerson: this._('Make home person'),
+        familySheetTitle: this._('Family'),
+      },
+    }
+    // Create the chart once, then reuse it: a structural change drives an
+    // in-place keyed-join redraw on the same persistent SVG (preserving pan/
+    // zoom, avatars and the Graphviz WASM instance) instead of building a new
+    // node. Returning the same node keeps Lit from re-inserting it.
+    if (this._chart) {
+      this._chart.update(this.data, opts)
+    } else {
+      this._chart = RelationshipChart(this.data, opts)
+    }
+    return this._chart.node
   }
 }
 

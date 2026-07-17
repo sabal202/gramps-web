@@ -1476,7 +1476,7 @@ function deriveNodeData(divhidden, ctx) {
 // Person cards: the two coloured rects (sex bar + card), the two name lines,
 // the optional maiden line, birth/death dates, and the avatar image pattern.
 // Appends onto the already-created, data-bound `nodes` selection.
-function renderPersonNodes(nodes, targetsvg, nodedata, ctx) {
+function renderPersonNodes(nodes, ctx) {
   const {
     boxWidth,
     imgPadding,
@@ -1600,21 +1600,33 @@ function renderPersonNodes(nodes, targetsvg, nodedata, ctx) {
     .attr('cy', imgRadius + imgPadding)
     .attr('cx', imgRadius + imgPadding)
     .attr('fill', d => `url(#imgpattern-${d.handle})`)
+}
 
-  const defs = targetsvg.append('defs')
-  const imgPattern = defs
-    .selectAll('.imgpattern')
-    .data(nodedata)
+// Keyed-join the avatar image patterns in the persistent <defs> by person
+// handle, so a surviving person's <pattern>/<image> is NOT torn down and
+// re-created on every collapse/reroot redraw — the browser would otherwise
+// re-fetch/re-decode the bitmap and the avatar would flash. One pattern per
+// distinct handle (a person shown in several family clusters shares it).
+function syncImagePatterns(defs, nodedata) {
+  const withImage = nodedata.filter(d => d.nodetype === 'person' && d.imageUrl)
+  const patterns = defs
+    .selectAll('pattern.imgpattern')
+    // Dedup by handle: the same person can appear as several node copies
+    // (one per family cluster), but they all reference #imgpattern-<handle>.
+    .data(
+      Array.from(new Map(withImage.map(d => [d.handle, d])).values()),
+      d => d.handle
+    )
+  patterns.exit().remove()
+  patterns
     .enter()
-    .filter(d => d.nodetype === 'person' && d.imageUrl)
     .append('pattern')
+    .attr('class', 'imgpattern')
     .attr('id', d => `imgpattern-${d.handle}`)
     .attr('height', 1)
     .attr('width', 1)
     .attr('x', '0')
     .attr('y', '0')
-
-  imgPattern
     .append('image')
     .attr('x', 0)
     .attr('y', 0)
@@ -1927,6 +1939,13 @@ function renderEdges(gvchartx, edges, directLineForEdges) {
 function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
   const {graph, boxWidth, boxHeight} = ctx
 
+  // Reset any previous root drop-shadow first. The filter lives on the node
+  // <g> itself (not a child), so it survives the child-clear of a keyed-join
+  // redraw — without this, the previous root would keep its drop-shadow after
+  // a reroot. The direct-ancestor outline sits on the .personBox child, which
+  // is re-created fresh each redraw, so it needs no explicit reset here.
+  nodes.style('filter', null)
+
   // move root person to center
   nodes
     .filter(d => d.handle === graph.rootPerson?.handle)
@@ -1961,10 +1980,37 @@ function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
 // each render pass (person cards, union markers, interactions, edges, root/
 // direct-line highlight, collapse affordances). Each pass is a small function
 // taking the shared ctx, so an incremental keyed-join redraw can reuse them.
-function remasterChart(
+// Stable identity of a rendered node <g> across redraws, for the keyed D3
+// join. A person is drawn once per family cluster (graphviz clusters, see
+// generateDot), so a person's identity is family-qualified; a family marker
+// node is identified by its own handle. Keeps object constancy: a node that
+// survives a collapse/reroot keeps its <g> element (and listeners) and is only
+// repositioned, instead of being torn down and recreated.
+const nodeKey = d =>
+  d.nodetype === 'family'
+    ? `f:${d.handle}`
+    : `${d.nodetype}:${d.familyHandle}x${d.handle}`
+
+// Redraws the chart's node/edge DOM from graphviz's freshly-laid-out hidden
+// <svg>, mutating the PERSISTENT layer skeleton (see the RelationshipChart
+// factory) via a keyed D3 join rather than rebuilding from scratch:
+//   - persistent avatar <pattern>s in <defs> are keyed by handle, so a
+//     surviving person's bitmap is never re-fetched (no avatar flash);
+//   - node <g> elements are keyed by identity (nodeKey): survivors keep their
+//     element; only new nodes enter and gone nodes exit;
+//   - each node's inner content is redrawn uniformly (cleared then rendered),
+//     which keeps the enter/update paths identical — the family union bar and
+//     the direct-line highlight depend on the fresh layout, so redrawing all
+//     is both correct and simple. (Skipping content redraw for unchanged
+//     survivors is a later, transition-friendly optimisation.)
+// Takes one options object (the render context) instead of ~20 positional args.
+function remasterChart({
   divhidden,
-  targetsvg,
+  layers,
   graph,
+  chips = [],
+  svg = null,
+  zoomBehavior = null,
   boxWidth,
   boxHeight,
   imgPadding,
@@ -1975,23 +2021,13 @@ function remasterChart(
   showUnionDates = false,
   unionStatusLabels = {},
   showMaidenName = false,
-  // chips come from pruneGraph (collapse/expand, see collapse.js): rendered
-  // as ⊕N chips below.
-  chips = [],
-  // Outer <svg> selection + its d3-zoom behavior, so a focused node can
-  // pan/recentre itself into view (best-effort; see focusPanToNode below).
-  svg = null,
-  zoomBehavior = null,
   collapseLabels = {},
-  // Same values the factory passed to pruneGraph (see collapse.js) — needed
-  // again here (in addition to the already-pruned `graph`) so
-  // addCollapseAffordances can answer "what would cut X additionally hide"
-  // against the FULL tree, not just the currently-visible subset.
   data = [],
   collapsed = new Set(),
   rootHandle = undefined,
-  showAllParents = false
-) {
+  showAllParents = false,
+}) {
+  const {chartInner, edgesLayer, nodesLayer, defs} = layers
   const ctx = buildRenderContext({
     graph,
     boxWidth,
@@ -2016,19 +2052,29 @@ function remasterChart(
 
   const {nodedata, gvchartx} = deriveNodeData(divhidden, ctx)
 
-  // container for edges (appended before the nodes so edges render behind them)
-  const edges = targetsvg.append('g').attr('class', 'edges')
-
-  // build d3 based nodes with data bound to them
-  const nodes = targetsvg
-    .selectAll('.node')
-    .data(nodedata)
+  // Keyed node join: bind node-data to the persistent <g>s by stable identity.
+  const sel = nodesLayer.selectAll('g.node').data(nodedata, nodeKey)
+  sel.exit().remove()
+  const nodes = sel
     .enter()
     .append('g')
-    .attr('transform', d => `translate(${d.xCoord} ${d.yCoord})`)
+    .merge(sel)
     .attr('class', d => `node ${d.nodetype}`)
+    .attr('transform', d => `translate(${d.xCoord} ${d.yCoord})`)
+  // Re-order the DOM to match the new node-data order: on a keyed redraw
+  // survivors keep their old DOM position and enters are appended last, so
+  // without this the paint order could drift from the layout order across
+  // collapse/reroot. Matches the data-order append the full rebuild did.
+  nodes.order()
+  // Clear each node's inner content before re-rendering it. Enters start empty;
+  // survivors are cleared here so their content is redrawn uniformly. The <g>
+  // itself (and the keyed identity) survives; avatar <pattern>s live in the
+  // persistent <defs> and are keyed separately, so they are NOT removed here
+  // and the bitmap is not re-fetched.
+  nodes.selectAll('*').remove()
 
-  renderPersonNodes(nodes, targetsvg, nodedata, ctx)
+  syncImagePatterns(defs, nodedata)
+  renderPersonNodes(nodes, ctx)
   renderUnionMarkers(nodes, nodedata, ctx)
 
   // Shared with addCollapseAffordances' touch long-press handling: a
@@ -2054,8 +2100,11 @@ function remasterChart(
     ...directAncestors,
   ])
 
-  renderEdges(gvchartx, edges, directLineForEdges)
-  renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx)
+  // Edges are cheap layout-dependent paths (no listeners/images) — clear and
+  // rebuild the persistent edges layer each redraw.
+  edgesLayer.selectAll('*').remove()
+  renderEdges(gvchartx, edgesLayer, directLineForEdges)
+  renderRootAndDirectLine(nodes, chartInner, directAncestors, ctx)
 
   addCollapseAffordances(nodes, ctx, directAncestors, touchState)
 
@@ -2103,48 +2152,16 @@ export function repaintNameFormat(svgNode, nameDisplayFormat) {
   return repainted
 }
 
-export function RelationshipChart(
-  data,
-  {
-    bboxWidth = 300,
-    bboxHeight = 150,
-    boxWidth = 190,
-    boxHeight = 90,
-    imgPadding = 10,
-    getImageUrl = null,
-    grampsId = 0,
-    maxImages = 400,
-    shrinkToFit = false,
-    // orientation = 'LTR',
-    nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
-    canEdit = false,
-    showUnionDates = false,
-    showAllParents = false,
-    initialZoom = null,
-    unionStatusLabels = {},
-    showMaidenName = false,
-    // Collapse/expand (see collapse.js): collapsed is a Set of cut keys,
-    // rootHandle is the handle (not gramps_id) of the person named by
-    // grampsId above — the caller derives it once and passes both down so
-    // pruning and rooting never disagree about who "root" is.
-    collapsed = new Set(),
-    rootHandle = undefined,
-    collapseLabels = {},
-  }
-) {
-  // Prune BEFORE building the graph, so createGraph (incl. its fake-parent
-  // glue step) runs only on the already-visible set — the drawn graph and
-  // pruneGraph's visibility/chip bookkeeping can then never diverge. With
-  // an empty `collapsed` set this is a no-op: pruneGraph never populates
-  // `hidden` unless there is at least one active cut, so every person
-  // passes the filter and rendering is unchanged from before this feature.
-  const {visibleHandles, chips} = pruneGraph(
-    data,
-    collapsed,
-    rootHandle,
-    showAllParents
-  )
-  const prunedData = data.filter(p => visibleHandles.has(p.handle))
+// Builds the relationship chart once and returns a controller:
+//   { node, update(data, opts) }
+// The <svg> and its layer skeleton (zoom transform, root-centring group, edges
+// and nodes layers, <defs>) are created ONCE and persist for the lifetime of
+// the chart. Each update() reuses them via a keyed D3 join (see remasterChart)
+// instead of rebuilding the whole SVG — so a collapse/reroot keeps the user's
+// pan/zoom, does not re-fetch avatars, and does not re-init the Graphviz WASM
+// module. `update` is called once here for the initial draw.
+export function RelationshipChart(data, opts = {}) {
+  const {initialZoom = null} = opts
 
   const resultnode = create('div').style('width', '100%')
   const divhidden = resultnode.append('div').style('display', 'none')
@@ -2158,70 +2175,137 @@ export function RelationshipChart(
     .attr('font-family', 'Inter var')
     .attr('font-size', 13)
 
+  // Persistent layer skeleton (created once, reused by every update()):
+  //   svg > g#chart-content [user zoom transform]
+  //           > g#chart-inner [root-centring transform]
+  //               > g.edges   (behind nodes)
+  //               > g.nodes   (keyed node join target)
+  //         > defs            (keyed avatar patterns)
   const chartContent = svg.append('g').attr('id', 'chart-content')
-
-  // Set the viewBox synchronously: it is a pure function of the container
-  // size (relationshipViewBox), independent of the async graphviz layout, so
-  // it must NOT be set inside the .then() below — otherwise a resize handled
-  // while a layout is still pending (notably the initial -1 -> real size
-  // transition) would be clobbered back to the stale build-time dimensions.
-  // The shrinkToFit branch still overrides post-layout for its consumers.
-  svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
-
-  // Stash the geometry a cosmetic name-format repaint needs (box width + image
-  // padding drive the text-clip width), so the host can repaint name lines in
-  // place without a relayout. Set synchronously — available before the async
-  // graphviz layout resolves and independent of it (see repaintNameFormat).
-  svg.node().__relchartGeom = {boxWidth, imgPadding}
+  const chartInner = chartContent.append('g').attr('id', 'chart-inner')
+  const edgesLayer = chartInner.append('g').attr('class', 'edges')
+  const nodesLayer = chartInner.append('g').attr('class', 'nodes')
+  const defs = svg.append('defs')
+  const layers = {chartInner, edgesLayer, nodesLayer, defs}
 
   if (initialZoom) {
     svg.node().__zoom = initialZoom
     chartContent.attr('transform', initialZoom.toString())
   }
-  const graph = new Relgraph(
-    prunedData,
-    boxWidth,
-    boxHeight,
-    grampsId,
-    showAllParents
-  )
-  const dot = graph.getDot()
-  Graphviz.load().then(graphviz => {
-    graphviz.dot(dot)
-    divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
-    remasterChart(
-      divhidden,
-      chartContent.append('g'),
-      graph,
-      boxWidth,
-      boxHeight,
-      imgPadding,
-      getImageUrl,
-      maxImages,
-      nameDisplayFormat,
-      canEdit,
-      showUnionDates,
-      unionStatusLabels,
-      showMaidenName,
-      chips,
-      svg,
-      zoomBehavior,
-      collapseLabels,
-      data,
+
+  // One Graphviz WASM instance, lazily loaded and reused across updates instead
+  // of re-initialised on every redraw.
+  let graphvizPromise = null
+  const loadGraphviz = () => {
+    if (graphvizPromise === null) graphvizPromise = Graphviz.load()
+    return graphvizPromise
+  }
+
+  // Generation guard: rapid collapse/reroot toggles queue several async
+  // layouts; only the newest may run + write to the DOM. Stale ones are dropped
+  // before doing the (expensive) layout.
+  let generation = 0
+
+  function update(nextData, nextOpts = {}) {
+    const gen = ++generation
+    const {
+      bboxWidth = 300,
+      bboxHeight = 150,
+      boxWidth = 190,
+      boxHeight = 90,
+      imgPadding = 10,
+      getImageUrl = null,
+      grampsId = 0,
+      maxImages = 400,
+      shrinkToFit = false,
+      nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
+      canEdit = false,
+      showUnionDates = false,
+      showAllParents = false,
+      unionStatusLabels = {},
+      showMaidenName = false,
+      // Collapse/expand (see collapse.js): collapsed is a Set of cut keys,
+      // rootHandle is the handle (not gramps_id) of the person named by
+      // grampsId above — the caller derives it once and passes both down so
+      // pruning and rooting never disagree about who "root" is.
+      collapsed = new Set(),
+      rootHandle = undefined,
+      collapseLabels = {},
+    } = nextOpts
+
+    // viewBox + repaint geometry are pure functions of the container/box size,
+    // independent of the async graphviz layout — set synchronously so a resize
+    // or name-format repaint handled while a layout is pending is not clobbered
+    // (see relationshipViewBox / repaintNameFormat).
+    svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
+    svg.node().__relchartGeom = {boxWidth, imgPadding}
+
+    // Prune BEFORE building the graph, so createGraph (incl. its fake-parent
+    // glue step) runs only on the already-visible set — the drawn graph and
+    // pruneGraph's visibility/chip bookkeeping can then never diverge. With an
+    // empty `collapsed` set this is a no-op.
+    const {visibleHandles, chips} = pruneGraph(
+      nextData,
       collapsed,
       rootHandle,
       showAllParents
     )
-    if (shrinkToFit) {
-      const bbox = svg.node().getBBox()
-      if (bbox.height > bboxHeight) {
-        svg
-          .attr('viewBox', [bbox.x, bbox.y - 20, bbox.width, bbox.height + 40])
-          .attr('height', bboxHeight)
-          .attr('width', bboxWidth)
-      }
-    }
-  })
+    const prunedData = nextData.filter(p => visibleHandles.has(p.handle))
+    const graph = new Relgraph(
+      prunedData,
+      boxWidth,
+      boxHeight,
+      grampsId,
+      showAllParents
+    )
+    const dot = graph.getDot()
 
-  return svg.node()
+    loadGraphviz().then(graphviz => {
+      // A newer update() superseded this one while its layout was pending —
+      // drop it before doing the expensive layout + DOM write.
+      if (gen !== generation) return
+      graphviz.dot(dot)
+      divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
+      remasterChart({
+        divhidden,
+        layers,
+        graph,
+        chips,
+        svg,
+        zoomBehavior,
+        boxWidth,
+        boxHeight,
+        imgPadding,
+        getImageUrl,
+        maxImages,
+        nameDisplayFormat,
+        canEdit,
+        showUnionDates,
+        unionStatusLabels,
+        showMaidenName,
+        collapseLabels,
+        data: nextData,
+        collapsed,
+        rootHandle,
+        showAllParents,
+      })
+      if (shrinkToFit) {
+        const bbox = svg.node().getBBox()
+        if (bbox.height > bboxHeight) {
+          svg
+            .attr('viewBox', [
+              bbox.x,
+              bbox.y - 20,
+              bbox.width,
+              bbox.height + 40,
+            ])
+            .attr('height', bboxHeight)
+            .attr('width', bboxWidth)
+        }
+      }
+    })
+  }
+
+  update(data, opts)
+  return {node: svg.node(), update}
 }

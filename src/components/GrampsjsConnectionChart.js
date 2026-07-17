@@ -50,7 +50,7 @@ export class GrampsjsConnectionChart extends GrampsjsResizeContainerMixin(
     if (this._data?.data?.length === 0 || !this.grampsId1 || !this.grampsId2) {
       return html`<div id="container"></div>`
     }
-    const chart = RelationshipChart(this._data.data, {
+    const {node: chart} = RelationshipChart(this._data.data, {
       maxImages: this.nMaxImages,
       grampsId: this.grampsId1,
       getImageUrl: d => getImageUrl(d?.data || {}, 100),
