@@ -13,12 +13,13 @@ import {chartNameDisplayFormat} from '../util.js'
 import {appendAddPersonButton} from './addPersonButton.js'
 import {childRefStyle, selectParentFamilies} from './familyHelpers.js'
 import {getMaidenSurname} from './util.js'
+import {parentFamiliesOf, familyNodeExists} from './adjacency.js'
 import {
-  parentFamiliesOf,
-  familyNodeExists,
-  buildAdjacency,
-} from './adjacency.js'
-import {pruneGraph, directAncestorHandles, makeCutResolver} from './collapse.js'
+  pruneGraph,
+  directAncestorHandles,
+  makeCutResolver,
+  makeCtx,
+} from './collapse.js'
 
 const DASHED_EDGE_CLASS = 'dashed_edge'
 // Per-edge class prefix carrying the edge's target person handle (see
@@ -645,7 +646,13 @@ let activeLongPressTimer = null
 // This function builds the shared per-render helpers into an `aff` bundle and
 // delegates the three visual passes (ancestor tabs, family controls, reopen
 // pills) to the block renderers below.
-function addCollapseAffordances(nodes, ctx, directAncestors, touchState) {
+function addCollapseAffordances(
+  nodes,
+  ctx,
+  directAncestors,
+  touchState,
+  collapseCtx
+) {
   const {
     graph,
     boxWidth,
@@ -686,16 +693,17 @@ function addCollapseAffordances(nodes, ctx, directAncestors, touchState) {
   // drives preview dimming. Computed over the VISIBLE people (graph.getData()),
   // so a single cut's effect is exactly the marginal hide — far cheaper than a
   // full pruneGraph per control (see collapse.js makeCutResolver).
+  // Reuse the adjacency context remaster already built for this render
+  // (collapseCtx) instead of rebuilding it here — see makeCtx in collapse.js.
   const cutHidden = makeCutResolver(
     graph.getData(),
     rootHandle,
-    graph.showAllParents
+    graph.showAllParents,
+    collapseCtx
   )
   const countFor = cutKey => cutHidden(cutKey).size
 
-  const adj = buildAdjacency(graph.getData(), {
-    showAllParents: graph.showAllParents,
-  })
+  const adj = collapseCtx.adj
   const distFromRoot = bfsDistances(rootHandle, adj.neighbors)
   // Which spouse the "B" (spouse-branch) tab hides: the one farther from
   // root over the uncollapsed graph. Ties fall back to hiding the father —
@@ -2099,6 +2107,13 @@ function remasterChart({
   const touchState = {suppressClick: false}
   wireNodeInteractions(nodes, ctx, touchState)
 
+  // Adjacency-derived context over the VISIBLE people, built ONCE per render
+  // and shared by the direct-ancestor closure below AND the collapse
+  // affordances' cut resolver + far-spouse BFS (see makeCtx in collapse.js) —
+  // which each used to rebuild their own adjacency over the same (up to
+  // thousands of) nodes.
+  const collapseCtx = makeCtx(graph.getData(), graph.showAllParents)
+
   // Direct-ancestor-line highlight (Task 10): root's own blood-ancestor
   // handles, computed once and reused for the edge pass below, the person-box
   // pass and the collapse affordances. Root itself is excluded from the
@@ -2108,7 +2123,8 @@ function remasterChart({
   const directAncestors = directAncestorHandles(
     graph.getData(),
     graph.rootPerson?.handle,
-    graph.showAllParents
+    graph.showAllParents,
+    collapseCtx
   )
   const directLineForEdges = new Set([
     graph.rootPerson?.handle,
@@ -2121,7 +2137,7 @@ function remasterChart({
   renderEdges(gvchartx, edgesLayer, directLineForEdges)
   renderRootAndDirectLine(nodes, chartInner, directAncestors, ctx)
 
-  addCollapseAffordances(nodes, ctx, directAncestors, touchState)
+  addCollapseAffordances(nodes, ctx, directAncestors, touchState, collapseCtx)
 
   // kill hidden graphviz generated svg
   gvchartx.remove()

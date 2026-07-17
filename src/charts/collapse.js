@@ -42,7 +42,12 @@ function buildChildrenOfFamily(adj) {
   return childrenOfFamily
 }
 
-function makeCtx(people, showAllParents) {
+// Builds the shared adjacency-derived context (adjacency graph + parent/child/
+// spouse helpers) used by every collapse query. Exported so a caller that runs
+// several of these queries over the SAME people set in one pass (see the
+// relationship chart's remaster) can build it once and pass it in via the
+// optional `ctx` parameter, instead of each query rebuilding the adjacency.
+export function makeCtx(people, showAllParents) {
   const adj = buildAdjacency(people, {showAllParents})
   const childrenOfFamily = buildChildrenOfFamily(adj)
   const parentsOf = person => {
@@ -485,8 +490,12 @@ export function hiddenCountForCut(
  * @param {boolean} showAllParents
  * @returns {(cutKey: string) => Set<string>}
  */
-export function makeCutResolver(people, rootHandle, showAllParents) {
-  const ctx = makeCtx(people, showAllParents)
+export function makeCutResolver(
+  people,
+  rootHandle,
+  showAllParents,
+  ctx = makeCtx(people, showAllParents)
+) {
   return cutKey => {
     if (cutKey === 'line') return hiddenLine(ctx, rootHandle).hidden
     if (cutKey === 'desc') return hiddenDesc(ctx, rootHandle).hidden
@@ -515,8 +524,12 @@ export function makeCutResolver(people, rootHandle, showAllParents) {
  * @param {boolean} showAllParents
  * @returns {Set<string>}
  */
-export function directAncestorHandles(people, rootHandle, showAllParents) {
-  const ctx = makeCtx(people, showAllParents)
+export function directAncestorHandles(
+  people,
+  rootHandle,
+  showAllParents,
+  ctx = makeCtx(people, showAllParents)
+) {
   const up = upClosure(ctx, [rootHandle])
   up.delete(rootHandle)
   return up
