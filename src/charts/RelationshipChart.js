@@ -33,6 +33,16 @@ const DASH_CHILD_EDGE = '5,3' // longer dash suits the full-height child→paren
 const DIRECT_LINE_COLOR =
   'color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent)'
 
+// Position-transition tuning (see remasterChart). On a same-root redraw
+// (collapse/expand, cosmetic toggles) surviving nodes and edges glide to their
+// new layout positions over TRANSITION_MS instead of snapping. Disabled above
+// TRANSITION_NODE_CAP visible nodes (the tweens get too heavy and the motion
+// too busy to read), on the first draw, on a reroot (the whole tree
+// reorganises — a snap is calmer than everything flying at once), and under
+// prefers-reduced-motion.
+const TRANSITION_MS = 450
+const TRANSITION_NODE_CAP = 400
+
 // Reserved horizontal width (inches) of the family marriage-marker node.
 // nodesep is 0, so this gap is the only room between spouse cards; it must fit
 // the family-node controls (whole-marriage ring + "▶/◀" spouse tab). The marker
@@ -1902,13 +1912,21 @@ function wireNodeInteractions(nodes, ctx, touchState) {
 
 // Convert graphviz's polyline edges into smooth vertical D3 connectors, styled
 // with a heavier accent along root's direct blood line (see directLineForEdges).
-function renderEdges(gvchartx, edges, directLineForEdges) {
+// Keyed-join into the persistent edges layer by the graphviz edge identity
+// (its <title> = "<sourceNode>->
+// <targetNode>", stable across redraws) so a surviving edge keeps its <path>
+// element — and, when `animate` is on, tweens its `d` from the old to the new
+// layout in step with the node move, instead of snapping.
+function renderEdges(gvchartx, edges, directLineForEdges, animate) {
   const linkGenerator = linkVertical()
     .x(d => d.x)
     .y(d => d.y)
-  // copy edges
+  const edgeSpecs = []
   gvchartx.selectAll('.edge').each(function copyEdge() {
     const group = select(this)
+    // graphviz preserves the DOT edge as this <title> child ("src->tgt"); it is
+    // the stable per-edge identity used as the join key.
+    const key = group.select('title').text()
     const classAttr = group.attr('class') ?? ''
     const dashed = classAttr.includes(DASHED_EDGE_CLASS)
     // Identify the edge's target person from the class graphviz carried over
@@ -1923,38 +1941,61 @@ function renderEdges(gvchartx, edges, directLineForEdges) {
     const points = pathData
       ?.match(/-?[\d.]+,-?[\d.]+/g) // Find all "x,y" pairs
       ?.map(d => d.split(',').map(Number)) // Convert to [x, y] arrays
-    // we use only the start and end point
-    const firstAndLastPoint = [points[0], points[points.length - 1]]
     if (!points) {
       return
     }
-    const isDirectLine =
-      edgeTarget !== null && directLineForEdges.has(edgeTarget)
-    // we replace the polyline with a smooth connector from start to end
-    edges
-      .append('path')
-      .attr('class', 'edge')
-      .attr(
-        'd',
-        linkGenerator({
-          source: {x: firstAndLastPoint[0][0], y: firstAndLastPoint[0][1]},
-          target: {x: firstAndLastPoint[1][0], y: firstAndLastPoint[1][1]},
-        })
-      )
-      .attr('fill', 'none')
-      .attr(
-        'stroke',
-        isDirectLine ? DIRECT_LINE_COLOR : 'var(--grampsjs-body-font-color-40)'
-      )
-      .attr('stroke-width', isDirectLine ? 2 : 1)
-      .attr('stroke-dasharray', dashed ? DASH_CHILD_EDGE : null)
+    // we use only the start and end point
+    const firstAndLastPoint = [points[0], points[points.length - 1]]
+    edgeSpecs.push({
+      key,
+      dashed,
+      isDirectLine: edgeTarget !== null && directLineForEdges.has(edgeTarget),
+      d: linkGenerator({
+        source: {x: firstAndLastPoint[0][0], y: firstAndLastPoint[0][1]},
+        target: {x: firstAndLastPoint[1][0], y: firstAndLastPoint[1][1]},
+      }),
+    })
   })
+
+  const sel = edges.selectAll('path.edge').data(edgeSpecs, e => e.key)
+  sel.exit().remove()
+  const enter = sel
+    .enter()
+    .append('path')
+    .attr('class', 'edge')
+    .attr('fill', 'none')
+    .attr('d', e => e.d) // enters start at their final position
+  // Stroke/accent (cheap) applied to all; only the geometry (`d`) is tweened.
+  enter
+    .merge(sel)
+    .attr('stroke', e =>
+      e.isDirectLine ? DIRECT_LINE_COLOR : 'var(--grampsjs-body-font-color-40)'
+    )
+    .attr('stroke-width', e => (e.isDirectLine ? 2 : 1))
+    .attr('stroke-dasharray', e => (e.dashed ? DASH_CHILD_EDGE : null))
+  // Survivors: tween the path to the new layout (in step with the node move) or
+  // snap to it.
+  if (animate) {
+    sel
+      .transition('reposition')
+      .duration(TRANSITION_MS)
+      .attr('d', e => e.d)
+  } else {
+    // Cancel any in-flight tween before snapping (see the node move).
+    sel.interrupt('reposition').attr('d', e => e.d)
+  }
 }
 
 // Recentre the layout on the root person, give root a drop-shadow, and outline
 // root's direct blood ancestors (additive accent only — root itself already
 // stands out via the drop-shadow, so it is excluded from the outline).
-function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
+function renderRootAndDirectLine(
+  nodes,
+  targetsvg,
+  directAncestors,
+  ctx,
+  animate = false
+) {
   const {graph, boxWidth, boxHeight} = ctx
 
   // Reset per-node styles that live on the node <g> itself (not a child) and
@@ -1969,7 +2010,11 @@ function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
   // each redraw, so it needs no explicit reset here.
   nodes.style('filter', null).style('opacity', null)
 
-  // move root person to center
+  // move root person to center. When positions animate, glide this
+  // root-centring transform over the SAME duration/easing as the node/edge
+  // moves: the two translations compose additively, so root stays pinned at the
+  // origin while everyone else rearranges around it (a snap here would instead
+  // jump the whole tree by root's layout shift before the glide even starts).
   nodes
     .filter(d => d.handle === graph.rootPerson?.handle)
     .each(d => {
@@ -1977,7 +2022,15 @@ function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
         x: -1 * d.xCoord - boxWidth / 2,
         y: -1 * d.yCoord - boxHeight / 2,
       }
-      targetsvg.attr('transform', `translate(${rpc.x} ${rpc.y})`)
+      const t = `translate(${rpc.x} ${rpc.y})`
+      if (animate) {
+        targetsvg
+          .transition('reposition')
+          .duration(TRANSITION_MS)
+          .attr('transform', t)
+      } else {
+        targetsvg.interrupt('reposition').attr('transform', t)
+      }
     })
 
   // highlight root person
@@ -2049,6 +2102,10 @@ function remasterChart({
   collapsed = new Set(),
   rootHandle = undefined,
   showAllParents = false,
+  // Whether this redraw may animate surviving nodes/edges to their new
+  // positions (see TRANSITION_MS). The factory only sets it for same-root,
+  // non-first redraws; it is further gated on node count + reduced-motion below.
+  animate = false,
 }) {
   const {chartInner, edgesLayer, nodesLayer, defs} = layers
   const ctx = buildRenderContext({
@@ -2075,20 +2132,40 @@ function remasterChart({
 
   const {nodedata, gvchartx} = deriveNodeData(divhidden, ctx)
 
+  // Gate the position animation: only when the caller allowed it AND the tree
+  // is small enough that gliding every survivor is legible + cheap AND the user
+  // hasn't asked for reduced motion. Otherwise positions snap (as before).
+  const animatePositions =
+    animate && nodedata.length <= TRANSITION_NODE_CAP && !prefersReducedMotion()
+  const transformFor = d => `translate(${d.xCoord} ${d.yCoord})`
+
   // Keyed node join: bind node-data to the persistent <g>s by stable identity.
   const sel = nodesLayer.selectAll('g.node').data(nodedata, nodeKey)
   sel.exit().remove()
-  const nodes = sel
+  const enter = sel
     .enter()
     .append('g')
-    .merge(sel)
-    .attr('class', d => `node ${d.nodetype}`)
-    .attr('transform', d => `translate(${d.xCoord} ${d.yCoord})`)
+    // Entering nodes have no previous position to glide from — place them at
+    // their final spot immediately.
+    .attr('transform', transformFor)
+  const nodes = enter.merge(sel).attr('class', d => `node ${d.nodetype}`)
   // Re-order the DOM to match the new node-data order: on a keyed redraw
   // survivors keep their old DOM position and enters are appended last, so
   // without this the paint order could drift from the layout order across
   // collapse/reroot. Matches the data-order append the full rebuild did.
   nodes.order()
+  // Survivors: glide to (or snap to) their new position. Content is redrawn
+  // below at the node's local origin, so it rides along with the <g> transform.
+  if (animatePositions) {
+    sel
+      .transition('reposition')
+      .duration(TRANSITION_MS)
+      .attr('transform', transformFor)
+  } else {
+    // Cancel any glide still in flight from a prior animated redraw before
+    // snapping, or it would clobber the snapped position on its next tick.
+    sel.interrupt('reposition').attr('transform', transformFor)
+  }
   // Clear each node's inner content before re-rendering it. Enters start empty;
   // survivors are cleared here so their content is redrawn uniformly. The <g>
   // itself (and the keyed identity) survives; avatar <pattern>s live in the
@@ -2131,11 +2208,17 @@ function remasterChart({
     ...directAncestors,
   ])
 
-  // Edges are cheap layout-dependent paths (no listeners/images) — clear and
-  // rebuild the persistent edges layer each redraw.
-  edgesLayer.selectAll('*').remove()
-  renderEdges(gvchartx, edgesLayer, directLineForEdges)
-  renderRootAndDirectLine(nodes, chartInner, directAncestors, ctx)
+  // Edges keyed-join into the persistent edges layer (renderEdges handles
+  // enter/exit/update) so a surviving edge can tween its path in step with the
+  // node move rather than snapping.
+  renderEdges(gvchartx, edgesLayer, directLineForEdges, animatePositions)
+  renderRootAndDirectLine(
+    nodes,
+    chartInner,
+    directAncestors,
+    ctx,
+    animatePositions
+  )
 
   addCollapseAffordances(nodes, ctx, directAncestors, touchState, collapseCtx)
 
@@ -2237,6 +2320,14 @@ export function RelationshipChart(data, opts = {}) {
   // before doing the (expensive) layout.
   let generation = 0
 
+  // Position-animation state. Animate survivor moves only on a redraw that is
+  // NOT the first draw and keeps the SAME root (collapse/expand, cosmetic
+  // toggles) — a reroot reorganises the whole tree, where a snap reads calmer
+  // than every node flying at once. remaster further gates on node count +
+  // reduced-motion.
+  let hasRendered = false
+  let lastRootHandle
+
   function update(nextData, nextOpts = {}) {
     const gen = ++generation
     const {
@@ -2296,6 +2387,7 @@ export function RelationshipChart(data, opts = {}) {
         // A newer update() superseded this one while its layout was pending —
         // drop it before doing the expensive layout + DOM write.
         if (gen !== generation) return
+        const animate = hasRendered && rootHandle === lastRootHandle
         graphviz.dot(dot)
         divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
         remasterChart({
@@ -2320,7 +2412,10 @@ export function RelationshipChart(data, opts = {}) {
           collapsed,
           rootHandle,
           showAllParents,
+          animate,
         })
+        hasRendered = true
+        lastRootHandle = rootHandle
         if (shrinkToFit) {
           const bbox = svg.node().getBBox()
           if (bbox.height > bboxHeight) {
