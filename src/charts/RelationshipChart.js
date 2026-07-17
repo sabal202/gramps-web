@@ -619,49 +619,45 @@ const FAMILY_ANCHOR_Y_OFFSET = -10
 // armed on a now-discarded chart cannot fire a stale chart:collapse-menu.
 let activeLongPressTimer = null
 
-// Renders the granular collapse/expand affordances on top of an
-// already-drawn chart (see
-// docs/superpowers/specs/2026-07-09-relchart-granular-collapse-design.md):
+// Renders the granular collapse/expand affordances on top of an already-drawn
+// chart (see docs/superpowers/specs/2026-07-09-relchart-granular-collapse-design.md):
 //   - Desktop (hover-capable): a small "▲" tab on the top edge of a person
 //     card per visible parent family (cut A, anc:<P>:<F>); a growing "family
-//     ring" on family nodes offering a "▶/◀" tab toward the far spouse
-//     (cut B, spouse:<F>:<S>) and a "▼" tab for children (cut C,
-//     children:<F>); the ring's own center-click collapses both (B+C =
-//     "whole marriage").
+//     ring" on family nodes offering a "▶/◀" tab toward the far spouse (cut B,
+//     spouse:<F>:<S>) and a "▼" tab for children (cut C, children:<F>); the
+//     ring's own center-click collapses both (B+C = "whole marriage").
 //   - Touch (hover:none): tapping a family node's hit-area dispatches
 //     `chart:collapse-menu` (family options); long-pressing a person card
 //     dispatches `chart:collapse-menu` (per-parent-family ancestor options +
-//     "make home person"). Short tap still reroots (unchanged) — see
-//     `touchState` below.
-//   - Reopen pills — one per entry in `chips` (see collapse.js pruneGraph),
-//     anchored on the visible person pruneGraph named for each, direction
-//     matches the side that was cut.
+//     "make home person"). Short tap still reroots (unchanged).
+//   - Reopen pills — one per entry in `ctx.chips` (see collapse.js pruneGraph),
+//     anchored on the visible person named for each; direction matches the
+//     side that was cut.
 // `nodes` is the already-built d3 selection of .node .person/.family <g>
-// elements, data-bound to the same nodedata records used elsewhere in
-// remasterChart. `data`/`collapsed`/`rootHandle`/`showAllParents` are the
-// same values the factory passed to pruneGraph — needed here (in addition to
-// the already-pruned `graph`) so hiddenCountForCut/pruneGraph can answer
-// "what would cut X additionally hide" against the FULL tree, not just the
-// currently-visible subset. `directAncestors` is root's blood-ancestor set
-// (already computed once in remasterChart for the direct-line highlight).
-// `touchState` is a small mutable ref shared with remasterChart's person
-// click handler so a long-press can suppress the click it also generates.
-function addCollapseAffordances(
-  nodes,
-  graph,
-  boxWidth,
-  boxHeight,
-  chips,
-  svg,
-  zoomBehavior,
-  collapseLabels,
-  data,
-  collapsed,
-  rootHandle,
-  showAllParents,
-  directAncestors,
-  touchState
-) {
+// elements. `ctx` is remasterChart's shared render context (graph, box dims,
+// chips, svg/zoom, collapse labels, and the full data/collapsed/rootHandle the
+// affordances need to answer "what would cut X additionally hide" against the
+// FULL tree, not just the visible subset). `directAncestors` is root's
+// blood-ancestor set (computed once in remasterChart). `touchState` is a small
+// mutable ref shared with remasterChart's person click handler so a long-press
+// can suppress the click it also generates.
+//
+// This function builds the shared per-render helpers into an `aff` bundle and
+// delegates the three visual passes (ancestor tabs, family controls, reopen
+// pills) to the block renderers below.
+function addCollapseAffordances(nodes, ctx, directAncestors, touchState) {
+  const {
+    graph,
+    boxWidth,
+    boxHeight,
+    chips,
+    svg,
+    zoomBehavior,
+    collapseLabels,
+    data,
+    collapsed,
+    rootHandle,
+  } = ctx
   // Cancel any long-press timer still pending from a previous render: the old
   // SVG subtree is discarded on rebuild but a timer's closure survives and
   // would dispatch a stale chart:collapse-menu (review finding 2026-07-09).
@@ -776,15 +772,16 @@ function addCollapseAffordances(
   // so the browser fires no click at all — which silently swallowed both
   // the person reroot click and the collapse click (bug found 2026-07-08).
   // Track pointer activity on the svg and only pan for keyboard-initiated
-  // focus.
-  let pointerInitiatedFocus = false
+  // focus. A mutable object (not a bare `let`) so the extracted block
+  // renderers below can read the latest value by reference.
+  const pointerState = {initiated: false}
   if (svg) {
     svg
       .on('pointerdown.collapsefocus', () => {
-        pointerInitiatedFocus = true
+        pointerState.initiated = true
       })
       .on('pointerup.collapsefocus', () => {
-        pointerInitiatedFocus = false
+        pointerState.initiated = false
       })
   }
 
@@ -865,13 +862,58 @@ function addCollapseAffordances(
     return control
   }
 
-  // ---------------------------------------------------------------------
-  // A — ancestor tabs (top edge of a person card), one per visible parent
-  // family. Desktop: hover-revealed tabs. Touch: long-press dispatches a
-  // bottom-sheet with the same set of families plus "make home person";
-  // the long-press also flags touchState.suppressClick so the click the
-  // browser generates on release does not ALSO reroot to this person.
-  // ---------------------------------------------------------------------
+  // All shared per-render state/helpers, bundled so each extracted block
+  // renderer takes one small context instead of a long positional list.
+  const aff = {
+    graph,
+    boxWidth,
+    boxHeight,
+    chips,
+    collapseLabels,
+    collapsed,
+    rootHandle,
+    directAncestors,
+    touchState,
+    isTouch,
+    progressive,
+    countFor,
+    farSpouseOf,
+    personXByHandle,
+    dashedForAncCut,
+    familySurnameOf,
+    visibleParentFamiliesOf,
+    focusPanToNode,
+    pointerState,
+    withPreview,
+    appendPill,
+  }
+
+  renderAncestorAffordances(nodes, aff)
+  renderFamilyAffordances(nodes, aff)
+  renderReopenChips(nodes, aff)
+}
+
+// A — ancestor tabs (top edge of a person card), one per visible parent
+// family. Desktop: hover-revealed tabs. Touch: long-press dispatches a
+// bottom-sheet with the same set of families plus "make home person"; the
+// long-press also flags touchState.suppressClick so the click the browser
+// generates on release does not ALSO reroot to this person.
+function renderAncestorAffordances(nodes, aff) {
+  const {
+    isTouch,
+    progressive,
+    visibleParentFamiliesOf,
+    familySurnameOf,
+    countFor,
+    graph,
+    boxWidth,
+    collapseLabels,
+    touchState,
+    appendPill,
+    withPreview,
+    focusPanToNode,
+    pointerState,
+  } = aff
   nodes
     .filter(d => d.nodetype === 'person')
     .each(function eachPerson(d) {
@@ -965,17 +1007,33 @@ function addCollapseAffordances(
           onActivate: () => dispatchCollapseToggle(cutKey),
         })
         tab.attr('tabindex', '0').on('focus', () => {
-          if (!pointerInitiatedFocus) focusPanToNode(d)
+          if (!pointerState.initiated) focusPanToNode(d)
         })
         withPreview([cutKey], tab)
       })
     })
+}
 
-  // ---------------------------------------------------------------------
-  // B/C — family node: hover-grown ring (center-click = whole marriage) +
-  // "▶/◀" spouse tab + "▼" children tab. Touch: tapping the family node's
-  // (enlarged) hit-area dispatches a bottom-sheet with the same options.
-  // ---------------------------------------------------------------------
+// B/C — family node: hover-grown ring (center-click = whole marriage) +
+// "▶/◀" spouse tab + "▼" children tab. Touch: tapping the family node's
+// (enlarged) hit-area dispatches a bottom-sheet with the same options.
+function renderFamilyAffordances(nodes, aff) {
+  const {
+    isTouch,
+    progressive,
+    farSpouseOf,
+    rootHandle,
+    directAncestors,
+    collapseLabels,
+    countFor,
+    boxHeight,
+    personXByHandle,
+    collapsed,
+    appendPill,
+    withPreview,
+    focusPanToNode,
+    pointerState,
+  } = aff
   nodes
     .filter(d => d.nodetype === 'family' && d.father && d.mother)
     .each(function eachFamily(d) {
@@ -1084,7 +1142,7 @@ function addCollapseAffordances(
           }
         })
         .on('focus', () => {
-          if (!pointerInitiatedFocus) focusPanToNode(d)
+          if (!pointerState.initiated) focusPanToNode(d)
         })
       withPreview(activeKeys, ring)
 
@@ -1112,15 +1170,17 @@ function addCollapseAffordances(
       })
       withPreview([cKey], cTab)
     })
+}
 
-  // ---------------------------------------------------------------------
-  // Reopen pills — one per chip returned by pruneGraph, anchored on the
-  // visible person it names. Direction (icon + position) follows the
-  // side that was cut; always visible (they indicate hidden data, not a
-  // hover-only affordance) and clickable/focusable on both desktop and
-  // touch. A person may anchor more than one pill (e.g. two collapsed
-  // parent families), so identical anchors are staggered.
-  // ---------------------------------------------------------------------
+// Reopen pills — one per chip returned by pruneGraph, anchored on the
+// visible person it names. Direction (icon + position) follows the side that
+// was cut; always visible (they indicate hidden data, not a hover-only
+// affordance) and clickable/focusable on both desktop and touch. A person may
+// anchor more than one pill (e.g. two collapsed parent families), so identical
+// anchors are staggered.
+function renderReopenChips(nodes, aff) {
+  const {chips, boxWidth, boxHeight, dashedForAncCut, collapseLabels, isTouch} =
+    aff
   const personNodeSelectionByHandle = new Map()
   nodes
     .filter(d => d.nodetype === 'person')
@@ -1993,22 +2053,7 @@ function remasterChart(
   renderEdges(gvchartx, edges, directLineForEdges)
   renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx)
 
-  addCollapseAffordances(
-    nodes,
-    graph,
-    boxWidth,
-    boxHeight,
-    chips,
-    svg,
-    zoomBehavior,
-    collapseLabels,
-    data,
-    collapsed,
-    rootHandle,
-    showAllParents,
-    directAncestors,
-    touchState
-  )
+  addCollapseAffordances(nodes, ctx, directAncestors, touchState)
 
   // kill hidden graphviz generated svg
   gvchartx.remove()
