@@ -1,5 +1,10 @@
 import {create, select} from 'd3-selection'
 import {zoom} from 'd3-zoom'
+// Registers selection.transition()/.interrupt() (used for the position-glide in
+// remasterChart) on the d3-selection prototype. d3-zoom pulls this in as a side
+// effect too, but import it directly so the chart never relies on that
+// incidental chain — without it every animated/snapped redraw would throw.
+import 'd3-transition'
 import {linkVertical} from 'd3-shape'
 import {Graphviz} from '@hpcc-js/wasm'
 import {
@@ -1912,11 +1917,10 @@ function wireNodeInteractions(nodes, ctx, touchState) {
 
 // Convert graphviz's polyline edges into smooth vertical D3 connectors, styled
 // with a heavier accent along root's direct blood line (see directLineForEdges).
-// Keyed-join into the persistent edges layer by the graphviz edge identity
-// (its <title> = "<sourceNode>->
-// <targetNode>", stable across redraws) so a surviving edge keeps its <path>
-// element — and, when `animate` is on, tweens its `d` from the old to the new
-// layout in step with the node move, instead of snapping.
+// Keyed-join into the persistent edges layer by the graphviz edge identity (its
+// <title>, i.e. "sourceNode->targetNode", stable across redraws) so a surviving
+// edge keeps its <path> element — and, when `animate` is on, tweens its `d` from
+// the old to the new layout in step with the node move, instead of snapping.
 function renderEdges(gvchartx, edges, directLineForEdges, animate) {
   const linkGenerator = linkVertical()
     .x(d => d.x)
@@ -1958,7 +1962,9 @@ function renderEdges(gvchartx, edges, directLineForEdges, animate) {
   })
 
   const sel = edges.selectAll('path.edge').data(edgeSpecs, e => e.key)
-  sel.exit().remove()
+  // Cancel any in-flight glide on a leaving element before removing it (tidies
+  // up a bounded, harmless timer that would otherwise tick on a detached node).
+  sel.exit().interrupt('reposition').remove()
   const enter = sel
     .enter()
     .append('path')
@@ -2141,7 +2147,9 @@ function remasterChart({
 
   // Keyed node join: bind node-data to the persistent <g>s by stable identity.
   const sel = nodesLayer.selectAll('g.node').data(nodedata, nodeKey)
-  sel.exit().remove()
+  // Cancel any in-flight glide on a leaving element before removing it (tidies
+  // up a bounded, harmless timer that would otherwise tick on a detached node).
+  sel.exit().interrupt('reposition').remove()
   const enter = sel
     .enter()
     .append('g')
@@ -2321,12 +2329,17 @@ export function RelationshipChart(data, opts = {}) {
   let generation = 0
 
   // Position-animation state. Animate survivor moves only on a redraw that is
-  // NOT the first draw and keeps the SAME root (collapse/expand, cosmetic
-  // toggles) — a reroot reorganises the whole tree, where a snap reads calmer
-  // than every node flying at once. remaster further gates on node count +
+  // NOT the first draw and keeps the SAME root AND the SAME box dimensions
+  // (collapse/expand). A reroot reorganises the whole tree; and a box-size
+  // change (e.g. the maiden-name toggle grows every card) makes graphviz
+  // re-lay-out essentially every node at layout-reroot scale AND resizes cards
+  // instantly at their old position — both read calmer as a snap than as
+  // everything flying at once. remaster further gates on node count +
   // reduced-motion.
   let hasRendered = false
   let lastRootHandle
+  let lastBoxWidth
+  let lastBoxHeight
 
   function update(nextData, nextOpts = {}) {
     const gen = ++generation
@@ -2387,7 +2400,11 @@ export function RelationshipChart(data, opts = {}) {
         // A newer update() superseded this one while its layout was pending —
         // drop it before doing the expensive layout + DOM write.
         if (gen !== generation) return
-        const animate = hasRendered && rootHandle === lastRootHandle
+        const animate =
+          hasRendered &&
+          rootHandle === lastRootHandle &&
+          boxWidth === lastBoxWidth &&
+          boxHeight === lastBoxHeight
         graphviz.dot(dot)
         divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
         remasterChart({
@@ -2416,6 +2433,8 @@ export function RelationshipChart(data, opts = {}) {
         })
         hasRendered = true
         lastRootHandle = rootHandle
+        lastBoxWidth = boxWidth
+        lastBoxHeight = boxHeight
         if (shrinkToFit) {
           const bbox = svg.node().getBBox()
           if (bbox.height > bboxHeight) {
