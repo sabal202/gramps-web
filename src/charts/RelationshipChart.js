@@ -1528,6 +1528,9 @@ function renderPersonNodes(nodes, targetsvg, nodedata, ctx) {
     .attr('overflow', 'hidden')
     .attr('x', d => textPadding(d))
     .attr('y', 25)
+    // Class so a cosmetic name-format change can repaint this line in place,
+    // without a graphviz relayout (see repaintNameFormat + host shouldUpdate).
+    .attr('class', 'name-line-1')
     .text(d =>
       clipString(formatNameLines(d, nameDisplayFormat)[0], boxWidthTotal(d))
     )
@@ -1547,6 +1550,7 @@ function renderPersonNodes(nodes, targetsvg, nodedata, ctx) {
     .attr('overflow', 'hidden')
     .attr('x', d => textPadding(d))
     .attr('y', 25 + 17)
+    .attr('class', 'name-line-2')
     .text(d =>
       clipString(formatNameLines(d, nameDisplayFormat)[1], boxWidthTotal(d))
     )
@@ -2069,6 +2073,36 @@ export function relationshipViewBox(bboxWidth, bboxHeight) {
   return [-bboxWidth / 2, -bboxHeight / 2, bboxWidth, bboxHeight]
 }
 
+// Repaint the two person-name lines in place for a new name-display format,
+// WITHOUT a graphviz relayout: a name-format change alters only the text of the
+// two name lines (see formatNameLines), never box sizes or node positions, so
+// the already laid-out DOM can be reused. Called from the host component's
+// shouldUpdate when nameDisplayFormat is the only changed prop (the relayout-
+// vs-redraw split). Returns the number of person nodes repainted — 0 means the
+// chart is not drawn yet (async graphviz layout still pending, or no named
+// people), so the caller should fall back to a normal rebuild.
+export function repaintNameFormat(svgNode, nameDisplayFormat) {
+  const geom = svgNode?.__relchartGeom
+  if (!geom) return 0
+  const {boxWidth, imgPadding} = geom
+  const imgRadius = 70 / 2
+  const textPadding = d =>
+    d.imageUrl ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
+  const boxWidthTotal = d => boxWidth - textPadding(d)
+  let repainted = 0
+  select(svgNode)
+    .selectAll('g.node.person')
+    .each(function repaintOne(d) {
+      if (!d || !(d.profile?.name_given || d.profile?.name_surname)) return
+      const [line1, line2] = formatNameLines(d, nameDisplayFormat)
+      const g = select(this)
+      g.select('text.name-line-1').text(clipString(line1, boxWidthTotal(d)))
+      g.select('text.name-line-2').text(clipString(line2, boxWidthTotal(d)))
+      repainted += 1
+    })
+  return repainted
+}
+
 export function RelationshipChart(
   data,
   {
@@ -2133,6 +2167,12 @@ export function RelationshipChart(
   // transition) would be clobbered back to the stale build-time dimensions.
   // The shrinkToFit branch still overrides post-layout for its consumers.
   svg.attr('viewBox', relationshipViewBox(bboxWidth, bboxHeight))
+
+  // Stash the geometry a cosmetic name-format repaint needs (box width + image
+  // padding drive the text-clip width), so the host can repaint name lines in
+  // place without a relayout. Set synchronously — available before the async
+  // graphviz layout resolves and independent of it (see repaintNameFormat).
+  svg.node().__relchartGeom = {boxWidth, imgPadding}
 
   if (initialZoom) {
     svg.node().__zoom = initialZoom

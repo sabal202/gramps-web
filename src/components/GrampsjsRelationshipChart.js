@@ -8,6 +8,7 @@ import {GrampsjsChartBase} from './GrampsjsChartBase.js'
 import {
   RelationshipChart,
   relationshipViewBox,
+  repaintNameFormat,
 } from '../charts/RelationshipChart.js'
 import {getImageUrl} from '../charts/util.js'
 
@@ -110,6 +111,24 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       }
       return false
     }
+
+    // A name-display-format change alters only the text of the two name lines
+    // (see formatNameLines), not box sizes or the graphviz layout. So when it
+    // is the ONLY changed prop, repaint those lines in place and skip the full
+    // rebuild (relayout + DOM teardown). Falls through to a normal rebuild if
+    // the chart is not drawn yet (async layout pending) or has no named people.
+    const onlyNameFormat =
+      changed.has('nameDisplayFormat') &&
+      [...changed.keys()].every(k => k === 'nameDisplayFormat')
+    if (onlyNameFormat) {
+      const svg = this.renderRoot
+        ?.getElementById('container')
+        ?.querySelector('svg')
+      if (svg && repaintNameFormat(svg, this.nameDisplayFormat) > 0) {
+        return false
+      }
+    }
+
     return true
   }
 
