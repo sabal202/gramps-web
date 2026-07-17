@@ -513,6 +513,30 @@ const getFamilySurname = primaryName =>
     .map(s => s.surname)
     .join(' ')
 
+// The two text lines of a person node, honouring the selected chart
+// name-display format. Returns [line1, line2]. Extracted so the format switch
+// lives in ONE place: it used to be duplicated — mirrored — across the two
+// <text> blocks below, so adding a format meant editing both by hand and
+// keeping them in sync (see project CLAUDE.md note about "both .text() blocks").
+export function formatNameLines(d, nameDisplayFormat) {
+  const given = d.profile?.name_given
+  const surname = d.profile?.name_surname
+  const givenPatronymic = [given, getPatronymic(d.primaryName)]
+    .filter(Boolean)
+    .join(' ')
+  const familySurname = getFamilySurname(d.primaryName) || surname
+  switch (nameDisplayFormat) {
+    case chartNameDisplayFormat.surnameThenGiven:
+      return [`${surname},`, given]
+    case chartNameDisplayFormat.givenPatronymicThenSurname:
+      return [givenPatronymic, familySurname]
+    case chartNameDisplayFormat.surnameThenGivenPatronymic:
+      return [familySurname, givenPatronymic]
+    default:
+      return [given, surname]
+  }
+}
+
 function clicked(event, d) {
   // Force-hide any lingering hover-preview popup before the SVG gets
   // rebuilt under new root — the node under the cursor is about to be
@@ -701,15 +725,24 @@ function addCollapseAffordances(
   // Family objects by handle, from the FULL (unpruned) data — needed to
   // recompute childRefStyle's dashed/non-birth flag for ancestor cuts whose
   // family is no longer part of the visible (pruned) graph, i.e. reopen
-  // pills for an already-collapsed anc:<P>:<F>.
-  const familyByHandle = new Map()
-  for (const p of data) {
-    for (const f of selectParentFamilies(p)) {
-      if (f?.handle) familyByHandle.set(f.handle, f)
+  // pills for an already-collapsed anc:<P>:<F>. Built lazily on first use: it
+  // is a full-tree scan, but it is only needed when there ARE collapsed
+  // ancestor cuts to draw reopen pills for — most renders have none, so the
+  // scan should not run every render.
+  let _familyByHandle = null
+  const familyByHandle = () => {
+    if (_familyByHandle === null) {
+      _familyByHandle = new Map()
+      for (const p of data) {
+        for (const f of selectParentFamilies(p)) {
+          if (f?.handle) _familyByHandle.set(f.handle, f)
+        }
+      }
     }
+    return _familyByHandle
   }
   const dashedForAncCut = (P, F) => {
-    const f = familyByHandle.get(F)
+    const f = familyByHandle().get(F)
     return f ? childRefStyle(f, P).dashed : false
   }
 
@@ -1426,20 +1459,7 @@ function remasterChart(
     .attr('x', d => textPadding(d))
     .attr('y', 25)
     .text(d =>
-      clipString(
-        nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? `${d.profile?.name_surname},`
-          : nameDisplayFormat ===
-            chartNameDisplayFormat.givenPatronymicThenSurname
-          ? [d.profile?.name_given, getPatronymic(d.primaryName)]
-              .filter(Boolean)
-              .join(' ')
-          : nameDisplayFormat ===
-            chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
-          : d.profile?.name_given,
-        boxWidthTotal(d)
-      )
+      clipString(formatNameLines(d, nameDisplayFormat)[0], boxWidthTotal(d))
     )
 
   nodes
@@ -1458,20 +1478,7 @@ function remasterChart(
     .attr('x', d => textPadding(d))
     .attr('y', 25 + 17)
     .text(d =>
-      clipString(
-        nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
-          ? d.profile?.name_given
-          : nameDisplayFormat ===
-            chartNameDisplayFormat.givenPatronymicThenSurname
-          ? getFamilySurname(d.primaryName) || d.profile?.name_surname
-          : nameDisplayFormat ===
-            chartNameDisplayFormat.surnameThenGivenPatronymic
-          ? [d.profile?.name_given, getPatronymic(d.primaryName)]
-              .filter(Boolean)
-              .join(' ')
-          : d.profile?.name_surname,
-        boxWidthTotal(d)
-      )
+      clipString(formatNameLines(d, nameDisplayFormat)[1], boxWidthTotal(d))
     )
 
   // Dedicated maiden-name line, rendered below the two name lines when the
