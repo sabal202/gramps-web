@@ -1633,6 +1633,16 @@ function syncImagePatterns(defs, nodedata) {
     .attr('height', 70)
     .attr('width', 70)
     .attr('xlink:href', d => d.imageUrl)
+  // Survivors keep their <pattern>, but their photo may have actually changed
+  // (e.g. a media edit refetched the tree while the chart stayed open). Update
+  // the href ONLY when it truly differs, so an unchanged bitmap is never
+  // re-fetched — otherwise this would defeat the whole point of persisting the
+  // pattern and reintroduce avatar flashing on every collapse/reroot.
+  patterns.select('image').each(function updateHref(d) {
+    if (this.getAttribute('xlink:href') !== d.imageUrl) {
+      select(this).attr('xlink:href', d.imageUrl)
+    }
+  })
 }
 
 // Family marriage-marker nodes: the union bar (sized to actually reach both
@@ -1939,12 +1949,17 @@ function renderEdges(gvchartx, edges, directLineForEdges) {
 function renderRootAndDirectLine(nodes, targetsvg, directAncestors, ctx) {
   const {graph, boxWidth, boxHeight} = ctx
 
-  // Reset any previous root drop-shadow first. The filter lives on the node
-  // <g> itself (not a child), so it survives the child-clear of a keyed-join
-  // redraw — without this, the previous root would keep its drop-shadow after
-  // a reroot. The direct-ancestor outline sits on the .personBox child, which
-  // is re-created fresh each redraw, so it needs no explicit reset here.
-  nodes.style('filter', null)
+  // Reset per-node styles that live on the node <g> itself (not a child) and
+  // therefore survive the child-clear of a keyed-join redraw:
+  //  - filter: the previous root's drop-shadow would otherwise linger after a
+  //    reroot.
+  //  - opacity: withPreview dims nodes to 0.25 on control hover/focus and only
+  //    restores them on that control's mouseleave/blur; an external redraw
+  //    (e.g. db:changed) mid-hover would strand a survivor at 0.25 with its
+  //    controlling element gone, so no restore could ever fire.
+  // The direct-ancestor outline sits on the .personBox child, re-created fresh
+  // each redraw, so it needs no explicit reset here.
+  nodes.style('filter', null).style('opacity', null)
 
   // move root person to center
   nodes
@@ -2260,50 +2275,59 @@ export function RelationshipChart(data, opts = {}) {
     )
     const dot = graph.getDot()
 
-    loadGraphviz().then(graphviz => {
-      // A newer update() superseded this one while its layout was pending —
-      // drop it before doing the expensive layout + DOM write.
-      if (gen !== generation) return
-      graphviz.dot(dot)
-      divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
-      remasterChart({
-        divhidden,
-        layers,
-        graph,
-        chips,
-        svg,
-        zoomBehavior,
-        boxWidth,
-        boxHeight,
-        imgPadding,
-        getImageUrl,
-        maxImages,
-        nameDisplayFormat,
-        canEdit,
-        showUnionDates,
-        unionStatusLabels,
-        showMaidenName,
-        collapseLabels,
-        data: nextData,
-        collapsed,
-        rootHandle,
-        showAllParents,
-      })
-      if (shrinkToFit) {
-        const bbox = svg.node().getBBox()
-        if (bbox.height > bboxHeight) {
-          svg
-            .attr('viewBox', [
-              bbox.x,
-              bbox.y - 20,
-              bbox.width,
-              bbox.height + 40,
-            ])
-            .attr('height', bboxHeight)
-            .attr('width', bboxWidth)
+    loadGraphviz()
+      .then(graphviz => {
+        // A newer update() superseded this one while its layout was pending —
+        // drop it before doing the expensive layout + DOM write.
+        if (gen !== generation) return
+        graphviz.dot(dot)
+        divhidden.html(graphviz.layout(dot, 'svg', 'dot'))
+        remasterChart({
+          divhidden,
+          layers,
+          graph,
+          chips,
+          svg,
+          zoomBehavior,
+          boxWidth,
+          boxHeight,
+          imgPadding,
+          getImageUrl,
+          maxImages,
+          nameDisplayFormat,
+          canEdit,
+          showUnionDates,
+          unionStatusLabels,
+          showMaidenName,
+          collapseLabels,
+          data: nextData,
+          collapsed,
+          rootHandle,
+          showAllParents,
+        })
+        if (shrinkToFit) {
+          const bbox = svg.node().getBBox()
+          if (bbox.height > bboxHeight) {
+            svg
+              .attr('viewBox', [
+                bbox.x,
+                bbox.y - 20,
+                bbox.width,
+                bbox.height + 40,
+              ])
+              .attr('height', bboxHeight)
+              .attr('width', bboxWidth)
+          }
         }
-      }
-    })
+      })
+      // Surface a failed redraw instead of leaving it as a silent unhandled
+      // rejection (which would freeze the chart on stale content with no clue).
+      // The keyed join throws, rather than silently misrenders, if node keys ever
+      // collide — so make that loud in the console if it ever happens.
+      .catch(err => {
+        // eslint-disable-next-line no-console
+        console.error('RelationshipChart update failed', err)
+      })
   }
 
   update(data, opts)
