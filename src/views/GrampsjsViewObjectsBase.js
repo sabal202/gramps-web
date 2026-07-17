@@ -635,10 +635,32 @@ export class GrampsjsViewObjectsBase extends GrampsjsStaleDataMixin(
     super.update(changed)
     if (changed.has('active')) {
       this.filterOpen = false
+      if (this.active) {
+        this._consumePendingTagFilter()
+      }
     }
     if (this._fullUrl !== this._oldUrl) {
       this._fetchData()
     }
+  }
+
+  // When navigating here after clicking a tag on a detail page, apply the
+  // corresponding HasTag filter (set transiently on appState by the object page).
+  _consumePendingTagFilter() {
+    const pending = this.appState?.pendingTagFilter
+    if (!pending || pending.page !== this.appState?.path?.page) {
+      return
+    }
+    delete this.appState.pendingTagFilter
+    const filtersEl = this._filters
+    if (!filtersEl) {
+      return
+    }
+    const others = (filtersEl.filters || []).filter(
+      rule => (rule._slot ?? rule.name) !== 'HasTag'
+    )
+    filtersEl.filters = [...others, {name: 'HasTag', values: [pending.tagName]}]
+    this._page = 1
   }
 
   handleUpdateStaleData() {
