@@ -586,5 +586,15 @@
   "Link strength: marriages": "Link strength: marriages",
   "Link strength: parent-child": "Link strength: parent-child",
   "Link distance: marriages": "Link distance: marriages",
-  "Link distance: parent-child": "Link distance: parent-child"
+  "Link distance: parent-child": "Link distance: parent-child",
+  "Path from this person": "Path from this person",
+  "Path": "Path",
+  "Click another person to trace the path from": "Click another person to trace the path from",
+  "Not connected (different islands)": "Not connected (different islands)",
+  "Relationship": "Relationship",
+  "Tag (top 8)": "Tag (top 8)",
+  "Sources (citations)": "Sources (citations)",
+  "All tags": "All tags",
+  "ring": "ring",
+  "hypothesis-tagged link": "hypothesis-tagged link"
 }

@@ -528,5 +528,15 @@
   "links": "связи",
   "islands": "острова",
   "of %s": "из %s",
-  "Open person page": "Открыть страницу персоны"
+  "Open person page": "Открыть страницу персоны",
+  "Path from this person": "Путь от этого человека",
+  "Path": "Путь",
+  "Click another person to trace the path from": "Кликните второго человека — путь от",
+  "Not connected (different islands)": "Не связаны (разные острова)",
+  "Relationship": "Родство",
+  "Tag (top 8)": "Тег (топ-8)",
+  "Sources (citations)": "Источники (цитаты)",
+  "All tags": "Все теги",
+  "ring": "кольцо",
+  "hypothesis-tagged link": "гипотезная связь"
 }

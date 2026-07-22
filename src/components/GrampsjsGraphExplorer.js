@@ -38,7 +38,7 @@ import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/icon-button.js'
-import {mdiClose, mdiCog, mdiOpenInNew} from '@mdi/js'
+import {mdiClose, mdiCog, mdiOpenInNew, mdiVectorPolyline} from '@mdi/js'
 
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {fireEvent} from '../util.js'
@@ -82,6 +82,7 @@ const YEAR_RAMP_DARK = ['#184f95', '#3987e5', '#86b6ef', '#cde2fb']
 // remounted when the user switches chart tabs).
 const savedParams = {
   minComp: 1,
+  tagFilter: -1,
   colorMode: 'year',
   sizeMode: 'degree',
   baseR: 2.2,
@@ -439,6 +440,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       _searchMatches: {type: Array},
       _paused: {type: Boolean},
       _statsHtml: {type: String},
+      _pathFrom: {type: Object},
+      _path: {type: Object},
     }
   }
 
@@ -448,6 +451,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this.params = {...savedParams}
     this._panelHidden = window.innerWidth < 700
     this._selected = null
+    this._pathFrom = null
+    this._path = null
     this._searchMatches = null
     this._paused = false
     this._nodes = []
@@ -511,6 +516,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _initGraph() {
     const {people, links} = this.data
+    this._tagNames = this.data.tags || []
     this._nodes = people.map((p, i) => {
       const fam = p.family_surname ?? p.surname ?? ''
       const pat = p.patronymic || ''
@@ -518,6 +524,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       const altNames = p.alt_names || []
       return {
         id: i,
+        handle: p.handle,
         gid: p.gramps_id,
         given: p.given_name || '',
         surname: p.surname || '',
@@ -533,11 +540,29 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
         sex: p.gender,
         by: p.birth_year,
         dy: p.death_year,
+        tags: p.tags || [],
+        cit: p.citations || 0,
+        hyp: (p.tags || []).some(t =>
+          /гипотез|hypothes/i.test(this._tagNames[t] || '')
+        ),
         deg: 0,
         x: 0,
         y: 0,
       }
     })
+    // tag frequency: top-8 for coloring, full ranked list for the filter
+    {
+      const tagCount = new Map()
+      for (const n of this._nodes) {
+        for (const t of n.tags) {
+          tagCount.set(t, (tagCount.get(t) || 0) + 1)
+        }
+      }
+      this._tagsByCount = [...tagCount.entries()].sort((a, b) => b[1] - a[1])
+      this._tagSlot = new Map(
+        this._tagsByCount.slice(0, 8).map(([t], i) => [t, i])
+      )
+    }
     this._bc = null
     this._desc = null
     this._links = links.map(l => ({
@@ -706,9 +731,21 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _applyFilter() {
     const min = this.params.minComp
-    this._visNodes = this._nodes.filter(d => this._compSize[d.comp] >= min)
+    const tf = this.params.tagFilter
+    const visible = new Set()
+    for (const d of this._nodes) {
+      if (this._compSize[d.comp] < min) {
+        continue
+      }
+      if (tf >= 0 && !d.tags.includes(tf)) {
+        continue
+      }
+      visible.add(d.id)
+    }
+    this._visSet = visible
+    this._visNodes = this._nodes.filter(d => visible.has(d.id))
     this._visLinks = this._links.filter(
-      l => this._compSize[l.source.comp] >= min
+      l => visible.has(l.source.id) && visible.has(l.target.id)
     )
     this._sim.nodes(this._visNodes)
     this._linkForce.links(this._visLinks)
@@ -733,9 +770,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     const pick = (px, py) => {
       const t = this._transform
       const node = this._sim?.find(t.invertX(px), t.invertY(py), 14 / t.k)
-      return node && this._compSize[node.comp] >= this.params.minComp
-        ? node
-        : null
+      return node && this._visSet?.has(node.id) ? node : null
     }
     this._pickNode = pick
 
@@ -830,9 +865,92 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     })
     canvas.addEventListener('click', ev => {
       const r = canvas.getBoundingClientRect()
-      this._selected = pick(ev.clientX - r.left, ev.clientY - r.top)
+      const node = pick(ev.clientX - r.left, ev.clientY - r.top)
+      if (this._pathFrom && node && node.id !== this._pathFrom.id) {
+        this._completePath(node)
+        return
+      }
+      this._selected = node
       this._requestRender()
     })
+  }
+
+  /* ================= path between two people ================= */
+
+  _startPath() {
+    this._pathFrom = this._selected
+    this._path = null
+    this._selected = null
+    this._requestRender()
+  }
+
+  _clearPath() {
+    this._pathFrom = null
+    this._path = null
+    this._requestRender()
+  }
+
+  _shortestPath(a, b) {
+    if (this._comp[a] !== this._comp[b]) {
+      return null
+    }
+    const prev = new Map([[a, -1]])
+    const queue = [a]
+    let head = 0
+    while (head < queue.length) {
+      const v = queue[head]
+      head += 1
+      if (v === b) {
+        break
+      }
+      for (const w of this._adj[v]) {
+        if (!prev.has(w)) {
+          prev.set(w, v)
+          queue.push(w)
+        }
+      }
+    }
+    if (!prev.has(b)) {
+      return null
+    }
+    const chain = []
+    for (let v = b; v !== -1; v = prev.get(v)) {
+      chain.push(v)
+    }
+    return chain.reverse()
+  }
+
+  async _completePath(target) {
+    const from = this._pathFrom
+    this._pathFrom = null
+    const chain = this._shortestPath(from.id, target.id)
+    if (!chain) {
+      this._path = {from, to: target, none: true}
+      this._requestRender()
+      return
+    }
+    this._path = {
+      from,
+      to: target,
+      chain,
+      nodesSet: new Set(chain),
+      rel: null,
+    }
+    this._requestRender()
+    // best-effort human-readable kinship label from the server
+    try {
+      const res = await this.appState.apiGet(
+        `/api/relations/${target.handle}/${from.handle}`
+      )
+      if ('data' in res && this._path && this._path.to === target) {
+        this._path = {
+          ...this._path,
+          rel: res.data.relationship_string || '',
+        }
+      }
+    } catch {
+      // path stays highlighted without a label
+    }
   }
 
   _tipHtml(n) {
@@ -1006,6 +1124,27 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           return c.male
         }
         return d.sex === 0 ? c.female : c.grey
+      case 'tag': {
+        for (const t of d.tags) {
+          const s = this._tagSlot.get(t)
+          if (s !== undefined) {
+            return c.cat8[s]
+          }
+        }
+        return c.grey
+      }
+      case 'citations': {
+        if (d.cit >= 4) {
+          return '#008300'
+        }
+        if (d.cit >= 2) {
+          return c.dark ? '#199e70' : '#1baf7a'
+        }
+        if (d.cit >= 1) {
+          return '#c98500'
+        }
+        return c.dark ? '#e66767' : '#d03b3b'
+      }
       case 'year':
       default:
         return d.by && d.by > 1500 && d.by < 2050
@@ -1072,6 +1211,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     const hl = this._hover || this._selected
     const hlSet = hl ? new Set([hl.id, ...this._adj[hl.id]]) : null
     const searchActive = !!this._searchSet
+    const path = this._path?.nodesSet ? this._path : null
 
     // edges in 4 batches: (child|spouse) × (normal|highlighted)
     const styles = [
@@ -1120,9 +1260,27 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       }
       ctx.strokeStyle = st.color
       ctx.globalAlpha =
-        (hlSet || searchActive) && !st.hi ? st.alpha * 0.25 : st.alpha
+        (hlSet || searchActive || path) && !st.hi ? st.alpha * 0.25 : st.alpha
       ctx.lineWidth = st.w / k
       ctx.stroke()
+    }
+
+    // kinship path overlay: thick accent polyline over the chain
+    if (path) {
+      ctx.strokeStyle = c.ring
+      ctx.globalAlpha = 0.95
+      ctx.lineWidth = 2.4 / k
+      ctx.beginPath()
+      path.chain.forEach((id, i) => {
+        const n = this._nodes[id]
+        if (i === 0) {
+          ctx.moveTo(n.x, n.y)
+        } else {
+          ctx.lineTo(n.x, n.y)
+        }
+      })
+      ctx.stroke()
+      ctx.globalAlpha = 1
     }
 
     // nodes
@@ -1139,11 +1297,22 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       if (searchActive && !this._searchSet.has(n.id)) {
         a = Math.min(a, 0.12)
       }
+      if (path && !path.nodesSet.has(n.id)) {
+        a = Math.min(a, 0.12)
+      }
       ctx.globalAlpha = a
       ctx.fillStyle = this._nodeColor(n)
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, 6.2832)
       ctx.fill()
+      if (n.hyp) {
+        // hypothesis-tagged person: warning-colored ring
+        ctx.strokeStyle = '#c98500'
+        ctx.lineWidth = 1.2 / k
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, r + 1.6 / k, 0, 6.2832)
+        ctx.stroke()
+      }
     }
     ctx.globalAlpha = 1
 
@@ -1161,7 +1330,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     }
 
     // labels
-    if (k >= this.params.labelK || hlSet) {
+    if (k >= this.params.labelK || hlSet || path) {
       ctx.font = `${11 / k}px system-ui, sans-serif`
       ctx.textAlign = 'center'
       let drawn = 0
@@ -1172,7 +1341,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           if (drawn >= cap) {
             break
           }
-          if (this._compSize[n.comp] < this.params.minComp) {
+          if (!this._visSet?.has(n.id)) {
             continue
           }
           if (n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) {
@@ -1189,11 +1358,15 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           drawn += 1
         }
       }
-      if (hlSet) {
+      const alwaysLabel = new Set([
+        ...(hlSet ?? []),
+        ...(path ? path.nodesSet : []),
+      ])
+      if (alwaysLabel.size) {
         ctx.fillStyle = c.labelStrong
-        for (const id of hlSet) {
+        for (const id of alwaysLabel) {
           const n = this._nodes[id]
-          if (this._compSize[n.comp] < this.params.minComp) {
+          if (!this._visSet?.has(n.id)) {
             continue
           }
           if (n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) {
@@ -1253,6 +1426,12 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this.requestUpdate()
   }
 
+  _onTagFilter(ev) {
+    this.params.tagFilter = Number(ev.target.value)
+    this._applyFilter()
+    this.requestUpdate()
+  }
+
   _onShowMaiden(ev) {
     this.params.showMaiden = ev.target.selected
     this._requestRender()
@@ -1269,7 +1448,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     }
     const matches = []
     for (const n of this._nodes) {
-      if (this._compSize[n.comp] < this.params.minComp) {
+      if (!this._visSet?.has(n.id)) {
         continue
       }
       // haystack covers given, patronymic, primary + family surname, maiden
@@ -1385,6 +1564,52 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
         </div>
       `
     }
+    if (colorMode === 'tag') {
+      return html`
+        ${this._('Tag (top 8)')}
+        <div class="chips">
+          ${this._tagsByCount
+            .slice(0, 8)
+            .map(
+              ([t, count], i) => html`
+                <span class="chip"
+                  ><span class="dot" style="background:${c.cat8[i]}"></span
+                  >${this._tagNames[t]}&nbsp;(${count})</span
+                >
+              `
+            )}
+          <span class="chip"
+            ><span class="dot" style="background:${c.grey}"></span>${this._(
+              'others'
+            )}</span
+          >
+        </div>
+        <div class="gradlbl" style="margin-top:4px">
+          <span>⭘ ${this._('ring')} = ${this._('hypothesis-tagged link')}</span>
+        </div>
+      `
+    }
+    if (colorMode === 'citations') {
+      const steps = [
+        [c.dark ? '#e66767' : '#d03b3b', '0'],
+        ['#c98500', '1'],
+        [c.dark ? '#199e70' : '#1baf7a', '2–3'],
+        ['#008300', '4+'],
+      ]
+      return html`
+        ${this._('Sources (citations)')}
+        <div class="chips">
+          ${steps.map(
+            ([col, label]) => html`
+              <span class="chip"
+                ><span class="dot" style="background:${col}"></span
+                >${label}</span
+              >
+            `
+          )}
+        </div>
+      `
+    }
     if (colorMode === 'component') {
       return html`
         ${this._('Islands (top 8)')}
@@ -1483,6 +1708,68 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           ></grampsjs-icon>
           ${this._('Open person page')}
         </button>
+        <br />
+        <button class="open-link" @click="${this._startPath}">
+          <grampsjs-icon
+            .path="${mdiVectorPolyline}"
+            height="16"
+            width="16"
+            color="var(--md-sys-color-primary)"
+          ></grampsjs-icon>
+          ${this._('Path from this person')}
+        </button>
+      </div>
+    `
+  }
+
+  _renderPathPanel() {
+    if (this._pathFrom) {
+      return html`
+        <div id="card">
+          <md-icon-button id="cardClose" @click="${this._clearPath}">
+            <grampsjs-icon
+              .path="${mdiClose}"
+              color="var(--md-sys-color-on-surface-variant)"
+            ></grampsjs-icon>
+          </md-icon-button>
+          <h3>${this._('Path')}</h3>
+          <div class="sub">
+            ${this._('Click another person to trace the path from')}
+            ${this._nodeLabel(this._pathFrom, false)}
+          </div>
+        </div>
+      `
+    }
+    const p = this._path
+    if (!p) {
+      return ''
+    }
+    return html`
+      <div id="card">
+        <md-icon-button id="cardClose" @click="${this._clearPath}">
+          <grampsjs-icon
+            .path="${mdiClose}"
+            color="var(--md-sys-color-on-surface-variant)"
+          ></grampsjs-icon>
+        </md-icon-button>
+        <h3>${this._('Path')}</h3>
+        <div class="sub">
+          ${this._nodeLabel(p.from, false)} → ${this._nodeLabel(p.to, false)}
+        </div>
+        ${p.none
+          ? html`<div class="meta">
+              <span>${this._('Not connected (different islands)')}</span>
+            </div>`
+          : html`
+              <div class="meta">
+                <span>${this._('Links')}</span
+                ><span>${p.chain.length - 1}</span>
+                ${p.rel
+                  ? html`<span>${this._('Relationship')}</span
+                      ><span>${p.rel}</span>`
+                  : ''}
+              </div>
+            `}
       </div>
     `
   }
@@ -1493,7 +1780,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
       <div id="hud">
         <div id="stats">${this._statsHtml || ''}</div>
-        ${this._renderCard()}
+        ${this._renderPathPanel()} ${this._renderCard()}
       </div>
 
       <div id="tip"></div>
@@ -1557,6 +1844,27 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
             1
           )}
           <div class="hint">${this._('Hides small disconnected islands')}</div>
+          ${this._tagsByCount?.length
+            ? html`
+                <md-outlined-select
+                  @change="${this._onTagFilter}"
+                  value="${String(this.params.tagFilter)}"
+                >
+                  <md-select-option value="-1"
+                    >${this._('All tags')}</md-select-option
+                  >
+                  ${this._tagsByCount
+                    .slice(0, 30)
+                    .map(
+                      ([t, count]) => html`
+                        <md-select-option value="${String(t)}"
+                          >${this._tagNames[t]} (${count})</md-select-option
+                        >
+                      `
+                    )}
+                </md-outlined-select>
+              `
+            : ''}
         </details>
 
         <details open>
@@ -1575,6 +1883,14 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
               >${this._('Connectivity islands')}</md-select-option
             >
             <md-select-option value="sex">${this._('Gender')}</md-select-option>
+            ${this._tagsByCount?.length
+              ? html`<md-select-option value="tag"
+                  >${this._('Tag (top 8)')}</md-select-option
+                >`
+              : ''}
+            <md-select-option value="citations"
+              >${this._('Sources (citations)')}</md-select-option
+            >
           </md-outlined-select>
         </details>
 
