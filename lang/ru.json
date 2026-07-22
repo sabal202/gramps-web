@@ -538,5 +538,11 @@
   "Sources (citations)": "Источники (цитаты)",
   "All tags": "Все теги",
   "ring": "кольцо",
-  "hypothesis-tagged link": "гипотезная связь"
+  "hypothesis-tagged link": "гипотезная связь",
+  "Layout": "Раскладка",
+  "Force-directed": "Физика (силы)",
+  "Semantic map (beta)": "Смысловая карта (бета)",
+  "Layout strength": "Сила раскладки",
+  "People with similar records are pulled together": "Люди с похожими записями притягиваются друг к другу",
+  "Loading semantic map": "Загрузка смысловой карты"
 }

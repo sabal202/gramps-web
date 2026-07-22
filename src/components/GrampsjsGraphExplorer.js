@@ -98,7 +98,12 @@ const savedParams = {
   linkDChild: 30,
   timeAxis: true,
   timeS: 0.45,
+  layoutMode: 'force',
+  semS: 0.5,
 }
+
+// world-units scale for the normalized [-1, 1] semantic-map coordinates
+const SEMANTIC_SCALE = 1800
 
 function lerpColor(stops, t) {
   const x = Math.max(0, Math.min(1, t)) * (stops.length - 1)
@@ -710,10 +715,18 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
   _applyForces() {
     const p = this.params
     this._charge.strength(-p.repel)
-    this._fx.strength(p.center)
     this._linkForce
       .distance(l => this._linkDistance(l))
       .strength(l => this._linkStrength(l))
+    const sem =
+      p.layoutMode === 'semantic' && this._semMap ? this._semMap : null
+    if (sem) {
+      this._fx
+        .x(d => sem.get(d.id)?.[0] ?? 0)
+        .strength(d => (sem.has(d.id) ? p.semS : 0.02))
+    } else {
+      this._fx.x(0).strength(p.center)
+    }
     if (p.timeAxis) {
       this._fy
         .y(d => (d.byEst !== null ? this._yearY(d.byEst) : 0))
@@ -724,6 +737,10 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           // estimated years pull weaker than known ones
           return d.estimated ? p.timeS * 0.5 : p.timeS
         })
+    } else if (sem) {
+      this._fy
+        .y(d => sem.get(d.id)?.[1] ?? 0)
+        .strength(d => (sem.has(d.id) ? p.semS : 0.02))
     } else {
       this._fy.y(0).strength(p.center)
     }
@@ -1398,6 +1415,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
         'linkDSpouse',
         'linkDChild',
         'timeS',
+        'semS',
       ].includes(key)
     ) {
       this._applyForces()
@@ -1429,6 +1447,42 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
   _onTagFilter(ev) {
     this.params.tagFilter = Number(ev.target.value)
     this._applyFilter()
+    this.requestUpdate()
+  }
+
+  _onLayoutMode(ev) {
+    this.params.layoutMode = ev.target.value
+    if (this.params.layoutMode === 'semantic' && !this._semMap) {
+      this._fetchSemanticMap()
+      return
+    }
+    this._applyForces()
+    this._reheat(0.8)
+    this.requestUpdate()
+  }
+
+  async _fetchSemanticMap() {
+    this._semLoading = true
+    this.requestUpdate()
+    const res = await this.appState.apiGet('/api/analysis/semantic-map/')
+    this._semLoading = false
+    if ('data' in res && res.data.people?.length) {
+      const byHandle = new Map(this._nodes.map(n => [n.handle, n]))
+      this._semMap = new Map()
+      for (const p of res.data.people) {
+        const n = byHandle.get(p.handle)
+        if (n) {
+          this._semMap.set(n.id, [p.x * SEMANTIC_SCALE, p.y * SEMANTIC_SCALE])
+        }
+      }
+      this._semMethod = res.data.method
+      this._applyForces()
+      this._reheat(0.8)
+    } else {
+      // endpoint unavailable (e.g. semantic search not configured)
+      this.params.layoutMode = 'force'
+      this._semError = true
+    }
     this.requestUpdate()
   }
 
@@ -1953,6 +2007,41 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
             0.2,
             v => v.toFixed(1)
           )}
+        </details>
+
+        <details open>
+          <summary>${this._('Layout')}</summary>
+          <md-outlined-select
+            @change="${this._onLayoutMode}"
+            value="${this.params.layoutMode}"
+          >
+            <md-select-option value="force"
+              >${this._('Force-directed')}</md-select-option
+            >
+            <md-select-option value="semantic"
+              >${this._('Semantic map (beta)')}</md-select-option
+            >
+          </md-outlined-select>
+          ${this._semLoading
+            ? html`<div class="hint">${this._('Loading semantic map')}…</div>`
+            : ''}
+          ${this.params.layoutMode === 'semantic'
+            ? html`
+                ${this._renderSlider(
+                  this._('Layout strength'),
+                  'semS',
+                  0.05,
+                  1,
+                  0.05,
+                  v => v.toFixed(2)
+                )}
+                <div class="hint">
+                  ${this._(
+                    'People with similar records are pulled together'
+                  )}${this._semMethod ? ` (${this._semMethod})` : ''}
+                </div>
+              `
+            : ''}
         </details>
 
         <details open>
