@@ -272,6 +272,8 @@ export class GrampsjsViewSettingsUser extends GrampsjsView {
 
   _treeViewLabel(view) {
     switch (view) {
+      case 'graph':
+        return 'Whole tree graph'
       case 'descendant':
         return 'Descendant Tree'
       case 'hourglass':

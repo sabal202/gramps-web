@@ -3,13 +3,14 @@ import {css, html} from 'lit'
 import '@material/web/tabs/tabs'
 import '@material/web/tabs/primary-tab'
 
-import {mdiFamilyTree} from '@mdi/js'
+import {mdiFamilyTree, mdiGraphOutline} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 import './GrampsjsViewDescendantChart.js'
 import './GrampsjsViewTreeChart.js'
 import './GrampsjsViewHourglassChart.js'
 import './GrampsjsViewFanChart.js'
 import './GrampsjsViewRelationshipChart.js'
+import './GrampsjsViewGraphExplorer.js'
 import {fireEvent} from '../util.js'
 import {
   chartFanIconPath,
@@ -95,6 +96,7 @@ export class GrampsjsViewTree extends GrampsjsView {
       ${this._currentTabId === 2 ? this._renderHourglassTree() : ''}
       ${this._currentTabId === 3 ? this._renderRelationshipChart() : ''}
       ${this._currentTabId === 4 ? this._renderFan() : ''}
+      ${this._currentTabId === 5 ? this._renderGraphExplorer() : ''}
     `
   }
 
@@ -145,7 +147,24 @@ export class GrampsjsViewTree extends GrampsjsView {
             >${renderIconSvg(chartFanIconPath, '--md-sys-color-primary')}</span
           >
         </md-primary-tab>
+        <md-primary-tab has-icon>
+          ${this._('Whole tree graph')}
+          <span slot="icon"
+            >${renderIconSvg(mdiGraphOutline, '--md-sys-color-primary')}</span
+          >
+        </md-primary-tab>
       </md-tabs>
+    `
+  }
+
+  _renderGraphExplorer() {
+    return html`
+      <grampsjs-view-graph-explorer
+        ?active=${this.active}
+        .appState="${this.appState}"
+        .settings=${this.settings}
+      >
+      </grampsjs-view-graph-explorer>
     `
   }
 
