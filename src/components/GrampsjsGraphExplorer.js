@@ -19,6 +19,7 @@ import {LitElement, css, html} from 'lit'
 import {
   drag as d3drag,
   extent as d3extent,
+  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
@@ -46,6 +47,7 @@ import './GrampsjsIcon.js'
 import {
   betweennessCentrality,
   buildAdjacency,
+  componentSimilarityEdges,
   computeComponents,
   descendantCounts,
   estimateBirthYears,
@@ -102,9 +104,6 @@ const savedParams = {
   layoutMode: 'force',
   semS: 0.5,
 }
-
-// world-units scale for the normalized [-1, 1] semantic-map coordinates
-const SEMANTIC_SCALE = 1800
 
 function lerpColor(stops, t) {
   const x = Math.max(0, Math.min(1, t)) * (stops.length - 1)
@@ -571,6 +570,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     }
     this._bc = null
     this._desc = null
+    this._islandAnchors = null
+    this._metaEdgeCount = 0
     this._links = links.map(l => ({
       source: l.source,
       target: l.target,
@@ -719,12 +720,12 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this._linkForce
       .distance(l => this._linkDistance(l))
       .strength(l => this._linkStrength(l))
-    const sem =
-      p.layoutMode === 'semantic' && this._semMap ? this._semMap : null
-    if (sem) {
-      this._fx
-        .x(d => sem.get(d.id)?.[0] ?? 0)
-        .strength(d => (sem.has(d.id) ? p.semS : 0.02))
+    const anchors =
+      p.layoutMode === 'islands' && this._islandAnchors
+        ? this._islandAnchors
+        : null
+    if (anchors) {
+      this._fx.x(d => anchors.get(d.comp)?.[0] ?? 0).strength(p.semS)
     } else {
       this._fx.x(0).strength(p.center)
     }
@@ -738,10 +739,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           // estimated years pull weaker than known ones
           return d.estimated ? p.timeS * 0.5 : p.timeS
         })
-    } else if (sem) {
-      this._fy
-        .y(d => sem.get(d.id)?.[1] ?? 0)
-        .strength(d => (sem.has(d.id) ? p.semS : 0.02))
+    } else if (anchors) {
+      this._fy.y(d => anchors.get(d.comp)?.[1] ?? 0).strength(p.semS)
     } else {
       this._fy.y(0).strength(p.center)
     }
@@ -1455,38 +1454,63 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _onLayoutMode(ev) {
     this.params.layoutMode = ev.target.value
-    if (this.params.layoutMode === 'semantic' && !this._semMap) {
-      this._fetchSemanticMap()
-      return
+    if (this.params.layoutMode === 'islands' && !this._islandAnchors) {
+      this._computeIslandLayout()
     }
     this._applyForces()
     this._reheat(0.8)
     this.requestUpdate()
   }
 
-  async _fetchSemanticMap() {
-    this._semLoading = true
-    this.requestUpdate()
-    const res = await this.appState.apiGet('/api/analysis/semantic-map/')
-    this._semLoading = false
-    if ('data' in res && res.data.people?.length) {
-      const byHandle = new Map(this._nodes.map(n => [n.handle, n]))
-      this._semMap = new Map()
-      for (const p of res.data.people) {
-        const n = byHandle.get(p.handle)
-        if (n) {
-          this._semMap.set(n.id, [p.x * SEMANTIC_SCALE, p.y * SEMANTIC_SCALE])
-        }
-      }
-      this._semMethod = res.data.method
-      this._applyForces()
-      this._reheat(0.8)
-    } else {
-      // endpoint unavailable (e.g. semantic search not configured)
-      this.params.layoutMode = 'force'
-      this._semError = true
+  // Meta-layout of the islands: similarity edges (shared surnames + close
+  // generations, see componentSimilarityEdges) over one meta-node per
+  // component, laid out by a small synchronous force simulation. The result
+  // is an anchor point per island; members are pulled toward it while the
+  // normal intra-island physics (incl. spouse links) keeps working.
+  _computeIslandLayout() {
+    const nComp = this._compSize.length
+    const surnames = this._nodes.map(n => surnameKey(n.surname))
+    const years = this._nodes.map(n => n.byEst)
+    const metaEdges = componentSimilarityEdges(
+      surnames,
+      years,
+      this._comp,
+      nComp
+    )
+    // seed at current island centroids for continuity
+    const cx = new Array(nComp).fill(0)
+    const cy = new Array(nComp).fill(0)
+    for (const n of this._nodes) {
+      cx[n.comp] += n.x / this._compSize[n.comp]
+      cy[n.comp] += n.y / this._compSize[n.comp]
     }
-    this.requestUpdate()
+    const metaNodes = Array.from({length: nComp}, (_, c) => ({
+      id: c,
+      x: cx[c],
+      y: cy[c],
+      size: this._compSize[c],
+    }))
+    const sim = forceSimulation(metaNodes)
+      .force(
+        'link',
+        forceLink(metaEdges.map(e => ({source: e.a, target: e.b, w: e.w})))
+          .id(d => d.id)
+          .distance(l => 80 + (1 - l.w) * 260)
+          .strength(l => Math.min(1, l.w * 1.5))
+      )
+      .force('charge', forceManyBody().strength(-60))
+      .force(
+        'collide',
+        forceCollide().radius(d => 13 * Math.sqrt(d.size) + 18)
+      )
+      .force('x', forceX(0).strength(0.03))
+      .force('y', forceY(0).strength(0.03))
+      .stop()
+    for (let i = 0; i < 300; i += 1) {
+      sim.tick()
+    }
+    this._islandAnchors = new Map(metaNodes.map(m => [m.id, [m.x, m.y]]))
+    this._metaEdgeCount = metaEdges.length
   }
 
   _onShowMaiden(ev) {
@@ -2034,14 +2058,11 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
             <md-select-option value="force"
               >${this._('Force-directed')}</md-select-option
             >
-            <md-select-option value="semantic"
-              >${this._('Semantic map (beta)')}</md-select-option
+            <md-select-option value="islands"
+              >${this._('Similar islands nearby')}</md-select-option
             >
           </md-outlined-select>
-          ${this._semLoading
-            ? html`<div class="hint">${this._('Loading semantic map')}…</div>`
-            : ''}
-          ${this.params.layoutMode === 'semantic'
+          ${this.params.layoutMode === 'islands'
             ? html`
                 ${this._renderSlider(
                   this._('Layout strength'),
@@ -2053,8 +2074,10 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
                 )}
                 <div class="hint">
                   ${this._(
-                    'People with similar records are pulled together'
-                  )}${this._semMethod ? ` (${this._semMethod})` : ''}
+                    'Islands sharing surnames and generations are placed next to each other'
+                  )}${this._metaEdgeCount
+                    ? ` (${this._metaEdgeCount} ${this._('links')})`
+                    : ''}
                 </div>
               `
             : ''}

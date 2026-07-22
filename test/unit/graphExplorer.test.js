@@ -3,6 +3,7 @@ import {describe, expect, it} from 'vitest'
 import {
   betweennessCentrality,
   buildAdjacency,
+  componentSimilarityEdges,
   computeComponents,
   descendantCounts,
   estimateBirthYears,
@@ -111,6 +112,55 @@ describe('descendantCounts', () => {
     ]
     const counts = descendantCounts(2, links)
     expect(counts[0]).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('componentSimilarityEdges', () => {
+  it('links islands sharing a rare surname, not unrelated ones', () => {
+    // comp0: Стасевич ×2; comp1: Стасевич + Бинько; comp2: Кузяев ×2
+    const surnames = [
+      'Стасевич',
+      'Стасевич',
+      'Стасевич',
+      'Бинько',
+      'Кузяев',
+      'Кузяев',
+    ]
+    const years = [1850, 1880, 1855, 1860, 1850, 1880]
+    const comp = [0, 0, 1, 1, 2, 2]
+    const edges = componentSimilarityEdges(surnames, years, comp, 3)
+    const key = e => `${e.a}:${e.b}`
+    const keys = edges.map(key)
+    expect(keys).toContain('0:1')
+    expect(keys).not.toContain('0:2')
+    expect(keys).not.toContain('1:2')
+    const e01 = edges.find(e => key(e) === '0:1')
+    expect(e01.w).toBeGreaterThan(0.3)
+  })
+
+  it('dampens similarity when islands live in different epochs', () => {
+    const surnames = ['Стасевич', 'Стасевич', 'Стасевич', 'Стасевич']
+    const comp = [0, 0, 1, 1]
+    const near = componentSimilarityEdges(
+      surnames,
+      [1850, 1850, 1855, 1855],
+      comp,
+      2
+    )
+    const far = componentSimilarityEdges(
+      surnames,
+      [1700, 1700, 1950, 1950],
+      comp,
+      2
+    )
+    expect(near[0].w).toBeGreaterThan(far[0].w)
+    // but a shared surname alone still keeps a meaningful link
+    expect(far[0].w).toBeGreaterThan(0.3)
+  })
+
+  it('returns no edges when nothing is shared', () => {
+    const edges = componentSimilarityEdges(['А', 'Б'], [1850, 1850], [0, 1], 2)
+    expect(edges).toEqual([])
   })
 })
 

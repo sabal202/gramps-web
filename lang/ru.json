@@ -545,5 +545,7 @@
   "Layout strength": "Сила раскладки",
   "People with similar records are pulled together": "Люди с похожими записями притягиваются друг к другу",
   "Loading semantic map": "Загрузка смысловой карты",
-  "Mark hypothesis-tagged people": "Помечать гипотезные связи"
+  "Mark hypothesis-tagged people": "Помечать гипотезные связи",
+  "Similar islands nearby": "Похожие острова рядом",
+  "Islands sharing surnames and generations are placed next to each other": "Острова с общими фамилиями и близкими поколениями располагаются рядом"
 }

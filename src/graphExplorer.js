@@ -217,6 +217,115 @@ export function descendantCounts(n, links) {
   return counts
 }
 
+/**
+ * Similarity edges between connected components ("islands").
+ *
+ * Builds a sparse meta-graph for laying out disconnected islands so that
+ * similar ones sit close together: similarity = cosine over TF-IDF surname
+ * bags (grouped via surnameKey), dampened by the distance between the
+ * islands' mean birth years. For each island only its top-k most similar
+ * neighbors become edges.
+ *
+ * @param {(string|null)[]} surnameKeys normalized surname per node
+ * @param {(number|null)[]} years (estimated) birth year per node
+ * @param {number[]} comp component id per node
+ * @param {number} nComp number of components
+ * @returns {{a: number, b: number, w: number}[]} deduplicated meta edges
+ */
+export function componentSimilarityEdges(
+  surnameKeys,
+  years,
+  comp,
+  nComp,
+  {k = 6, minScore = 0.05, yearScale = 60, maxDf = 400} = {}
+) {
+  const bags = Array.from({length: nComp}, () => new Map())
+  const sizes = new Array(nComp).fill(0)
+  const yearSum = new Array(nComp).fill(0)
+  const yearCnt = new Array(nComp).fill(0)
+  for (let i = 0; i < comp.length; i += 1) {
+    const c = comp[i]
+    sizes[c] += 1
+    const s = surnameKeys[i]
+    if (s) {
+      bags[c].set(s, (bags[c].get(s) || 0) + 1)
+    }
+    const y = years[i]
+    if (y) {
+      yearSum[c] += y
+      yearCnt[c] += 1
+    }
+  }
+  const df = new Map()
+  for (const bag of bags) {
+    for (const s of bag.keys()) {
+      df.set(s, (df.get(s) || 0) + 1)
+    }
+  }
+  const vecs = bags.map((bag, c) => {
+    const v = new Map()
+    for (const [s, cnt] of bag) {
+      v.set(s, (cnt / sizes[c]) * Math.log(1 + nComp / df.get(s)))
+    }
+    return v
+  })
+  const norms = vecs.map(
+    v => Math.sqrt([...v.values()].reduce((s, x) => s + x * x, 0)) || 1
+  )
+  // inverted index: surname → components containing it
+  const inverted = new Map()
+  vecs.forEach((v, c) => {
+    for (const s of v.keys()) {
+      if (!inverted.has(s)) {
+        inverted.set(s, [])
+      }
+      inverted.get(s).push(c)
+    }
+  })
+  // accumulate dot products only for component pairs sharing a surname
+  const dots = Array.from({length: nComp}, () => new Map())
+  for (const [s, comps] of inverted) {
+    // ubiquitous surnames carry ~no signal (tiny idf) but quadratic cost
+    if (comps.length < 2 || comps.length > maxDf) {
+      continue
+    }
+    for (let i = 0; i < comps.length; i += 1) {
+      for (let j = i + 1; j < comps.length; j += 1) {
+        const a = comps[i]
+        const b = comps[j]
+        const add = vecs[a].get(s) * vecs[b].get(s)
+        dots[a].set(b, (dots[a].get(b) || 0) + add)
+      }
+    }
+  }
+  const meanYear = c => (yearCnt[c] ? yearSum[c] / yearCnt[c] : null)
+  const seen = new Map()
+  for (let a = 0; a < nComp; a += 1) {
+    const scored = []
+    for (const [b, dot] of dots[a]) {
+      let w = dot / (norms[a] * norms[b])
+      const ya = meanYear(a)
+      const yb = meanYear(b)
+      if (ya !== null && yb !== null) {
+        const f = Math.exp(-(((ya - yb) / yearScale) ** 2))
+        w *= 0.6 + 0.4 * f
+      }
+      if (w >= minScore) {
+        scored.push([b, w])
+      }
+    }
+    scored.sort((x, y) => y[1] - x[1])
+    for (const [b, w] of scored.slice(0, k)) {
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`
+      const prev = seen.get(key)
+      if (!prev || w > prev.w) {
+        seen.set(key, {a: Math.min(a, b), b: Math.max(a, b), w})
+      }
+    }
+  }
+  return [...seen.values()]
+}
+
 export function estimateBirthYears(people, links, maxIter = 80) {
   const n = people.length
   const years = new Array(n).fill(null)
