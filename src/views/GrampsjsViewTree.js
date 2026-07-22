@@ -79,8 +79,11 @@ export class GrampsjsViewTree extends GrampsjsView {
   }
 
   renderContent() {
-    if (this.grampsId === '') {
+    // The whole-tree graph (tab 5) does not need a home person; the other
+    // chart tabs do.
+    if (this.grampsId === '' && this._currentTabId !== 5) {
       return html`
+        <div id="tabs">${this.renderTabs()}</div>
         <div class="with-margin">
           <p>
             ${this._('No Home Person set.')}
