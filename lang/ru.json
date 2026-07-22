@@ -544,5 +544,6 @@
   "Semantic map (beta)": "Смысловая карта (бета)",
   "Layout strength": "Сила раскладки",
   "People with similar records are pulled together": "Люди с похожими записями притягиваются друг к другу",
-  "Loading semantic map": "Загрузка смысловой карты"
+  "Loading semantic map": "Загрузка смысловой карты",
+  "Mark hypothesis-tagged people": "Помечать гипотезные связи"
 }

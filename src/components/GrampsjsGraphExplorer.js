@@ -90,6 +90,7 @@ const savedParams = {
   edgeA: 0.3,
   labelK: 2.0,
   showMaiden: true,
+  showHyp: true,
   center: 0.06,
   repel: 100,
   linkSSpouse: 1.5,
@@ -1324,8 +1325,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, 6.2832)
       ctx.fill()
-      if (n.hyp) {
-        // hypothesis-tagged person: warning-colored ring
+      if (n.hyp && this.params.showHyp) {
+        // hypothesis-tagged person: warning-colored ring (toggleable)
         ctx.strokeStyle = '#c98500'
         ctx.lineWidth = 1.2 / k
         ctx.beginPath()
@@ -1490,6 +1491,12 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _onShowMaiden(ev) {
     this.params.showMaiden = ev.target.selected
+    this._requestRender()
+    this.requestUpdate()
+  }
+
+  _onShowHyp(ev) {
+    this.params.showHyp = ev.target.selected
     this._requestRender()
     this.requestUpdate()
   }
@@ -1991,6 +1998,13 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
             <md-switch
               ?selected="${this.params.showMaiden}"
               @change="${this._onShowMaiden}"
+            ></md-switch>
+          </div>
+          <div class="switchrow">
+            <span>${this._('Mark hypothesis-tagged people')}</span>
+            <md-switch
+              ?selected="${this.params.showHyp}"
+              @change="${this._onShowHyp}"
             ></md-switch>
           </div>
           ${this._renderSlider(
