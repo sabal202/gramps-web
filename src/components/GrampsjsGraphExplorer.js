@@ -956,8 +956,10 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this._requestRender()
     // best-effort human-readable kinship label from the server
     try {
+      // site convention: /relations/{p1}/{p2} answers "what is p2 to p1",
+      // matching the panel's "from → to" reading
       const res = await this.appState.apiGet(
-        `/api/relations/${target.handle}/${from.handle}`
+        `/api/relations/${from.handle}/${target.handle}?depth=20`
       )
       if ('data' in res && this._path && this._path.to === target) {
         this._path = {
