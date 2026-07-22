@@ -44,8 +44,10 @@ import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {fireEvent} from '../util.js'
 import './GrampsjsIcon.js'
 import {
+  betweennessCentrality,
   buildAdjacency,
   computeComponents,
+  descendantCounts,
   estimateBirthYears,
   surnameKey,
 } from '../graphExplorer.js'
@@ -81,15 +83,19 @@ const YEAR_RAMP_DARK = ['#184f95', '#3987e5', '#86b6ef', '#cde2fb']
 const savedParams = {
   minComp: 1,
   colorMode: 'year',
+  sizeMode: 'degree',
   baseR: 2.2,
-  degR: 1.0,
+  sizeScale: 1.0,
   edgeA: 0.3,
   labelK: 2.0,
+  showMaiden: true,
   center: 0.06,
   repel: 100,
-  linkS: 1.0,
-  linkD: 28,
-  timeAxis: false,
+  linkSSpouse: 1.5,
+  linkSChild: 1.0,
+  linkDSpouse: 15,
+  linkDChild: 30,
+  timeAxis: true,
   timeS: 0.45,
 }
 
@@ -505,18 +511,35 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _initGraph() {
     const {people, links} = this.data
-    this._nodes = people.map((p, i) => ({
-      id: i,
-      gid: p.gramps_id,
-      given: p.given_name || '',
-      surname: p.surname || '',
-      sex: p.gender,
-      by: p.birth_year,
-      dy: p.death_year,
-      deg: 0,
-      x: 0,
-      y: 0,
-    }))
+    this._nodes = people.map((p, i) => {
+      const fam = p.family_surname ?? p.surname ?? ''
+      const pat = p.patronymic || ''
+      const maiden = p.maiden_surname || ''
+      const altNames = p.alt_names || []
+      return {
+        id: i,
+        gid: p.gramps_id,
+        given: p.given_name || '',
+        surname: p.surname || '',
+        fam,
+        pat,
+        maiden,
+        altNames,
+        // search haystack over every recorded name variant
+        hay: [p.given_name, pat, p.surname, fam, maiden, ...altNames]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase(),
+        sex: p.gender,
+        by: p.birth_year,
+        dy: p.death_year,
+        deg: 0,
+        x: 0,
+        y: 0,
+      }
+    })
+    this._bc = null
+    this._desc = null
     this._links = links.map(l => ({
       source: l.source,
       target: l.target,
@@ -630,10 +653,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     }
     this._linkForce = forceLink(this._links)
       .id(d => d.id)
-      .distance(() => this.params.linkD)
-      .strength(
-        l => this.params.linkS / Math.min(l.source.deg || 1, l.target.deg || 1)
-      )
+      .distance(l => this._linkDistance(l))
+      .strength(l => this._linkStrength(l))
     this._charge = forceManyBody().theta(0.9)
     this._fx = forceX(0)
     this._fy = forceY(0)
@@ -648,13 +669,26 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this._applyForces()
   }
 
+  // Marriages and parent-child links have separate strength/distance controls:
+  // spouses should sit close together (especially along X in generation-axis
+  // mode, where Y is pinned by year), while descent chains need slack.
+  _linkDistance(l) {
+    return l.t === 0 ? this.params.linkDSpouse : this.params.linkDChild
+  }
+
+  _linkStrength(l) {
+    const base = l.t === 0 ? this.params.linkSSpouse : this.params.linkSChild
+    // d3's stabilizing 1/min(degree) scaling, capped at 1 to stay stable
+    return Math.min(1, base / Math.min(l.source.deg || 1, l.target.deg || 1))
+  }
+
   _applyForces() {
     const p = this.params
     this._charge.strength(-p.repel)
     this._fx.strength(p.center)
     this._linkForce
-      .distance(() => p.linkD)
-      .strength(l => p.linkS / Math.min(l.source.deg || 1, l.target.deg || 1))
+      .distance(l => this._linkDistance(l))
+      .strength(l => this._linkStrength(l))
     if (p.timeAxis) {
       this._fy
         .y(d => (d.byEst !== null ? this._yearY(d.byEst) : 0))
@@ -811,10 +845,51 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     if (!yrs && n.estimated) {
       yrs = `≈${n.byEst}`
     }
+    // maiden name always shows here (search matches it even when canvas
+    // labels have the maiden toggle off)
     return (
-      `<b>${esc(n.given)} ${esc(n.surname)}</b><br>` +
+      `<b>${esc(this._nodeLabel(n, true))}</b><br>` +
       `${yrs}${yrs ? ' · ' : ''}${this._('Links')}: ${n.deg} · ${esc(n.gid)}`
     )
+  }
+
+  // Display label in the charts' default "Surname Given Patronymic" order,
+  // optionally with the maiden (birth) surname appended.
+  _nodeLabel(n, withMaiden = this.params.showMaiden) {
+    const base =
+      [n.fam, n.given, n.pat].filter(Boolean).join(' ') || n.surname || '—'
+    if (withMaiden && n.maiden) {
+      // same convention as the person-card header: maiden surname in parens
+      return `${base} (${n.maiden})`
+    }
+    return base
+  }
+
+  _sizeMetric(n) {
+    switch (this.params.sizeMode) {
+      case 'uniform':
+        return 0
+      case 'betweenness': {
+        if (!this._bc) {
+          this._bc = betweennessCentrality(this._adj)
+          this._bcMax = this._bc.reduce((m, v) => (v > m ? v : m), 0)
+        }
+        return this._bcMax > 0 ? 6 * Math.sqrt(this._bc[n.id] / this._bcMax) : 0
+      }
+      case 'descendants': {
+        if (!this._desc) {
+          this._desc = descendantCounts(this._nodes.length, this.data.links)
+        }
+        return Math.sqrt(this._desc[n.id])
+      }
+      case 'degree':
+      default:
+        return Math.sqrt(n.deg)
+    }
+  }
+
+  _nodeRadius(n) {
+    return this.params.baseR + this.params.sizeScale * this._sizeMetric(n)
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -1056,8 +1131,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       if (n.x < x0 - 10 || n.x > x1 + 10 || n.y < y0 - 10 || n.y > y1 + 10) {
         continue
       }
-      const rw = this.params.baseR + this.params.degR * Math.sqrt(n.deg)
-      const r = Math.max(rw, 1.2 / k)
+      const r = Math.max(this._nodeRadius(n), 1.2 / k)
       let a = 1
       if (hlSet && !hlSet.has(n.id)) {
         a = 0.15
@@ -1078,7 +1152,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       if (!n) {
         continue
       }
-      const r = this.params.baseR + this.params.degR * Math.sqrt(n.deg)
+      const r = this._nodeRadius(n)
       ctx.strokeStyle = c.ring
       ctx.lineWidth = 1.6 / k
       ctx.beginPath()
@@ -1110,8 +1184,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           if (searchActive && !this._searchSet.has(n.id)) {
             continue
           }
-          const r = this.params.baseR + this.params.degR * Math.sqrt(n.deg)
-          ctx.fillText(`${n.given} ${n.surname}`.trim(), n.x, n.y + r + 12 / k)
+          const r = this._nodeRadius(n)
+          ctx.fillText(this._nodeLabel(n), n.x, n.y + r + 12 / k)
           drawn += 1
         }
       }
@@ -1125,8 +1199,8 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           if (n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) {
             continue
           }
-          const r = this.params.baseR + this.params.degR * Math.sqrt(n.deg)
-          ctx.fillText(`${n.given} ${n.surname}`.trim(), n.x, n.y + r + 12 / k)
+          const r = this._nodeRadius(n)
+          ctx.fillText(this._nodeLabel(n), n.x, n.y + r + 12 / k)
         }
       }
     }
@@ -1142,7 +1216,17 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       this.requestUpdate()
       return
     }
-    if (['center', 'repel', 'linkS', 'linkD', 'timeS'].includes(key)) {
+    if (
+      [
+        'center',
+        'repel',
+        'linkSSpouse',
+        'linkSChild',
+        'linkDSpouse',
+        'linkDChild',
+        'timeS',
+      ].includes(key)
+    ) {
       this._applyForces()
       this._reheat(0.3)
     }
@@ -1163,6 +1247,18 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
     this.requestUpdate()
   }
 
+  _onSizeMode(ev) {
+    this.params.sizeMode = ev.target.value
+    this._requestRender()
+    this.requestUpdate()
+  }
+
+  _onShowMaiden(ev) {
+    this.params.showMaiden = ev.target.selected
+    this._requestRender()
+    this.requestUpdate()
+  }
+
   _onSearch(ev) {
     const q = ev.target.value.trim().toLowerCase()
     if (!q) {
@@ -1176,7 +1272,9 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       if (this._compSize[n.comp] < this.params.minComp) {
         continue
       }
-      if (`${n.given} ${n.surname}`.toLowerCase().includes(q)) {
+      // haystack covers given, patronymic, primary + family surname, maiden
+      // surname and every alternate name variant
+      if (n.hay.includes(q)) {
         matches.push(n)
       }
     }
@@ -1359,9 +1457,17 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
             color="var(--md-sys-color-on-surface-variant)"
           ></grampsjs-icon>
         </md-icon-button>
-        <h3>${`${n.given} ${n.surname}`.trim() || '—'}</h3>
+        <h3>${this._nodeLabel(n, false)}</h3>
         <div class="sub">${sexSign}${yrs}</div>
         <div class="meta">
+          ${n.maiden
+            ? html`<span>${this._('Maiden name')}</span
+                ><span>${n.maiden}</span>`
+            : ''}
+          ${n.altNames.length
+            ? html`<span>${this._('Other names')}</span
+                ><span>${n.altNames.join('; ')}</span>`
+            : ''}
           <span>ID</span><span>${n.gid}</span> <span>${this._('Links')}</span
           ><span>${n.deg}</span> <span>${this._('Island')}</span
           ><span
@@ -1430,7 +1536,7 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
                         }}"
                         @keydown="${() => {}}"
                       >
-                        ${`${n.given} ${n.surname} ${this._lifeYears(
+                        ${`${this._nodeLabel(n, true)} ${this._lifeYears(
                           n
                         )}`.trim()}
                       </div>
@@ -1473,18 +1579,48 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
         </details>
 
         <details open>
-          <summary>${this._('Display')}</summary>
+          <summary>${this._('Node size')}</summary>
+          <md-outlined-select
+            @change="${this._onSizeMode}"
+            value="${this.params.sizeMode}"
+          >
+            <md-select-option value="uniform"
+              >${this._('Uniform')}</md-select-option
+            >
+            <md-select-option value="degree"
+              >${this._('Number of links')}</md-select-option
+            >
+            <md-select-option value="betweenness"
+              >${this._('Betweenness (bridge people)')}</md-select-option
+            >
+            <md-select-option value="descendants"
+              >${this._('Number of descendants')}</md-select-option
+            >
+          </md-outlined-select>
           ${this._renderSlider(this._('Dot size'), 'baseR', 0.6, 7, 0.2, v =>
             v.toFixed(1)
           )}
-          ${this._renderSlider(
-            this._('Size by number of links'),
-            'degR',
-            0,
-            3,
-            0.1,
-            v => v.toFixed(1)
-          )}
+          ${this.params.sizeMode === 'uniform'
+            ? ''
+            : this._renderSlider(
+                this._('Size scale'),
+                'sizeScale',
+                0.1,
+                3,
+                0.1,
+                v => v.toFixed(1)
+              )}
+        </details>
+
+        <details open>
+          <summary>${this._('Display')}</summary>
+          <div class="switchrow">
+            <span>${this._('Show maiden name')}</span>
+            <md-switch
+              ?selected="${this.params.showMaiden}"
+              @change="${this._onShowMaiden}"
+            ></md-switch>
+          </div>
           ${this._renderSlider(
             this._('Link brightness'),
             'edgeA',
@@ -1510,14 +1646,35 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
           )}
           ${this._renderSlider(this._('Repulsion'), 'repel', 0, 400, 5)}
           ${this._renderSlider(
-            this._('Link strength'),
-            'linkS',
+            this._('Link strength: marriages'),
+            'linkSSpouse',
             0,
             2,
             0.05,
             v => v.toFixed(2)
           )}
-          ${this._renderSlider(this._('Link distance'), 'linkD', 8, 200, 2)}
+          ${this._renderSlider(
+            this._('Link strength: parent-child'),
+            'linkSChild',
+            0,
+            2,
+            0.05,
+            v => v.toFixed(2)
+          )}
+          ${this._renderSlider(
+            this._('Link distance: marriages'),
+            'linkDSpouse',
+            6,
+            120,
+            2
+          )}
+          ${this._renderSlider(
+            this._('Link distance: parent-child'),
+            'linkDChild',
+            8,
+            200,
+            2
+          )}
           <div class="btnrow">
             <button @click="${this._handleReheat}">
               ${this._('Shake up')}

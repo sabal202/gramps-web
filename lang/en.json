@@ -574,5 +574,17 @@
   "links": "links",
   "islands": "islands",
   "of %s": "of %s",
-  "Open person page": "Open person page"
+  "Open person page": "Open person page",
+  "Node size": "Node size",
+  "Uniform": "Uniform",
+  "Number of links": "Number of links",
+  "Betweenness (bridge people)": "Betweenness (bridge people)",
+  "Number of descendants": "Number of descendants",
+  "Size scale": "Size scale",
+  "Maiden name": "Maiden name",
+  "Other names": "Other names",
+  "Link strength: marriages": "Link strength: marriages",
+  "Link strength: parent-child": "Link strength: parent-child",
+  "Link distance: marriages": "Link distance: marriages",
+  "Link distance: parent-child": "Link distance: parent-child"
 }

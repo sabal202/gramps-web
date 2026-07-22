@@ -110,6 +110,113 @@ export function computeComponents(adj) {
  * @returns {{years: (number|null)[], estimated: boolean[]}} rounded year per
  *   node (real or estimated), and whether it was estimated
  */
+/**
+ * Betweenness centrality (Brandes, unweighted, undirected).
+ *
+ * O(V·E) per connected component — cheap on genealogy "archipelago" graphs
+ * where even the largest component is a few hundred people.
+ *
+ * @param {number[][]} adj adjacency lists
+ * @returns {number[]} raw betweenness score per node
+ */
+export function betweennessCentrality(adj) {
+  const n = adj.length
+  const bc = new Array(n).fill(0)
+  const dist = new Array(n)
+  const sigma = new Array(n)
+  const delta = new Array(n)
+  const preds = new Array(n)
+  const queue = new Array(n)
+  for (let s = 0; s < n; s += 1) {
+    if (!adj[s].length) {
+      continue
+    }
+    dist.fill(-1)
+    sigma.fill(0)
+    delta.fill(0)
+    const stack = []
+    let qHead = 0
+    let qTail = 0
+    dist[s] = 0
+    sigma[s] = 1
+    preds[s] = []
+    queue[qTail] = s
+    qTail += 1
+    while (qHead < qTail) {
+      const v = queue[qHead]
+      qHead += 1
+      stack.push(v)
+      for (const w of adj[v]) {
+        if (dist[w] < 0) {
+          dist[w] = dist[v] + 1
+          preds[w] = []
+          queue[qTail] = w
+          qTail += 1
+        }
+        if (dist[w] === dist[v] + 1) {
+          sigma[w] += sigma[v]
+          preds[w].push(v)
+        }
+      }
+    }
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      const w = stack[i]
+      for (const v of preds[w]) {
+        delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w])
+      }
+      if (w !== s) {
+        bc[w] += delta[w]
+      }
+    }
+  }
+  // each undirected pair was counted from both endpoints
+  for (let i = 0; i < n; i += 1) {
+    bc[i] /= 2
+  }
+  return bc
+}
+
+/**
+ * Number of distinct descendants per node, following 'child' links
+ * (source = parent, target = child). Cycle-safe (bad data won't hang).
+ *
+ * @param {number} n number of nodes
+ * @param {Array} links [{source, target, type}]
+ * @returns {number[]} descendant count per node
+ */
+export function descendantCounts(n, links) {
+  const children = Array.from({length: n}, () => [])
+  for (const l of links) {
+    if (l.type === 'child') {
+      children[l.source].push(l.target)
+    }
+  }
+  const counts = new Array(n).fill(0)
+  const seen = new Array(n).fill(-1)
+  for (let s = 0; s < n; s += 1) {
+    if (!children[s].length) {
+      continue
+    }
+    let count = 0
+    const stack = [...children[s]]
+    while (stack.length) {
+      const v = stack.pop()
+      if (seen[v] === s) {
+        continue
+      }
+      seen[v] = s
+      count += 1
+      for (const w of children[v]) {
+        if (seen[w] !== s) {
+          stack.push(w)
+        }
+      }
+    }
+    counts[s] = count
+  }
+  return counts
+}
+
 export function estimateBirthYears(people, links, maxIter = 80) {
   const n = people.length
   const years = new Array(n).fill(null)
