@@ -724,27 +724,44 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       })
     this._zoom = zoomBehavior
 
+    // d3-drag uses subject.x/y as the drag origin in CONTAINER (screen)
+    // pixels, while the node stores WORLD coordinates. Wrap the node with its
+    // screen position so event.x/y stay in screen space and invert cleanly —
+    // returning the node directly makes it teleport on the first drag tick.
     const dragBehavior = d3drag()
       .container(canvas)
-      .subject(ev => pick(ev.x, ev.y))
+      .subject(ev => {
+        const node = pick(ev.x, ev.y)
+        if (!node) {
+          return null
+        }
+        return {
+          x: this._transform.applyX(node.x),
+          y: this._transform.applyY(node.y),
+          node,
+        }
+      })
       .on('start', ev => {
+        const {node} = ev.subject
         canvas.classList.add('dragging')
-        ev.subject.fx = ev.subject.x
-        ev.subject.fy = ev.subject.y
+        node.fx = node.x
+        node.fy = node.y
         if (!this._paused) {
           this._sim.alphaTarget(0.25).restart()
         }
       })
       .on('drag', ev => {
-        ev.subject.fx = this._transform.invertX(ev.x)
-        ev.subject.fy = this._transform.invertY(ev.y)
+        const {node} = ev.subject
+        node.fx = this._transform.invertX(ev.x)
+        node.fy = this._transform.invertY(ev.y)
         this._requestRender()
       })
       .on('end', ev => {
+        const {node} = ev.subject
         canvas.classList.remove('dragging')
         this._sim.alphaTarget(0)
-        ev.subject.fx = null
-        ev.subject.fy = null
+        node.fx = null
+        node.fy = null
       })
 
     sel.call(dragBehavior).call(zoomBehavior).on('dblclick.zoom', null)
