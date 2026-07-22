@@ -1,8 +1,10 @@
 import {describe, expect, it} from 'vitest'
 
 import {
+  betweennessCentrality,
   buildAdjacency,
   computeComponents,
+  descendantCounts,
   estimateBirthYears,
   surnameKey,
   GENERATION_GAP,
@@ -41,6 +43,74 @@ describe('computeComponents', () => {
     expect(compOrder[0]).toBe(comp[0])
     expect(compRank[comp[0]]).toBe(0)
     expect(compSize[comp[5]]).toBe(1)
+  })
+})
+
+describe('betweennessCentrality', () => {
+  it('gives the middle of a path the highest score', () => {
+    // path 0-1-2-3-4: node 2 lies on the most shortest paths
+    const adj = buildAdjacency(5, [
+      {source: 0, target: 1},
+      {source: 1, target: 2},
+      {source: 2, target: 3},
+      {source: 3, target: 4},
+    ])
+    const bc = betweennessCentrality(adj)
+    expect(bc[2]).toBeGreaterThan(bc[1])
+    expect(bc[1]).toBeGreaterThan(bc[0])
+    expect(bc[0]).toBe(0)
+    expect(bc[4]).toBe(0)
+    // exact Brandes values for a 5-path: [0, 3, 4, 3, 0]
+    expect(bc[1]).toBe(3)
+    expect(bc[2]).toBe(4)
+  })
+
+  it('is zero everywhere on a triangle and handles multiple components', () => {
+    const adj = buildAdjacency(5, [
+      {source: 0, target: 1},
+      {source: 1, target: 2},
+      {source: 0, target: 2},
+      {source: 3, target: 4},
+    ])
+    const bc = betweennessCentrality(adj)
+    expect(bc).toEqual([0, 0, 0, 0, 0])
+  })
+})
+
+describe('descendantCounts', () => {
+  it('counts distinct descendants down child links', () => {
+    // 0 → 1 → 2, 0 → 3; spouse link ignored
+    const links = [
+      {source: 0, target: 1, type: 'child'},
+      {source: 1, target: 2, type: 'child'},
+      {source: 0, target: 3, type: 'child'},
+      {source: 0, target: 4, type: 'spouse'},
+    ]
+    const counts = descendantCounts(5, links)
+    expect(counts[0]).toBe(3)
+    expect(counts[1]).toBe(1)
+    expect(counts[2]).toBe(0)
+    expect(counts[4]).toBe(0)
+  })
+
+  it('does not double-count a diamond (pedigree collapse)', () => {
+    // 0 → 1, 0 → 2, both → 3
+    const links = [
+      {source: 0, target: 1, type: 'child'},
+      {source: 0, target: 2, type: 'child'},
+      {source: 1, target: 3, type: 'child'},
+      {source: 2, target: 3, type: 'child'},
+    ]
+    expect(descendantCounts(4, links)[0]).toBe(3)
+  })
+
+  it('survives a cycle in bad data', () => {
+    const links = [
+      {source: 0, target: 1, type: 'child'},
+      {source: 1, target: 0, type: 'child'},
+    ]
+    const counts = descendantCounts(2, links)
+    expect(counts[0]).toBeLessThanOrEqual(2)
   })
 })
 
