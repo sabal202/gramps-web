@@ -1429,6 +1429,10 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
 
   _onTimeAxis(ev) {
     this.params.timeAxis = ev.target.selected
+    // island anchors are axis-dependent (Y pinned to epochs in time mode)
+    if (this.params.layoutMode === 'islands') {
+      this._computeIslandLayout()
+    }
     this._applyForces()
     this._reheat(0.5)
     this.requestUpdate()
@@ -1467,6 +1471,12 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
   // component, laid out by a small synchronous force simulation. The result
   // is an anchor point per island; members are pulled toward it while the
   // normal intra-island physics (incl. spouse links) keeps working.
+  //
+  // Seeding is RANDOM on purpose: seeding from the current centroids keeps
+  // the meta simulation in the existing local minimum and no similarity
+  // structure ever emerges (everything just contracts in place). With the
+  // generation axis on, meta nodes are pinned to their island's mean-year
+  // band on Y so the similarity sorting happens along X within each epoch.
   _computeIslandLayout() {
     const nComp = this._compSize.length
     const surnames = this._nodes.map(n => surnameKey(n.surname))
@@ -1477,37 +1487,77 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       this._comp,
       nComp
     )
-    // seed at current island centroids for continuity
-    const cx = new Array(nComp).fill(0)
-    const cy = new Array(nComp).fill(0)
+    // per-island mean (estimated) birth year
+    const yearSum = new Array(nComp).fill(0)
+    const yearCnt = new Array(nComp).fill(0)
     for (const n of this._nodes) {
-      cx[n.comp] += n.x / this._compSize[n.comp]
-      cy[n.comp] += n.y / this._compSize[n.comp]
+      if (n.byEst !== null) {
+        yearSum[n.comp] += n.byEst
+        yearCnt[n.comp] += 1
+      }
     }
-    const metaNodes = Array.from({length: nComp}, (_, c) => ({
-      id: c,
-      x: cx[c],
-      y: cy[c],
-      size: this._compSize[c],
-    }))
+    const midYear = (this._yearExtent[0] + this._yearExtent[1]) / 2 || 1850
+    const meanYear = c => (yearCnt[c] ? yearSum[c] / yearCnt[c] : midYear)
+
+    const timeMode = this.params.timeAxis
+    const R = 60 * Math.sqrt(nComp)
+    const metaNodes = Array.from({length: nComp}, (_, c) => {
+      const a = Math.random() * 2 * Math.PI
+      const r = R * Math.sqrt(Math.random())
+      return {
+        id: c,
+        x: r * Math.cos(a),
+        y: timeMode ? this._yearY(meanYear(c)) : r * Math.sin(a),
+        size: this._compSize[c],
+      }
+    })
     const sim = forceSimulation(metaNodes)
       .force(
         'link',
         forceLink(metaEdges.map(e => ({source: e.a, target: e.b, w: e.w})))
           .id(d => d.id)
-          .distance(l => 80 + (1 - l.w) * 260)
-          .strength(l => Math.min(1, l.w * 1.5))
+          .distance(l => 60 + (1 - l.w) * 200)
+          .strength(l => Math.min(1, l.w * 2))
       )
-      .force('charge', forceManyBody().strength(-60))
+      .force('charge', forceManyBody().strength(-40))
       .force(
         'collide',
         forceCollide().radius(d => 13 * Math.sqrt(d.size) + 18)
       )
-      .force('x', forceX(0).strength(0.03))
-      .force('y', forceY(0).strength(0.03))
+      .force('x', forceX(0).strength(0.02))
+      .force(
+        'y',
+        timeMode
+          ? forceY(d => this._yearY(meanYear(d.id))).strength(0.6)
+          : forceY(0).strength(0.02)
+      )
       .stop()
-    for (let i = 0; i < 300; i += 1) {
+    for (let i = 0; i < 400; i += 1) {
       sim.tick()
+    }
+    // normalize the anchor spread so the layout neither collapses nor
+    // explodes regardless of how the meta sim converged (size-weighted std)
+    const normAxis = axis => {
+      let mean = 0
+      let total = 0
+      for (const m of metaNodes) {
+        mean += m[axis] * m.size
+        total += m.size
+      }
+      mean /= total || 1
+      let variance = 0
+      for (const m of metaNodes) {
+        variance += m.size * (m[axis] - mean) ** 2
+      }
+      const std = Math.sqrt(variance / (total || 1)) || 1
+      const target = 1500
+      for (const m of metaNodes) {
+        m[axis] = ((m[axis] - mean) * target) / std
+      }
+    }
+    normAxis('x')
+    if (!timeMode) {
+      normAxis('y')
     }
     this._islandAnchors = new Map(metaNodes.map(m => [m.id, [m.x, m.y]]))
     this._metaEdgeCount = metaEdges.length
