@@ -40,6 +40,22 @@ import {fireEvent, endpointToObjectClass, apiVersionAtLeast} from '../util.js'
 import {getMediaUrl} from '../api.js'
 
 /*
+Map an object's `_objectsName` to the route of the corresponding list view,
+so clicking a tag can navigate to that list filtered by the tag.
+*/
+const OBJECTS_NAME_TO_ROUTE = {
+  People: 'people',
+  Families: 'families',
+  Events: 'events',
+  Places: 'places',
+  Sources: 'sources',
+  Citations: 'citations',
+  Repositories: 'repositories',
+  Notes: 'notes',
+  'Media Objects': 'medialist',
+}
+
+/*
 Define all tabs in the object view, their details, and when to display them
 (we do not display empty tabs)
 */
@@ -152,9 +168,10 @@ const _allTabs = {
     condition: data => Object.keys(data?.backlinks)?.length > 0,
     conditionEdit: data => false,
   },
-  revisions: {
-    title: 'Revisions',
-    condition: data => 'handle' in data,
+  history: {
+    title: 'Changes',
+    condition: data => Boolean(data?.handle),
+
     conditionEdit: data => false,
   },
 }
@@ -637,7 +654,17 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
       ?edit="${this.edit}"
       .appState="${this.appState}"
       @tag:new="${this._handleNewTag}"
+      @tag:selected="${this._handleTagSelected}"
     ></grampsjs-tags>`
+  }
+
+  _handleTagSelected(e) {
+    const page = OBJECTS_NAME_TO_ROUTE[this._objectsName]
+    if (!page) {
+      return
+    }
+    this.appState.pendingTagFilter = {page, tagName: e.detail.name}
+    fireEvent(this, 'nav', {path: page})
   }
 
   renderSectionContent(sectionKey) {
@@ -899,13 +926,13 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           .data=${[this.data?.extended?.backlinks]}
           .profile=${this.data?.profile?.references || {}}
         ></grampsjs-references>`
-      case 'revisions':
-        return html`<grampsjs-object-revisions
+      case 'history':
+        return html`<grampsjs-object-history
           .appState="${this.appState}"
-          objClass="${endpointToObjectClass[this._objectEndpoint] ?? ''}"
-          handle="${this.data.handle}"
-          lastChange="${this.data.change ?? 0}"
-        ></grampsjs-object-revisions>`
+          namespace="${this._objectEndpoint}"
+          handle="${this.data?.handle ?? ''}"
+        ></grampsjs-object-history>`
+
       default:
         break
     }
@@ -922,16 +949,8 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
       key =>
         _allTabs[key].condition(this.data) &&
         (this._showReferences || key !== 'references') &&
-        (key !== 'revisions' || this._showRevisions())
-    )
-  }
+        (key !== 'history' || this.appState.permissions.canEdit)
 
-  // The object-scoped change history endpoint requires API version 3.22
-  _showRevisions() {
-    return (
-      this.appState.permissions.canViewPrivate &&
-      !this.preview &&
-      apiVersionAtLeast(this.appState.dbInfo, 3, 22)
     )
   }
 

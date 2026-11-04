@@ -122,6 +122,8 @@ export class GrampsjsTags extends GrampsjsAppStateMixin(LitElement) {
                       obj.color,
                       0.9
                     )};--tag-color-bg:${tagColorToCss(obj.color, 0.12)}"
+                    @click=${() => this._handleTagSelect(obj)}
+
                   ></md-assist-chip>`
             )}
         </md-chip-set>
@@ -148,6 +150,10 @@ export class GrampsjsTags extends GrampsjsAppStateMixin(LitElement) {
 
   _handleNewTag() {
     fireEvent(this, 'tag:new')
+  }
+
+  _handleTagSelect(obj) {
+    fireEvent(this, 'tag:selected', {name: obj.name, handle: obj.handle})
   }
 
   _handleList() {
