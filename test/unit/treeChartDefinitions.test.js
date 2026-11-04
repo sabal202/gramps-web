@@ -23,7 +23,9 @@ describe('chart definitions', () => {
       ancestors: 2,
       descendants: 4,
       orientation: 'horizontal',
-      nameDisplayFormat: chartNameDisplayFormat.surnameThenGiven,
+      nameDisplayFormat: chartNameDisplayFormat.surnameThenGivenPatronymic,
+      showMaidenName: false,
+      showUnionDates: false,
     })
   })
 
@@ -161,6 +163,8 @@ describe('GrampsjsViewTree', () => {
     expect(Object.keys(descendant)).toEqual([
       'setting-orientation',
       'setting-nameDisplayFormat',
+      'setting-showMaidenName',
+      'setting-showUnionDates',
     ])
     expect(Object.values(hourglass)).not.toContain(
       descendant['setting-nameDisplayFormat']

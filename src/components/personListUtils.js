@@ -1,7 +1,7 @@
 import {html} from 'lit'
 import {mdiAccount} from '@mdi/js'
 
-import {objectIconPath, sexColor} from '../util.js'
+import {objectIconPath, personProfileDisplayName, sexColor} from '../util.js'
 import {SYMBOL_SETS, SYMBOL_SET_DEFAULT} from '../symbols.js'
 import './GrampsjsImg.js'
 import './GrampsjsIcon.js'

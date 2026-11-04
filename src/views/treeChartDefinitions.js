@@ -96,6 +96,14 @@ const showMaidenNameSetting = () => ({
   default: false,
 })
 
+const showUnionDatesSetting = () => ({
+  name: 'showUnionDates',
+  key: 'chartShowUnionDates',
+  label: 'Show union years',
+  type: 'boolean',
+  default: false,
+})
+
 // Whether generations run in columns or in rows, with ancestors above. As
 // in Gramps, the arrows point where the chart grows: towards the ancestors,
 // or for a chart of descendants only, towards them.
@@ -217,6 +225,7 @@ export const chartDefinitions = {
       orientationSetting('treeChartOrientation'),
       nameDisplayFormatSetting('treeChartNameDisplayFormat'),
       showMaidenNameSetting(),
+      showUnionDatesSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -234,6 +243,7 @@ export const chartDefinitions = {
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
         ?showMaidenName=${values.showMaidenName}
+        ?showUnionDates=${values.showUnionDates}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -249,6 +259,7 @@ export const chartDefinitions = {
       orientationSetting('descendantChartOrientation', {descendants: true}),
       nameDisplayFormatSetting('descendantChartNameDisplayFormat'),
       showMaidenNameSetting(),
+      showUnionDatesSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -266,6 +277,7 @@ export const chartDefinitions = {
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
         ?showMaidenName=${values.showMaidenName}
+        ?showUnionDates=${values.showUnionDates}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -283,6 +295,7 @@ export const chartDefinitions = {
       orientationSetting('hourglassChartOrientation'),
       nameDisplayFormatSetting('hourglassChartNameDisplayFormat'),
       showMaidenNameSetting(),
+      showUnionDatesSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -301,6 +314,7 @@ export const chartDefinitions = {
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
         ?showMaidenName=${values.showMaidenName}
+        ?showUnionDates=${values.showUnionDates}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -323,6 +337,7 @@ export const chartDefinitions = {
       },
       nameDisplayFormatSetting('relationshipChartNameDisplayFormat'),
       showMaidenNameSetting(),
+      showUnionDatesSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -340,6 +355,7 @@ export const chartDefinitions = {
         grampsId=${grampsId}
         nameDisplayFormat=${values.nameDisplayFormat}
         ?showMaidenName=${values.showMaidenName}
+        ?showUnionDates=${values.showUnionDates}
         ?canEdit="${canEdit}"
         .data=${data}
       >
@@ -369,6 +385,7 @@ export const chartDefinitions = {
         color="${state.color ?? ''}"
         nameDisplayFormat=${values.nameDisplayFormat}
         ?showMaidenName=${values.showMaidenName}
+        ?showUnionDates=${values.showUnionDates}
       >
       </grampsjs-fan-chart>
     `,
@@ -396,5 +413,5 @@ export function chartDataUrl(definition, grampsId, values, lang, branches) {
   const {rules, extend} = definition.request(grampsId, values, branches)
   return `/api/people/?rules=${encodeURIComponent(
     JSON.stringify(rules)
-  )}&locale=${lang || 'en'}&profile=self&extend=${extend}`
+  )}&locale=${lang || 'en'}&profile=self,families&extend=${extend}`
 }

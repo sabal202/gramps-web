@@ -1,7 +1,7 @@
 import {html} from 'lit'
 
 import {GrampsjsChartBase} from './GrampsjsChartBase.js'
-import {RelationshipChart} from '../charts/RelationshipChart.js'
+import {RelationshipChart, buildFamilyUnionMap} from '../charts/RelationshipChart.js'
 import {chartTransitionDuration, getImageUrl} from '../charts/util.js'
 import {getSymbols} from '../symbols.js'
 
@@ -59,6 +59,8 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       getImageUrl: node => getImageUrl(node.person, 100),
       nameDisplayFormat: this.nameDisplayFormat,
       showMaidenName: this.showMaidenName,
+      unionMap: buildFamilyUnionMap(this.data ?? []),
+      showUnionDates: this.appState.settings?.chartShowUnionDates ?? false,
       ...getSymbols(this.appState.settings, s => this._(s)),
       canEdit: this.canEdit,
       duration: chartTransitionDuration(),

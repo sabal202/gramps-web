@@ -21,6 +21,7 @@ const layoutProperties = [
   'nDesc',
   'gapX',
   'showMaidenName',
+  'showUnionDates',
   'vertical',
   'expanded',
 ]
@@ -38,6 +39,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       expanded: {type: Object},
       nameDisplayFormat: {type: String},
       showMaidenName: {type: Boolean},
+      showUnionDates: {type: Boolean},
       canEdit: {type: Boolean},
     }
   }
@@ -146,6 +148,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       bboxHeight: this.containerHeight,
       nameDisplayFormat: this.nameDisplayFormat,
       showMaidenName: this.showMaidenName,
+      showUnionDates: this.showUnionDates,
       ...getSymbols(this.appState.settings, s => this._(s)),
       canEdit: this.canEdit,
       duration: chartTransitionDuration(),

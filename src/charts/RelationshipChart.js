@@ -1,9 +1,35 @@
 import {ChartCanvas, place} from './ChartCanvas.js'
 import {cornerRadius, roundedPath, sameX} from './connectors.js'
 import {appendFamilyMarker, familyMarkerPosition} from './familyMarker.js'
+import {UNKNOWN_MARITAL_STATUS} from './unionStatus.js'
+// Re-exported for the unit tests, which import from this module
+export {maritalStatusToMarker, formatUnionDates, unionStatusLabels} from './unionStatus.js'
 import {relationshipLayoutDefaults} from './layout/relationshipLayout.js'
 
 const {boxWidth, boxHeight} = relationshipLayoutDefaults
+
+// Build {familyHandle: {status, marriage, divorce}} from chart people's
+// profiles (person.profile.families carries the derived union status and
+// marriage/divorce event profiles from the API).
+export function buildFamilyUnionMap(people) {
+  const map = {}
+  for (const person of people ?? []) {
+    const families = person?.profile?.families
+    if (!Array.isArray(families)) continue
+    for (const fam of families) {
+      const handle = fam?.handle
+      if (!handle) continue
+      // First writer wins: all spouses share the same family record
+      if (map[handle]) continue
+      map[handle] = {
+        maritalStatus: fam?.marital_status ?? UNKNOWN_MARITAL_STATUS,
+        marriage: fam?.marriage ?? null,
+        divorce: fam?.divorce ?? null,
+      }
+    }
+  }
+  return map
+}
 
 // A link runs from the marker of a family, or the bottom of a single
 // parent's card, to the top of the child's card, along the right-angled
@@ -223,11 +249,15 @@ export class RelationshipChart extends ChartCanvas {
   // Family markers are small, so they are redrawn on every update. The
   // marker of a family whose partners are not next to each other sits on a
   // bracket that joins the bottoms of their cards.
-  drawExtras(nodes, {palette}) {
+  drawExtras(nodes, {palette, unionMap, showUnionDates}) {
     const markers = nodes
       .filter(node => node.kind === 'family')
       .select('.family-marker')
     markers.selectChildren().remove()
+    markers.each(function (node) {
+      // eslint-disable-next-line no-param-reassign
+      node.union = unionMap?.[node.handle]
+    })
     markers
       .filter(node => node.bracket)
       .append('path')
@@ -243,7 +273,11 @@ export class RelationshipChart extends ChartCanvas {
           `V${top}`,
         ].join('')
       )
-    appendFamilyMarker(markers, {boxHeight, palette})
+    appendFamilyMarker(markers, {
+      boxHeight,
+      palette,
+      showUnionDates,
+    })
     // The bracket reaches the marker from one side only, so the marker's
     // own line would stick out on the other
     markers
