@@ -681,4 +681,18 @@
     "née": "урожд.",
     "Surname / Given Patronymic": "Фамилия / Имя Отчество",
     "Given Patronymic / Surname": "Имя Отчество / Фамилия"
+,
+    "Collapse parts of the chart": "Свернуть части графа",
+    "hides {n} people": "скрывает {n} чел.",
+    "Hidden people: {n}": "Скрыто людей: {n}",
+    "Reset": "Сбросить",
+    "Presets": "Пресеты",
+    "Spouse branches": "Ветви супругов",
+    "Children of families": "Потомки семей",
+    "Ancestor lines": "Предковые линии",
+    "Only the direct line": "Только прямая линия",
+    "Hide descendants": "Скрыть потомков",
+    "Branch of {name}": "Ветвь: {name}",
+    "Children of the {surname} family": "Потомки семьи {surname}",
+    "Ancestors of {name} via {surname}": "Предки {name} через {surname}"
 }

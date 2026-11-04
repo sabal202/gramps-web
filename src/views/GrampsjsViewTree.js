@@ -23,7 +23,7 @@ import {
   mdiPencil,
   mdiPlus,
   mdiTargetAccount,
-  mdiGraphOutline} from '@mdi/js'
+  mdiGraphOutline, mdiArrowCollapseAll} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 import '../components/GrampsjsFormSelectObject.js'
@@ -39,6 +39,10 @@ import {
 } from './treeChartDefinitions.js'
 import {fireEvent, isKeyEventInInput} from '../util.js'
 import {chartTransitionDuration, formatChartName} from '../charts/util.js'
+import {pruneGraph} from '../charts/collapse.js'
+import {FamilyGraph} from '../charts/model/FamilyGraph.js'
+// Registers <grampsjs-collapse-dialog> for the chart collapse panel
+import '../components/GrampsjsCollapseDialog.js'
 // Registers <grampsjs-view-graph-explorer> for the 'graph' chart tab
 import './GrampsjsViewGraphExplorer.js'
 import {renderPersonAvatar} from '../components/personListUtils.js'
@@ -280,6 +284,9 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._currentTabId = getTreeViewTabIndex(DEFAULT_TREE_VIEW)
     this._appliedTreeDefaultView = null
     this._data = []
+    // Active collapse cut keys for the shown chart; session-persistent,
+    // survives rerooting (the cuts are handle-keyed)
+    this._collapsed = new Set()
     this._dataChart = undefined
     this._dataUrl = ''
     this._dataRequest = 0
@@ -397,6 +404,54 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     if (this._dataUrl) {
       this._fetchData(this._dataUrl)
     }
+  }
+
+  // Collapse: the root handle of the shown chart (needed by the cut engine).
+  get _collapseRootHandle() {
+    if (!this._data?.length || !this.grampsId) {
+      return ''
+    }
+    if (this._collapseGraphData !== this._data) {
+      this._collapseGraphData = this._data
+      this._collapseGraph = new FamilyGraph(this._data)
+    }
+    return this._collapseGraph.personByGrampsId(this.grampsId)?.handle ?? ''
+  }
+
+  // The chart data with all active collapse cuts applied. Without cuts (the
+  // common case) returns the fetched array untouched.
+  _prunedData() {
+    if (!this._collapsed.size || this.chart === 'graph') {
+      return this._data
+    }
+    const rootHandle = this._collapseRootHandle
+    if (!rootHandle) {
+      return this._data
+    }
+    const {visibleHandles} = pruneGraph(
+      this._data,
+      this._collapsed,
+      rootHandle,
+      false
+    )
+    return this._data.filter(person => visibleHandles.has(person.handle))
+  }
+
+  _handleCollapseToggle(event) {
+    const {cutKey, active} = event.detail
+    const next = new Set(this._collapsed)
+    if (active) {
+      next.add(cutKey)
+    } else {
+      next.delete(cutKey)
+    }
+    this._collapsed = next
+    this.requestUpdate()
+  }
+
+  _handleCollapseReset() {
+    this._collapsed = new Set()
+    this.requestUpdate()
   }
 
   // Fetches the people the chart needs when the request differs from the last
@@ -534,7 +589,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
         grampsId: this.grampsId,
         active: this.active,
         values: this.settingValues,
-        data: this._data,
+        data: this._prunedData(),
         canEdit: this._editMode,
         appState: this.appState,
         state: this._chartState,
@@ -596,6 +651,25 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
       ${this.definition.renderControls?.(this) ?? ''}
       <span class="divider"></span>
       ${this.definition.exportable ? this.renderExportControls() : ''}
+      ${this.chart !== 'graph' && this.grampsId
+        ? html`
+            <md-icon-button
+              id="btn-collapse"
+              aria-label="${this._('Collapse parts of the chart')}"
+              @click=${() =>
+                this.renderRoot
+                  .getElementById('dialog-collapse')
+                  ?.show()}
+              ><grampsjs-icon
+                path="${mdiArrowCollapseAll}"
+                color="currentColor"
+              ></grampsjs-icon
+            ></md-icon-button>
+            <grampsjs-tooltip for="btn-collapse" .appState="${this.appState}"
+              >${this._('Collapse parts of the chart')}</grampsjs-tooltip
+            >
+          `
+        : ''}
       ${this.definition.settings.length
         ? html`
             <md-icon-button
@@ -638,6 +712,15 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           >
         </div>
       </md-dialog>
+      <grampsjs-collapse-dialog
+        id="dialog-collapse"
+        .people="${this._data}"
+        .rootHandle="${this._collapseRootHandle}"
+        .collapsed="${this._collapsed}"
+        .appState="${this.appState}"
+        @collapse-toggle="${this._handleCollapseToggle}"
+        @collapse-reset="${this._handleCollapseReset}"
+      ></grampsjs-collapse-dialog>
     `
   }
 
