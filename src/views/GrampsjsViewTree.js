@@ -656,10 +656,12 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
             <md-icon-button
               id="btn-collapse"
               aria-label="${this._('Collapse parts of the chart')}"
-              @click=${() =>
-                this.renderRoot
-                  .getElementById('dialog-collapse')
-                  ?.show()}
+              @click=${() => {
+                const dialog = this.renderRoot.getElementById('dialog-collapse')
+                if (dialog) {
+                  dialog.open = true
+                }
+              }}
               ><grampsjs-icon
                 path="${mdiArrowCollapseAll}"
                 color="currentColor"
