@@ -651,7 +651,10 @@ export async function apiRegisterUser(
         resJson?.error?.message || resp.statusText || `Error ${resp.status}`
       )
     }
-    return {}
+    // The 201 body may carry {email_confirmation_required: false} on instances
+    // that provision self-registered accounts immediately; pass it through so
+    // the UI can show the right post-registration message.
+    return resJson || {}
   } catch (error) {
     return {error: error.message}
   }
@@ -728,6 +731,27 @@ export function getExporterUrl(id, options) {
 export function getExporterDownloadUrl(url) {
   const jwt = localStorage.getItem('access_token')
   return `${__APIHOST__}${url}?jwt=${jwt}`
+}
+
+// Immich import: thumbnails are proxied through our own backend (the Immich
+// admin API key never reaches the browser), so `url` is expected to be a
+// same-origin, backend-relative path returned by the `/api/immich/...`
+// endpoints (e.g. `/api/immich/albums/<id>/assets/<assetId>/thumbnail`).
+// Same `?jwt=` auth convention as getExporterDownloadUrl/getMediaUrl. If the
+// backend ever returns an absolute URL (e.g. a presigned link) instead, it is
+// returned unchanged.
+export function getImmichAssetUrl(url) {
+  if (!url) {
+    return ''
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url
+  }
+  const jwt = localStorage.getItem('access_token')
+  const sep = url.includes('?') ? '&' : '?'
+  return jwt === null
+    ? `${__APIHOST__}${url}`
+    : `${__APIHOST__}${url}${sep}jwt=${jwt}`
 }
 
 export function getTileUrl(handle, checksum = null) {
@@ -1087,6 +1111,59 @@ export async function apiGet(auth, endpoint) {
       return {error: 'Network error', errorDetail}
     }
     return {error: error.message, errorDetail}
+  }
+}
+
+// Stream a chat response via Server-Sent Events (fetch + ReadableStream).
+// EventSource can't set the Authorization header, so we use fetch and parse the
+// `data: {...}\n\n` frames ourselves, invoking onEvent for each parsed object.
+export async function apiChatStream(auth, payload, onEvent) {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  }
+  try {
+    const accessToken = await auth.getValidAccessToken()
+    headers.Authorization = `Bearer ${accessToken}`
+    // eslint-disable-next-line no-empty
+  } catch {}
+  const resp = await fetch(`${__APIHOST__}/api/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok || resp.body === null) {
+    throw new Error(`Chat stream failed with status ${resp.status}`)
+  }
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    // eslint-disable-next-line no-await-in-loop
+    const {done, value} = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, {stream: true})
+    let sep = buffer.indexOf('\n\n')
+    while (sep >= 0) {
+      const frame = buffer.slice(0, sep)
+      buffer = buffer.slice(sep + 2)
+      const line = frame.startsWith('data: ') ? frame.slice(6) : frame
+      if (line) {
+        let ev = null
+        try {
+          ev = JSON.parse(line)
+        } catch {
+          ev = null
+        }
+        if (ev) {
+          onEvent(ev)
+        }
+      }
+      sep = buffer.indexOf('\n\n')
+    }
   }
 }
 

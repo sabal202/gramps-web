@@ -19,6 +19,7 @@ import '../views/GrampsjsViewNotes.js'
 import '../views/GrampsjsViewMediaObjects.js'
 import '../views/GrampsjsViewChat.js'
 import '../views/GrampsjsViewExport.js'
+import '../views/GrampsjsViewCalendar.js'
 import '../views/GrampsjsViewPerson.js'
 import '../views/GrampsjsViewFamily.js'
 import '../views/GrampsjsViewPlace.js'
@@ -60,6 +61,8 @@ import '../views/GrampsjsViewNewTask.js'
 import '../views/GrampsjsViewNewBlogPost.js'
 import '../views/GrampsjsViewHelp.js'
 import '../views/GrampsjsViewTimeline.js'
+import '../views/GrampsjsViewRelatives.js'
+import '../views/GrampsjsViewImmichImport.js'
 
 class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -264,6 +267,7 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
               class="page"
               ?active=${this.appState.path.page === 'chat'}
               .appState="${this.appState}"
+              .homePersonDetails=${this.homePersonDetails}
             ></grampsjs-view-chat>
           `
         : ''}
@@ -277,6 +281,11 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
         ?active=${this.appState.path.page === 'reports'}
         .appState="${this.appState}"
       ></grampsjs-view-reports>
+      <grampsjs-view-calendar
+        class="page"
+        ?active=${this.appState.path.page === 'calendar'}
+        .appState="${this.appState}"
+      ></grampsjs-view-calendar>
       <grampsjs-view-search
         class="page"
         ?active=${this.appState.path.page === 'search'}
@@ -420,6 +429,21 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
         ?active=${this.appState.path.page === 'timeline'}
         .appState="${this.appState}"
       ></grampsjs-view-timeline>
+      <grampsjs-view-relatives
+        class="page"
+        ?active=${this.appState.path.page === 'relatives'}
+        pageId="${this.appState.path.pageId}"
+        .appState="${this.appState}"
+      ></grampsjs-view-relatives>
+      ${this.appState.permissions.canEdit
+        ? html`
+            <grampsjs-view-immich-import
+              class="page"
+              ?active=${this.appState.path.page === 'immich-import'}
+              .appState="${this.appState}"
+            ></grampsjs-view-immich-import>
+          `
+        : ''}
     `
   }
 }

@@ -24,6 +24,9 @@ import {
   mdiSourceCommit,
   mdiBell,
   mdiBellBadge,
+  mdiAccountGroup,
+  mdiCalendarExport,
+  mdiImagePlus,
   mdiTimelineOutline,
 } from '@mdi/js'
 import {sharedStyles} from '../SharedStyles.js'
@@ -45,6 +48,14 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
           --md-list-item-label-text-size: 1rem;
           --md-list-item-label-text-weight: 400;
           --md-list-item-one-line-container-height: 40px;
+        }
+
+        /* The drawer is the primary navigation; on touch, restore the 48px
+           Material minimum tap target (40px is fine for a mouse). */
+        @media (pointer: coarse) {
+          md-list-item {
+            --md-list-item-one-line-container-height: 48px;
+          }
         }
 
         md-list-item[selected] {
@@ -170,6 +181,13 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
       </md-list-item>
       <md-list-item
         type="link"
+        href="${BASE_DIR}/relatives"
+        ?selected="${p === 'relatives'}"
+      >
+        ${this._icon(mdiAccountGroup, p === 'relatives')} ${this._('Relatives')}
+      </md-list-item>
+      <md-list-item
+        type="link"
         href="${BASE_DIR}/map"
         ?selected="${p === 'map'}"
       >
@@ -207,6 +225,18 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
       >
         ${this._icon(mdiImage, p === 'medialist')} ${this._('Media')}
       </md-list-item>
+      ${this.appState.permissions.canEdit
+        ? html`
+            <md-list-item
+              type="link"
+              href="${BASE_DIR}/immich-import"
+              ?selected="${p === 'immich-import'}"
+            >
+              ${this._icon(mdiImagePlus, p === 'immich-import')}
+              ${this._('Immich Import')}
+            </md-list-item>
+          `
+        : ''}
       ${this.canUseChat
         ? html`
             <md-list-item
@@ -254,6 +284,14 @@ class GrampsjsAppBar extends GrampsjsAppStateMixin(LitElement) {
         ?selected="${p === 'export'}"
       >
         ${this._icon(mdiDownload, p === 'export')} ${this._('Export')}
+      </md-list-item>
+      <md-list-item
+        type="link"
+        href="${BASE_DIR}/calendar"
+        ?selected="${p === 'calendar'}"
+      >
+        ${this._icon(mdiCalendarExport, p === 'calendar')}
+        ${this._('Calendar subscription')}
       </md-list-item>
       <md-divider inset></md-divider>
       ${this.appState.permissions.canViewPrivate
