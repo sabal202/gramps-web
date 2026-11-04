@@ -125,6 +125,7 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "dependencies": {
+    "qrcode-generator": "^2.0.4",
     "@americana/diplomat": "^0.5.0",
     "@awesome.me/webawesome": "^3.4.0",
     "@hpcc-js/wasm": "^2.22.4",
