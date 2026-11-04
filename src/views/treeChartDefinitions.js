@@ -219,6 +219,20 @@ function renderFanColorControls(view) {
 }
 
 export const chartDefinitions = {
+  graph: {
+    settings: [],
+    editable: false,
+    zoomable: false,
+    exportable: false,
+    render: ({appState, active}) => html`
+      <grampsjs-view-graph-explorer
+        class="page"
+        ?active=${active}
+        .appState="${appState}"
+      ></grampsjs-view-graph-explorer>
+    `,
+  },
+
   ancestor: {
     settings: [
       ancestorsSetting('treeChartAnc', 3),

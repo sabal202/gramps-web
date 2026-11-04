@@ -23,7 +23,7 @@ import {
   mdiPencil,
   mdiPlus,
   mdiTargetAccount,
-} from '@mdi/js'
+  mdiGraphOutline} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 import '../components/GrampsjsFormSelectObject.js'
@@ -401,7 +401,8 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   // one, which happens when the selected person, the chart, the language or a
   // setting of the request changes
   _fetchIfNeeded() {
-    if (!this.grampsId) {
+    // The whole-tree graph fetches its own payload
+    if (!this.grampsId || this.chart === 'graph') {
       return
     }
     const url = chartDataUrl(
@@ -504,6 +505,11 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
         icon: relationshipGraphIconPath,
       },
       {value: 'fan', label: this._('Fan Chart'), icon: chartFanIconPath},
+      {
+        value: 'graph',
+        label: this._('Whole tree graph'),
+        icon: mdiGraphOutline,
+      },
     ]
     return html`
       <grampsjs-pill-toggle
@@ -524,6 +530,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
       this.chart,
       definition.render({
         grampsId: this.grampsId,
+        active: this.active,
         values: this.settingValues,
         data: this._data,
         canEdit: this._editMode,
@@ -587,15 +594,22 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
       ${this.definition.renderControls?.(this) ?? ''}
       <span class="divider"></span>
       ${this.definition.exportable ? this.renderExportControls() : ''}
-      <md-icon-button
-        id="btn-controls"
-        aria-label="${this._('Preferences')}"
-        @click=${this._openMenuControls}
-        ><grampsjs-icon path="${mdiCog}" color="currentColor"></grampsjs-icon
-      ></md-icon-button>
-      <grampsjs-tooltip for="btn-controls" .appState="${this.appState}"
-        >${this._('Preferences')}</grampsjs-tooltip
-      >
+      ${this.definition.settings.length
+        ? html`
+            <md-icon-button
+              id="btn-controls"
+              aria-label="${this._('Preferences')}"
+              @click=${this._openMenuControls}
+              ><grampsjs-icon
+                path="${mdiCog}"
+                color="currentColor"
+              ></grampsjs-icon
+            ></md-icon-button>
+            <grampsjs-tooltip for="btn-controls" .appState="${this.appState}"
+              >${this._('Preferences')}</grampsjs-tooltip
+            >
+          `
+        : ''}
       <md-dialog id="menu-controls">
         <div slot="content">
           <table>

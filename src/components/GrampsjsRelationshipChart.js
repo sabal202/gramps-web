@@ -60,6 +60,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       getImageUrl: node => getImageUrl(node.person, 100),
       nameDisplayFormat: this.nameDisplayFormat,
       showMaidenName: this.showMaidenName,
+      maidenLabel: this._('née'),
       unionMap: buildFamilyUnionMap(this.data ?? []),
       rootHandle: this._graph?.personByGrampsId(this.grampsId)?.handle ?? null,
       showUnionDates: this.showUnionDates ?? this.appState?.settings?.chartShowUnionDates ?? false,

@@ -140,6 +140,7 @@ export class ChartCanvas {
       getImageUrl: settings.getImageUrl,
       nameDisplayFormat,
       showMaidenName,
+      maidenLabel: settings.maidenLabel,
       birthSymbol: settings.birthSymbol,
       deathSymbol: settings.deathSymbol,
       palette,

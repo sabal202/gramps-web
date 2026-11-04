@@ -139,7 +139,7 @@ export function appendFamilyMarker(
       .attr('font-size', '10px')
       .attr('fill', palette.text)
       .attr('x', x)
-      .attr('y', y + 16)
+      .attr('y', y - 16)
       .text(d => formatUnionDates(d.union.maritalStatus, d.union))
   }
 
