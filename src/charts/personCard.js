@@ -41,6 +41,7 @@ export function appendPersonCard(
     boxHeight = 90,
     imgPadding = 10,
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
+    showMaidenName = false,
     birthSymbol = SYMBOL_SETS[SYMBOL_SET_DEFAULT].birthSymbol,
     deathSymbol = SYMBOL_SETS[SYMBOL_SET_DEFAULT].deathSymbol,
     palette = chartPalette,
@@ -73,18 +74,27 @@ export function appendPersonCard(
     .attr('ry', 8)
 
   const surnameFirst =
-    nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven ||
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
+  const withPatronymic =
+    nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname ||
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
+  const givenPart = p => {
+    const given = p.name_given || '…'
+    const patronymic = p.name_patronymic
+    return withPatronymic && patronymic ? `${given} ${patronymic}` : given
+  }
   const hasName = p => p?.name_given || p?.name_surname
   const lines = [
     {
       show: hasName,
       text: p =>
-        surnameFirst ? `${p.name_surname || '…'},` : p.name_given || '…',
+        surnameFirst ? `${p.name_surname || '…'},` : givenPart(p),
       weight: 500,
     },
     {
       show: hasName,
-      text: p => (surnameFirst ? p.name_given || '…' : p.name_surname || '…'),
+      text: p => (surnameFirst ? givenPart(p) : p.name_surname || '…'),
       weight: 500,
     },
     {
@@ -95,6 +105,11 @@ export function appendPersonCard(
     {
       show: p => p?.death?.date,
       text: p => `${deathSymbol} ${p.death.date}`,
+      weight: 350,
+    },
+    {
+      show: p => showMaidenName && p?.maiden_surname,
+      text: p => p.maiden_surname,
       weight: 350,
     },
   ]
@@ -207,6 +222,7 @@ export function drawChangedCards(
   {
     getImageUrl = () => '',
     nameDisplayFormat,
+    showMaidenName = false,
     birthSymbol,
     deathSymbol,
     palette = chartPalette,
@@ -220,6 +236,7 @@ export function drawChangedCards(
       person: d.person,
       imageUrl: getImageUrl(d),
       nameDisplayFormat,
+      showMaidenName,
       birthSymbol,
       deathSymbol,
       palette,
@@ -245,6 +262,7 @@ export function drawChangedCards(
     boxWidth,
     boxHeight,
     nameDisplayFormat,
+    showMaidenName,
     birthSymbol,
     deathSymbol,
     palette,

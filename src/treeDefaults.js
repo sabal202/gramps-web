@@ -4,6 +4,7 @@ export const TREE_VIEWS = [
   'hourglass',
   'relationship',
   'fan',
+  'graph',
 ]
 
 export const DEFAULT_TREE_VIEW = 'ancestor'

@@ -82,7 +82,18 @@ const nameDisplayFormatSetting = key => ({
     value: format,
     label: format,
   })),
-  default: chartNameDisplayFormat.surnameThenGiven,
+  default: chartNameDisplayFormat.surnameThenGivenPatronymic,
+})
+
+// Show the maiden (birth) surname line on chart person cards. One shared
+// storage key across every chart type, so the toggles stay in sync — the
+// equivalent of the old shared corner-bar toggle.
+const showMaidenNameSetting = () => ({
+  name: 'showMaidenName',
+  key: 'chartShowMaidenName',
+  label: 'Show maiden name',
+  type: 'boolean',
+  default: false,
 })
 
 // Whether generations run in columns or in rows, with ancestors above. As
@@ -205,6 +216,7 @@ export const chartDefinitions = {
       ancestorsSetting('treeChartAnc', 3),
       orientationSetting('treeChartOrientation'),
       nameDisplayFormatSetting('treeChartNameDisplayFormat'),
+      showMaidenNameSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -221,6 +233,7 @@ export const chartDefinitions = {
         nDesc="2"
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
+        ?showMaidenName=${values.showMaidenName}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -235,6 +248,7 @@ export const chartDefinitions = {
       descendantsSetting('descendantChartDesc', 1),
       orientationSetting('descendantChartOrientation', {descendants: true}),
       nameDisplayFormatSetting('descendantChartNameDisplayFormat'),
+      showMaidenNameSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -251,6 +265,7 @@ export const chartDefinitions = {
         nDesc=${values.descendants + 1}
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
+        ?showMaidenName=${values.showMaidenName}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -267,6 +282,7 @@ export const chartDefinitions = {
       descendantsSetting('hourglassChartDesc', 1),
       orientationSetting('hourglassChartOrientation'),
       nameDisplayFormatSetting('hourglassChartNameDisplayFormat'),
+      showMaidenNameSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -284,6 +300,7 @@ export const chartDefinitions = {
         nDesc=${values.descendants + 1}
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
+        ?showMaidenName=${values.showMaidenName}
         ?canEdit="${canEdit}"
         .data=${data}
         .expanded=${expanded}
@@ -305,6 +322,7 @@ export const chartDefinitions = {
         default: 2,
       },
       nameDisplayFormatSetting('relationshipChartNameDisplayFormat'),
+      showMaidenNameSetting(),
     ],
     editable: true,
     zoomable: true,
@@ -321,6 +339,7 @@ export const chartDefinitions = {
       <grampsjs-relationship-chart
         grampsId=${grampsId}
         nameDisplayFormat=${values.nameDisplayFormat}
+        ?showMaidenName=${values.showMaidenName}
         ?canEdit="${canEdit}"
         .data=${data}
       >
@@ -332,6 +351,7 @@ export const chartDefinitions = {
     settings: [
       ancestorsSetting('fanChartAnc', 4),
       nameDisplayFormatSetting('fanChartNameDisplayFormat'),
+      showMaidenNameSetting(),
     ],
     editable: false,
     zoomable: true,
@@ -348,6 +368,7 @@ export const chartDefinitions = {
         .appState="${appState}"
         color="${state.color ?? ''}"
         nameDisplayFormat=${values.nameDisplayFormat}
+        ?showMaidenName=${values.showMaidenName}
       >
       </grampsjs-fan-chart>
     `,

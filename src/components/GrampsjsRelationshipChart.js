@@ -10,6 +10,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     return {
       grampsId: {type: String},
       nameDisplayFormat: {type: String},
+      showMaidenName: {type: Boolean},
       canEdit: {type: Boolean},
     }
   }
@@ -57,6 +58,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
     return {
       getImageUrl: node => getImageUrl(node.person, 100),
       nameDisplayFormat: this.nameDisplayFormat,
+      showMaidenName: this.showMaidenName,
       ...getSymbols(this.appState.settings, s => this._(s)),
       canEdit: this.canEdit,
       duration: chartTransitionDuration(),

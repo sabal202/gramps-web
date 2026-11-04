@@ -83,12 +83,16 @@ export class ChartCanvas {
   update(layout, options = {}) {
     const {
       nameDisplayFormat,
+      showMaidenName = false,
       canEdit = false,
       duration = 0,
       fit = false,
       bboxWidth,
       bboxHeight,
     } = options
+    // Subclasses read this in their `boxSize` getter so the layout grows
+    // with the maiden line (taller cards need more spacing).
+    this._showMaidenName = showMaidenName
     const settings = {
       ...options,
       getImageUrl: options.getImageUrl ?? (() => ''),
@@ -132,6 +136,7 @@ export class ChartCanvas {
     drawChangedCards(people, {
       getImageUrl: settings.getImageUrl,
       nameDisplayFormat,
+      showMaidenName,
       birthSymbol: settings.birthSymbol,
       deathSymbol: settings.deathSymbol,
       palette,

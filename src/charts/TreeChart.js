@@ -162,6 +162,10 @@ export class TreeChart extends ChartCanvas {
   }
 
   get boxSize() {
+    if (this._showMaidenName) {
+      // Taller cards make room for the optional maiden-surname line
+      return {boxWidth: 206, boxHeight: 108}
+    }
     return {boxWidth, boxHeight}
   }
 

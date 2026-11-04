@@ -589,10 +589,20 @@ function setFanInteraction(cells, {interactive, onClick}) {
 // person, and two lines along the arc for ancestors whose arc is long enough
 function appendNames(cells, {nameDisplayFormat, palette, padding}) {
   const surnameFirst =
-    nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven ||
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
+  const withPatronymic =
+    nameDisplayFormat === chartNameDisplayFormat.givenPatronymicThenSurname ||
+    nameDisplayFormat === chartNameDisplayFormat.surnameThenGivenPatronymic
+  const givenPart = p => {
+    const given = p.name_given || ''
+    return withPatronymic && p.name_patronymic
+      ? `${given} ${p.name_patronymic}`.trim()
+      : given
+  }
   const [firstName, secondName] = surnameFirst
-    ? [p => p.name_surname, p => p.name_given]
-    : [p => p.name_given, p => p.name_surname]
+    ? [p => p.name_surname, p => givenPart(p)]
+    : [p => givenPart(p), p => p.name_surname]
   const [firstWeight, secondWeight] = surnameFirst ? [500, 300] : [300, 500]
 
   const fontSize = d => Math.min(12, (((d.y0 + d.y1) / 2) * (d.x1 - d.x0)) / 10)

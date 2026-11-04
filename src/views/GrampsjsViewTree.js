@@ -768,6 +768,15 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
         </md-filled-select>
       `
     }
+    if (setting.type === 'boolean') {
+      return html`
+        <md-switch
+          id="setting-${setting.name}"
+          ?selected="${value === true}"
+          @change=${e => this._changeSetting(setting, e.target.selected)}
+        ></md-switch>
+      `
+    }
     return html`
       <md-filled-text-field
         value=${value}
