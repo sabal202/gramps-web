@@ -39,6 +39,8 @@ import {
 } from './treeChartDefinitions.js'
 import {fireEvent, isKeyEventInInput} from '../util.js'
 import {chartTransitionDuration, formatChartName} from '../charts/util.js'
+// Registers <grampsjs-view-graph-explorer> for the 'graph' chart tab
+import './GrampsjsViewGraphExplorer.js'
 import {renderPersonAvatar} from '../components/personListUtils.js'
 import {iconButtonColorStyles, listAvatarStyles} from '../SharedStyles.js'
 import {
