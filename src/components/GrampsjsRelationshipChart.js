@@ -60,6 +60,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       nameDisplayFormat: this.nameDisplayFormat,
       showMaidenName: this.showMaidenName,
       unionMap: buildFamilyUnionMap(this.data ?? []),
+      rootHandle: this._graph?.personByGrampsId(this.grampsId)?.handle ?? null,
       showUnionDates: this.appState.settings?.chartShowUnionDates ?? false,
       ...getSymbols(this.appState.settings, s => this._(s)),
       canEdit: this.canEdit,

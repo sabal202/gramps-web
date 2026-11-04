@@ -1,7 +1,10 @@
+/* eslint-disable lit-a11y/click-events-have-key-events */
+// The touch-mode scrim is a plain dismiss backdrop (same pattern as
+// GrampsjsCollapseSheet); the card's actions are reachable via the real
+// buttons/anchor inside it, so keyboard listeners on the scrim aren't needed.
 import {LitElement, css, html, nothing} from 'lit'
-import {mdiOpenInNew} from '@mdi/js'
+import {mdiOpenInNew, mdiTargetAccount} from '@mdi/js'
 
-import '@material/web/iconbutton/icon-button.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {fireEvent} from '../util.js'
 import './GrampsjsIcon.js'
@@ -14,6 +17,9 @@ import './GrampsjsCitation.js'
 import './GrampsjsRepository.js'
 import './GrampsjsNote.js'
 import './GrampsjsMediaObject.js'
+
+// Replaced at build time by rollup
+const BASE_DIR = ''
 
 const SHOW_DELAY = 200
 // In charts the pointer is almost always over some node, so previews there
@@ -51,7 +57,7 @@ const NOTE_LINK_FORMAT = encodeURIComponent(
 
 const URLS = {
   person: (id, lang) =>
-    `/api/people/?gramps_id=${id}&locale=${lang}&profile=all&backlinks=true&extend=all&precision=1`,
+    `/api/people/?gramps_id=${id}&locale=${lang}&profile=all,current_age&backlinks=true&extend=all&precision=1`,
   family: (id, lang) =>
     `/api/families/?gramps_id=${id}&locale=${lang}&profile=all&backlinks=true&extend=all&precision=1`,
   place: (id, lang) =>
@@ -84,6 +90,11 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       #popup {
         position: fixed;
         width: ${POPUP_WIDTH}px;
+        max-width: calc(100vw - 16px);
+        max-height: calc(100dvh - 16px);
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
         background: var(--md-sys-color-surface);
         color: var(--md-sys-color-on-surface);
         border: 1px solid var(--md-sys-color-outline-variant);
@@ -104,19 +115,71 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
         pointer-events: auto;
       }
 
+      /* Full-screen catcher shown only in touch mode so a tap outside the card
+         dismisses it (touch has no mouseleave). Mirrors the collapse-sheet
+         scrim pattern. */
+      #scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: var(--grampsjs-body-font-color-10);
+        pointer-events: auto;
+      }
+
       #open-btn {
         position: absolute;
         top: 4px;
         right: 8px;
         z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        color: var(--md-sys-color-on-surface-variant);
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      #open-btn:hover {
+        background: var(--grampsjs-body-font-color-10);
       }
 
       #content {
-        height: 100%;
+        flex: 1;
+        min-height: 0;
         overflow-y: auto;
         padding: 16px;
         padding-right: 56px;
         box-sizing: border-box;
+      }
+
+      /* Touch: a clearly-labelled "make this person the chart root" action bar
+         at the bottom of the card. On touch a tap opens the card instead of
+         re-rooting, so re-rooting lives here — an explicit labelled button is
+         far more discoverable for non-technical users than a corner icon. */
+      .touch-actions {
+        flex-shrink: 0;
+        padding: 8px;
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+      }
+
+      .root-action {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 44px;
+        border: none;
+        border-radius: 22px;
+        background: var(--md-sys-color-secondary-container);
+        color: var(--md-sys-color-on-secondary-container);
+        font-family: inherit;
+        font-size: 0.95em;
+        font-weight: 500;
+        cursor: pointer;
       }
     `
   }
@@ -129,6 +192,9 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
       _data: {type: Object},
       _x: {type: Number},
       _y: {type: Number},
+      _referenceHandle: {type: String},
+      _referenceName: {type: String},
+      _touch: {type: Boolean},
     }
   }
 
@@ -140,12 +206,15 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     this._data = null
     this._x = 0
     this._y = 0
+    this._referenceHandle = ''
+    this._referenceName = ''
+    this._touch = false
     this._cache = new Map()
     this._showTimer = null
     this._hideTimer = null
     this._mouseInPopup = false
     this._boundShow = this._handleShow.bind(this)
-    this._boundHide = this._handleHide.bind(this)
+    this._boundHide = e => this._handleHide(e)
     this._boundNav = () => {
       this._visible = false
     }
@@ -195,6 +264,12 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
   _handleShow(e) {
     const detail = e.detail
     clearTimeout(this._showTimer)
+    // A touch tap is a deliberate single action — show immediately rather than
+    // waiting out the hover-sweep debounce.
+    if (detail.touch) {
+      this._showPreview(detail)
+      return
+    }
     // Returning to the anchor of the open popup keeps it open. When moving to
     // a different object, the open popup still closes after HIDE_DELAY, so it
     // does not linger over the chart while the new preview is pending.
@@ -214,9 +289,19 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     )
   }
 
-  _showPreview({objectType, grampsId, anchorRect}) {
+  _showPreview({
+    objectType,
+    grampsId,
+    anchorRect,
+    referenceHandle = '',
+    referenceName = '',
+    touch = false,
+  }) {
     this._objectType = objectType
     this._grampsId = grampsId
+    this._referenceHandle = referenceHandle
+    this._referenceName = referenceName
+    this._touch = touch
     this._position(anchorRect)
     this._visible = true
     this.updateComplete.then(() => {
@@ -233,8 +318,14 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     }
   }
 
-  _handleHide() {
+  _handleHide(e) {
     clearTimeout(this._showTimer)
+    if (e?.detail?.force) {
+      clearTimeout(this._hideTimer)
+      this._mouseInPopup = false
+      this._visible = false
+      return
+    }
     if (this._mouseInPopup) return
     this._hideTimer = setTimeout(() => {
       this._visible = false
@@ -360,9 +451,39 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
     }, HIDE_DELAY)
   }
 
-  _handleOpen() {
+  _objectPath() {
+    return `${BASE_DIR}/${this._objectType}/${this._grampsId}`
+  }
+
+  _handleOpen(e) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      // Let the browser handle middle-click / modified click natively
+      // (open in a new tab/window) via the anchor's href.
+      return
+    }
+    e.preventDefault()
     this._visible = false
     fireEvent(this, 'nav', {path: `${this._objectType}/${this._grampsId}`})
+  }
+
+  // Touch: dismiss the card when the user taps outside it.
+  _handleScrimClick() {
+    this._visible = false
+  }
+
+  // Touch: re-root the chart on this person (the action a plain tap performs on
+  // desktop). Fires the same event the chart's own click handler dispatches.
+  _handleMakeRoot() {
+    const grampsId = this._grampsId
+    this._visible = false
+    this._touch = false
+    window.dispatchEvent(
+      new CustomEvent('pedigree:person-selected', {
+        bubbles: true,
+        composed: true,
+        detail: {grampsId},
+      })
+    )
   }
 
   _renderContent() {
@@ -373,6 +494,10 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
           .data=${this._data}
           .appState=${this.appState}
           .homePersonDetails=${{}}
+          .referencePerson=${{
+            handle: this._referenceHandle,
+            name: this._referenceName,
+          }}
           .timelineData=${[]}
           ?preview=${true}
         ></grampsjs-person>`
@@ -430,25 +555,38 @@ export class GrampsjsObjectPreview extends GrampsjsAppStateMixin(LitElement) {
   }
 
   render() {
+    const showRootBtn = this._touch && this._objectType === 'person'
     return html`
+      ${this._visible && this._touch
+        ? html`<div id="scrim" @click="${this._handleScrimClick}"></div>`
+        : nothing}
       <div
         id="popup"
-        class="${this._visible ? 'visible' : ''}"
+        class="${this._visible ? 'visible' : ''} ${this._touch ? 'touch' : ''}"
         style="left:${this._x}px;top:${this._y}px;height:${getPopupHeight(
           this._objectType
         )}px"
         @mouseenter="${this._handlePopupMouseEnter}"
         @mouseleave="${this._handlePopupMouseLeave}"
       >
-        <md-icon-button
+        <a
           id="open-btn"
+          href="${this._objectPath()}"
           @click="${this._handleOpen}"
           title="${this._('_Open')}"
           aria-label="${this._('_Open')}"
         >
           <grampsjs-icon path="${mdiOpenInNew}"></grampsjs-icon>
-        </md-icon-button>
+        </a>
         <div id="content">${this._renderContent()}</div>
+        ${showRootBtn
+          ? html`<div class="touch-actions">
+              <button class="root-action" @click="${this._handleMakeRoot}">
+                <grampsjs-icon path="${mdiTargetAccount}"></grampsjs-icon>
+                ${this._('Make root')}
+              </button>
+            </div>`
+          : nothing}
       </div>
     `
   }

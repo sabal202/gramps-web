@@ -93,6 +93,9 @@ export class ChartCanvas {
     // Subclasses read this in their `boxSize` getter so the layout grows
     // with the maiden line (taller cards need more spacing).
     this._showMaidenName = showMaidenName
+    // Root person handle, reported with preview events so the popup can show
+    // the relationship of the previewed person to the chart root.
+    this._previewRootHandle = options.rootHandle ?? null
     const settings = {
       ...options,
       getImageUrl: options.getImageUrl ?? (() => ''),
@@ -149,6 +152,7 @@ export class ChartCanvas {
       palette,
       boxWidth,
       boxHeight,
+      referenceHandle: this._previewRootHandle,
     })
     this.drawExtras(nodes, settings)
   }

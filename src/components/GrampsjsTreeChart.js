@@ -147,6 +147,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       bboxWidth: this.containerWidth,
       bboxHeight: this.containerHeight,
       nameDisplayFormat: this.nameDisplayFormat,
+      rootHandle: this._graph?.personByGrampsId(this.grampsId)?.handle ?? null,
       showMaidenName: this.showMaidenName,
       showUnionDates: this.showUnionDates,
       ...getSymbols(this.appState.settings, s => this._(s)),

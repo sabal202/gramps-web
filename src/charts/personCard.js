@@ -161,6 +161,7 @@ export function setPersonCardInteraction(
     boxWidth = 190,
     boxHeight = 90,
     canEdit = false,
+    referenceHandle = null,
     palette = chartPalette,
   }
 ) {
@@ -186,6 +187,7 @@ export function setPersonCardInteraction(
         grampsId,
         anchorRect: this.getBoundingClientRect(),
         chart: true,
+        referenceHandle,
       })
     })
     .on('mouseleave', () => {
