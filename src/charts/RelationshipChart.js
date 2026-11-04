@@ -256,7 +256,8 @@ export class RelationshipChart extends ChartCanvas {
     markers.selectChildren().remove()
     markers.each(function (node) {
       // eslint-disable-next-line no-param-reassign
-      node.union = unionMap?.[node.key] ?? unionMap?.[node.handle]
+      node.union =
+        unionMap?.[node.family?.handle] ?? unionMap?.[node.key] ?? unionMap?.[node.handle]
     })
     markers
       .filter(node => node.bracket)

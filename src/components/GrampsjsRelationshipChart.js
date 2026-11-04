@@ -11,6 +11,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       grampsId: {type: String},
       nameDisplayFormat: {type: String},
       showMaidenName: {type: Boolean},
+      showUnionDates: {type: Boolean},
       canEdit: {type: Boolean},
     }
   }
@@ -61,7 +62,7 @@ class GrampsjsRelationshipChart extends GrampsjsChartBase {
       showMaidenName: this.showMaidenName,
       unionMap: buildFamilyUnionMap(this.data ?? []),
       rootHandle: this._graph?.personByGrampsId(this.grampsId)?.handle ?? null,
-      showUnionDates: this.appState.settings?.chartShowUnionDates ?? false,
+      showUnionDates: this.showUnionDates ?? this.appState?.settings?.chartShowUnionDates ?? false,
       ...getSymbols(this.appState.settings, s => this._(s)),
       canEdit: this.canEdit,
       duration: chartTransitionDuration(),
