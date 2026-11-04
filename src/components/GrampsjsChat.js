@@ -1,6 +1,8 @@
 import {html, css, LitElement} from 'lit'
 import '@material/web/button/filled-button.js'
-import {mdiNotificationClearAll} from '@mdi/js'
+import '@material/web/chips/chip-set.js'
+import '@material/web/chips/assist-chip.js'
+import {mdiNotificationClearAll, mdiAccountHeart} from '@mdi/js'
 
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -14,6 +16,7 @@ import {
   getChatMessageHistoryRaw,
   setChatMessageHistoryRaw,
   updateTaskStatus,
+  apiChatStream,
 } from '../api.js'
 import {stripChatHistoryRaw} from '../chatHistory.js'
 import {fireEvent} from '../util.js'
@@ -55,8 +58,18 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           flex: 1;
           overflow-y: auto;
           display: flex;
-          flex-direction: column-reverse;
+          flex-direction: column;
           padding: 0 10px 20px 10px;
+        }
+
+        /* Messages are laid out in natural (oldest→newest) DOM order so that
+           selecting across bubbles copies text in reading order — a reversed
+           DOM (the old column-reverse trick) serialises the clipboard
+           backwards. margin-top:auto keeps a short conversation pinned to the
+           bottom; it collapses to 0 once the content overflows, so the top
+           stays scrollable. */
+        .messages {
+          margin-top: auto;
         }
 
         .prompt {
@@ -106,6 +119,37 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           top: 20px;
           left: 0px;
         }
+
+        .home-banner {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          /* clear the .clear-btn, which is shifted down 20px via position:relative
+             and therefore overlaps whatever follows it in normal flow */
+          margin-top: 28px;
+          padding: 0 14px 4px 14px;
+          font-size: 0.85em;
+          color: var(--grampsjs-body-font-color-50, #666);
+        }
+
+        .home-banner a {
+          color: inherit;
+          font-weight: 500;
+          text-decoration: none;
+        }
+
+        .home-banner a:hover {
+          text-decoration: underline;
+        }
+
+        .suggestions {
+          padding: 0 10px 8px 10px;
+          flex-shrink: 0;
+        }
+
+        .suggestions md-chip-set {
+          justify-content: center;
+        }
       `,
     ]
   }
@@ -114,8 +158,10 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     return {
       messages: {type: Array},
       loading: {type: Boolean},
+      homePersonDetails: {type: Object},
       _liveToolCalls: {type: Array},
       _liveStatus: {type: String},
+      _liveText: {type: String},
     }
   }
 
@@ -123,8 +169,41 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     super()
     this.messages = getChatHistory() || []
     this.loading = false
+    this.homePersonDetails = {}
     this._liveToolCalls = []
     this._liveStatus = ''
+    this._liveText = ''
+    // Whether the conversation should re-pin to the bottom after the next
+    // render. Captured before each update so we only auto-scroll when the user
+    // was already reading the latest messages (not when they scrolled up).
+    this._stickToBottom = true
+  }
+
+  get _homePersonName() {
+    return this.homePersonDetails?.profile?.name_display || ''
+  }
+
+  get _homePersonGrampsId() {
+    return (
+      this.homePersonDetails?.gramps_id ||
+      this.appState?.settings?.homePerson ||
+      ''
+    )
+  }
+
+  get _suggestions() {
+    const list = []
+    if (this._homePersonGrampsId) {
+      list.push(this._('chatSuggestRelatives'))
+      list.push(this._('chatSuggestAncestors'))
+    }
+    list.push(this._('chatSuggestBirthdays'))
+    list.push(this._('chatSuggestStats'))
+    return list
+  }
+
+  _handleSuggestion(text) {
+    this._handlePrompt({detail: {message: text}})
   }
 
   // Converts PROGRESS result_objects into the same shape GrampsjsChatToolCalls expects.
@@ -151,26 +230,24 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
             ${this._('New')}
           </md-filled-button>
         </div>
+        ${this._homePersonName
+          ? html`<div class="home-banner">
+              <grampsjs-icon
+                path="${mdiAccountHeart}"
+                color="currentColor"
+              ></grampsjs-icon>
+              <span
+                >${this._('Home person')}:
+                <a href="/person/${this._homePersonGrampsId}"
+                  >${this._homePersonName}</a
+                ></span
+              >
+            </div>`
+          : ''}
         <div class="container">
           <div class="conversation">
-            ${this.loading
-              ? html`<grampsjs-chat-message
-                  type="ai"
-                  .metadata="${this._liveMetadata}"
-                  .status="${this._liveStatus}"
-                  ?live="${true}"
-                  .appState="${this.appState}"
-                >
-                  <div class="loading" slot="no-wrap">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                  </div>
-                </grampsjs-chat-message>`
-              : ''}
-            ${this.messages
-              .toReversed()
-              .map(
+            <div class="messages">
+              ${this.messages.map(
                 message => html`
                   <grampsjs-chat-message
                     type="${message.role}"
@@ -180,7 +257,38 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
                   ></grampsjs-chat-message>
                 `
               )}
+              ${this.loading
+                ? html`<grampsjs-chat-message
+                    type="ai"
+                    .message="${this._liveText}"
+                    .metadata="${this._liveMetadata}"
+                    .status="${this._liveStatus}"
+                    ?live="${true}"
+                    .appState="${this.appState}"
+                  >
+                    ${this._liveText
+                      ? ''
+                      : html`<div class="loading" slot="no-wrap">
+                          <div class="dot"></div>
+                          <div class="dot"></div>
+                          <div class="dot"></div>
+                        </div>`}
+                  </grampsjs-chat-message>`
+                : ''}
+            </div>
           </div>
+          ${this.messages.length === 0 && !this.loading
+            ? html`<div class="suggestions">
+                <md-chip-set>
+                  ${this._suggestions.map(
+                    text => html`<md-assist-chip
+                      label="${text}"
+                      @click="${() => this._handleSuggestion(text)}"
+                    ></md-assist-chip>`
+                  )}
+                </md-chip-set>
+              </div>`
+            : ''}
           <div class="prompt">
             <grampsjs-chat-prompt
               ?loading="${this.loading}"
@@ -256,10 +364,15 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     })
   }
 
-  async _generateResponse() {
-    this.loading = true
+  _buildChatPayload() {
     const payload = {
       query: this.messages[this.messages.length - 1].message,
+    }
+    // Tell the backend who the user is, so the assistant can resolve
+    // self-references ("my cousins") to the home person without asking.
+    const homePerson = this.appState?.settings?.homePerson
+    if (homePerson) {
+      payload.home_person_gramps_id = homePerson
     }
     const rawHistory = getChatMessageHistoryRaw()
     if (rawHistory) {
@@ -268,6 +381,90 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       // Fallback for sessions pre-dating message_history_raw; can be removed later.
       payload.history = this.messages.slice(0, this.messages.length - 1)
     }
+    return payload
+  }
+
+  // Real token streaming via SSE; falls back to the background/polling path if
+  // streaming is unavailable (old server, network error, unsupported client).
+  async _generateResponse() {
+    this.loading = true
+    this._liveText = ''
+    this._liveToolCalls = []
+    this._liveStatus = ''
+    const payload = this._buildChatPayload()
+    let receivedAny = false
+    let finalized = false
+    const fireError = (msg, detail = {}) =>
+      fireEvent(this, 'grampsjs:error', {message: msg, silent: true, detail})
+    try {
+      await apiChatStream(this.appState.auth, payload, ev => {
+        receivedAny = true
+        if (ev.type === 'delta') {
+          this._liveText += ev.text || ''
+          // Re-pinning to the bottom is handled by updated() (respecting the
+          // user's scroll position); no explicit scroll needed here.
+        } else if (ev.type === 'tool') {
+          if (ev.name && !this._liveToolCalls.some(t => t.step === ev.step)) {
+            this._liveToolCalls = [
+              ...this._liveToolCalls,
+              {step: ev.step, tool: ev.name},
+            ]
+          }
+        } else if (ev.type === 'done') {
+          finalized = true
+          if (ev.message_history_raw) {
+            setChatMessageHistoryRaw(ev.message_history_raw)
+          }
+          this.messages = [
+            ...this.messages.slice(-5),
+            {
+              role: 'ai',
+              message: ev.response || this._liveText,
+              metadata: ev.metadata ?? this._liveMetadata,
+            },
+          ]
+          setChatHistory(this.messages)
+        } else if (ev.type === 'error') {
+          throw new Error(ev.message || this._('An error occurred'))
+        }
+      })
+      if (!finalized) {
+        if (this._liveText) {
+          this.messages = [
+            ...this.messages.slice(-5),
+            {role: 'ai', message: this._liveText, metadata: this._liveMetadata},
+          ]
+          setChatHistory(this.messages)
+        } else {
+          throw new Error('Empty stream')
+        }
+      }
+    } catch (err) {
+      if (!receivedAny) {
+        // Streaming unavailable/failed before any data — use the background path.
+        this._liveText = ''
+        this._liveToolCalls = []
+        this._liveStatus = ''
+        return this._generateResponseBackground()
+      }
+      fireError(err?.message || this._('An error occurred'))
+      this.messages = [
+        ...this.messages.slice(-5),
+        {role: 'error', message: this._('An error occurred')},
+      ]
+      setChatHistory(this.messages)
+    } finally {
+      this.loading = false
+      this._liveText = ''
+      this._liveToolCalls = []
+      this._liveStatus = ''
+    }
+    return undefined
+  }
+
+  async _generateResponseBackground() {
+    this.loading = true
+    const payload = this._buildChatPayload()
     const data = await this.appState.apiPost(
       '/api/chat/?background=1&verbose=1',
       payload,
@@ -349,6 +546,27 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     setChatHistory(this.messages)
     setChatTaskId(null)
     setChatMessageHistoryRaw(null)
+  }
+
+  _isNearBottom() {
+    const conversationDiv = this.renderRoot.querySelector('.conversation')
+    if (conversationDiv == null) {
+      return true
+    }
+    const {scrollHeight, scrollTop, clientHeight} = conversationDiv
+    return scrollHeight - scrollTop - clientHeight < 80
+  }
+
+  // Capture the scroll intent BEFORE the DOM grows, so a new message only
+  // yanks the view to the bottom when the user was already there.
+  willUpdate() {
+    this._stickToBottom = this._isNearBottom()
+  }
+
+  updated() {
+    if (this._stickToBottom) {
+      this._scrollToLastMessage()
+    }
   }
 
   _scrollToLastMessage() {
