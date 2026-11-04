@@ -9,7 +9,7 @@ import '@material/web/select/select-option.js'
 import {fireEvent} from '../util.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {renderPersonListItem} from './personListUtils.js'
-import {sharedStyles} from '../SharedStyles.js'
+import {sharedStyles, personListItemStyles} from '../SharedStyles.js'
 import {buildDistantLabel} from './relativesLabels.js'
 
 /**
@@ -117,6 +117,7 @@ export class GrampsjsRelatives extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
     return [
       sharedStyles,
+      personListItemStyles,
       css`
         :host {
           display: block;

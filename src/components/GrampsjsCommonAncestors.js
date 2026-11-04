@@ -355,6 +355,12 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
     const sex = person?.sex || 'U'
     const ringColor = genderBorderColor[sex] ?? 'var(--color-unknown)'
     const avatarStyle = `border-radius: 50%; width: 36px; height: 36px; box-shadow: 0 0 0 2px ${ringColor};`
+    // Fallback icon (no photo): fill the circle with the neutral avatar background
+    // and centre the person glyph — matching the person-list avatars elsewhere
+    // (personListItemStyles). The inline flex overrides the `.node-avatar
+    // grampsjs-icon { display: block }` rule, which would otherwise push the
+    // 24px glyph into the top-left corner of the 36px circle.
+    const iconStyle = `${avatarStyle} display: flex; align-items: center; justify-content: center; background-color: var(--grampsjs-color-icon-background);`
     const handle = person?.media_list?.[0]?.ref || ''
     const rect = person?.media_list?.[0]?.rect || []
     return handle
@@ -370,7 +376,7 @@ export class GrampsjsCommonAncestors extends GrampsjsAppStateMixin(LitElement) {
       : html`<grampsjs-icon
           path="${mdiAccount}"
           color="var(--grampsjs-color-icon)"
-          style="${avatarStyle}"
+          style="${iconStyle}"
         ></grampsjs-icon>`
   }
 
