@@ -894,13 +894,18 @@ export class GrampsJs extends LitElement {
         this.appState.dbInfo.database.actual_schema,
         10
       )
-      const requiredSchema = parseInt(
-        this.appState.dbInfo.database.schema.split('.')[0],
-        10
-      )
-      if (actualSchema < requiredSchema) {
-        this.loadingState = LOADING_STATE_DB_SCHEMA_MISMATCH
-        return false
+      // Downstream: a missing required-schema field (older backend, locale
+      // quirk) must degrade to "assume fine" instead of throwing here - an
+      // exception in this metadata callback skips _setReady(), which leaves
+      // permissions at their initial all-false state and hides every edit
+      // control in the app.
+      const requiredSchemaString = this.appState.dbInfo.database.schema
+      if (requiredSchemaString) {
+        const requiredSchema = parseInt(requiredSchemaString.split('.')[0], 10)
+        if (actualSchema < requiredSchema) {
+          this.loadingState = LOADING_STATE_DB_SCHEMA_MISMATCH
+          return false
+        }
       }
     }
     return true
