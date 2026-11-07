@@ -459,7 +459,9 @@ describe('GrampsjsViewRelatives._fetchData — URL and no-fetch behaviour', () =
     })
     await el._fetchData()
     expect(apiGet).toHaveBeenCalledOnce()
-    expect(apiGet.mock.calls[0][0]).toBe('/api/relatives/?handle=I0001')
+    expect(apiGet.mock.calls[0][0]).toBe(
+      '/api/relatives/?handle=I0001&locale=en'
+    )
   })
 
   it('fetches with homePerson in URL when pageId is empty but homePerson is set', async () => {
@@ -474,7 +476,9 @@ describe('GrampsjsViewRelatives._fetchData — URL and no-fetch behaviour', () =
     })
     await el._fetchData()
     expect(apiGet).toHaveBeenCalledOnce()
-    expect(apiGet.mock.calls[0][0]).toBe('/api/relatives/?handle=I0042')
+    expect(apiGet.mock.calls[0][0]).toBe(
+      '/api/relatives/?handle=I0042&locale=en'
+    )
   })
 
   it('does NOT call apiGet when no anchor is resolvable', async () => {

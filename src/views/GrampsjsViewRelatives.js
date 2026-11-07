@@ -145,7 +145,9 @@ export class GrampsjsViewRelatives extends GrampsjsStaleDataMixin(
     }
     this.loading = true
     this.error = false
-    const url = `/api/relatives/?handle=${encodeURIComponent(anchor)}`
+    const url = `/api/relatives/?handle=${encodeURIComponent(anchor)}&locale=${
+      this.appState.i18n.lang || 'en'
+    }`
     const result = await this.appState.apiGet(url)
     if ('data' in result) {
       this._data = result.data

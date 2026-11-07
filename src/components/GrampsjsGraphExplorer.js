@@ -959,7 +959,9 @@ class GrampsjsGraphExplorer extends GrampsjsAppStateMixin(LitElement) {
       // site convention: /relations/{p1}/{p2} answers "what is p2 to p1",
       // matching the panel's "from → to" reading
       const res = await this.appState.apiGet(
-        `/api/relations/${from.handle}/${target.handle}?depth=20`
+        `/api/relations/${from.handle}/${target.handle}?depth=20&locale=${
+          this.appState.i18n.lang || 'en'
+        }`
       )
       if ('data' in res && this._path && this._path.to === target) {
         this._path = {
