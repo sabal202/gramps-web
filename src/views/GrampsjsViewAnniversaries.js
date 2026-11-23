@@ -4,7 +4,7 @@ import '@material/web/list/list-item'
 
 import '../components/GrampsjsTimedelta.js'
 import {GrampsjsConnectedComponent} from '../components/GrampsjsConnectedComponent.js'
-import {eventTitleFromProfile, fireEvent} from '../util.js'
+import {eventTitleFromProfile} from '../util.js'
 
 export class GrampsjsViewAnniversaries extends GrampsjsConnectedComponent {
   static get styles() {
@@ -13,7 +13,7 @@ export class GrampsjsViewAnniversaries extends GrampsjsConnectedComponent {
       css`
         .date {
           font-size: 0.9em;
-          color: var(--grampsjs-body-font-color-50);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         .title {
@@ -25,20 +25,21 @@ export class GrampsjsViewAnniversaries extends GrampsjsConnectedComponent {
           margin-bottom: 15px;
         }
 
+        /* the size of a person's avatar, so the text lines up with the
+           other lists on the dashboard */
         .years {
-          height: 38px;
-          width: 38px;
-          border-radius: 19px;
+          height: 40px;
+          width: 40px;
+          border-radius: 50%;
           background-color: var(--mdc-theme-primary);
           opacity: 0.6;
           color: var(--mdc-theme-on-primary);
           font-size: 15px;
-          line-height: 38px;
+          line-height: 40px;
           display: inline-block;
           text-align: center;
           font-family: var(--grampsjs-heading-font-family);
-          font-weight: 300;
-          margin-right: 10px;
+          font-weight: var(--grampsjs-font-weight-body);
         }
       `,
     ]
@@ -84,8 +85,8 @@ export class GrampsjsViewAnniversaries extends GrampsjsConnectedComponent {
     }
     return html`
       <md-list-item
-        type="button"
-        @click="${() => this._handleClick(event)}"
+        type="link"
+        href="/event/${event.gramps_id}"
         @keydown="${this._handleKeyDown}"
       >
         <span slot="headline"
@@ -121,11 +122,6 @@ export class GrampsjsViewAnniversaries extends GrampsjsConnectedComponent {
       this._boundHandleVisibility
     )
     super.disconnectedCallback()
-  }
-
-  _handleClick(event) {
-    const path = `event/${event.gramps_id}`
-    fireEvent(this, 'nav', {path})
   }
 
   // eslint-disable-next-line class-methods-use-this

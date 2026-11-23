@@ -6,8 +6,14 @@ import '@material/web/button/filled-button.js'
 import {mdiCheckCircle} from '@mdi/js'
 
 import './GrampsjsIcon.js'
+import {renderOidcButtons} from './GrampsjsOidcButton.js'
 import {sharedStyles} from '../SharedStyles.js'
-import {apiRegisterUser} from '../api.js'
+import {
+  apiRegisterUser,
+  apiGetOIDCConfig,
+  apiGetRegistrationEnabled,
+  apiOIDCLogin,
+} from '../api.js'
 import {fireEvent} from '../util.js'
 
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -47,6 +53,11 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
           line-height: 1.4em;
           text-align: center;
         }
+
+        hr {
+          margin-top: 2em;
+          margin-bottom: 2em;
+        }
       `,
     ]
   }
@@ -59,6 +70,10 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
       register: {type: Boolean},
       tree: {type: String},
       emailConfirmationRequired: {type: Boolean},
+      oidcConfig: {type: Object},
+      _oidcProvider: {type: String},
+      _registered: {type: Boolean},
+      _registrationEnabled: {type: Boolean},
     }
   }
 
@@ -70,87 +85,87 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
     this.emailError = ''
     this.tree = ''
     this.emailConfirmationRequired = true
+    this.oidcConfig = {}
+    this._oidcProvider = ''
+    this._registered = false
+    // undefined while loading, null when the server does not say
+    this._registrationEnabled = undefined
+    this._boundHandlePageShow = this._handlePageShow.bind(this)
+  }
+
+  async connectedCallback() {
+    super.connectedCallback()
+    window.addEventListener('pageshow', this._boundHandlePageShow)
+    const config = await apiGetOIDCConfig()
+    if (!config.error) {
+      this.oidcConfig = config
+    }
+  }
+
+  willUpdate(changed) {
+    if (changed.has('tree')) {
+      this._loadRegistrationEnabled()
+    }
+  }
+
+  async _loadRegistrationEnabled() {
+    const {tree} = this
+    this._registrationEnabled = undefined
+    const enabled = await apiGetRegistrationEnabled(tree)
+    if (this.tree !== tree) {
+      return
+    }
+    this._registrationEnabled = enabled
+    if (enabled === false && this.isConnected) {
+      fireEvent(this, 'nav', {path: this._loginPath(), replace: true})
+    }
+  }
+
+  _loginPath() {
+    return this.tree ? `login/${this.tree}` : 'login'
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('pageshow', this._boundHandlePageShow)
+    super.disconnectedCallback()
+  }
+
+  // a page restored from the back/forward cache must not keep showing
+  // a sign-in in progress
+  _handlePageShow(e) {
+    if (e.persisted) {
+      this._oidcProvider = ''
+    }
   }
 
   render() {
+    // empty while loading and while redirecting to the login page
+    if (
+      this._registrationEnabled === undefined ||
+      this._registrationEnabled === false
+    ) {
+      return ''
+    }
+    const oidcEnabled =
+      this.oidcConfig?.enabled &&
+      this.oidcConfig?.providers?.length > 0 &&
+      !this._registered
+    const localAuthDisabled =
+      this.oidcConfig?.enabled && this.oidcConfig?.disable_local_auth
+
     return html`
       <div id="register-container">
         <form id="register-form" @keydown="${this._checkFormValid}">
           <h2>${this._('Register to Gramps Web')}</h2>
-          <div id="inner-form">
-            <md-outlined-text-field
-              required
-              outlined
-              autocapitalize="off"
-              id="username"
-              label="${this._('Username')}"
-              type="text"
-            ></md-outlined-text-field>
-            <md-outlined-text-field
-              required
-              outlined
-              autocapitalize="off"
-              id="password"
-              label="${this._('Password')}"
-              @input="${this._handlePasswordInput}"
-              type="password"
-            ></md-outlined-text-field>
-            <md-outlined-text-field
-              required
-              outlined
-              autocapitalize="off"
-              id="password2"
-              error-text="${this._('Passwords do not match.')}"
-              label="${this._('Confirm Password')}"
-              @input="${this._handleConfirmPasswordInput}"
-              type="password"
-            ></md-outlined-text-field>
-            <md-outlined-text-field
-              id="email"
-              required
-              label="${this._('E-mail')}"
-              .value="${this.email}"
-              @input="${this.handleEmailInput}"
-              ?error="${this.emailError !== ''}"
-              error-text="${this.emailError}"
-              type="email"
-            ></md-outlined-text-field>
-            <md-outlined-text-field
-              required
-              outlined
-              id="fullname"
-              @input="${this._checkFormValid}"
-              label="${this._('Full Name')}"
-              type="text"
-            ></md-outlined-text-field>
-            <md-filled-button
-              type="button"
-              @click="${this._register}"
-              ?disabled="${!this.isFormValid}"
-            >
-              ${this._('Register new account')}
-            </md-filled-button>
-          </div>
-          <p class="success" id="register-success" style="display:none;">
-            <grampsjs-icon
-              path="${mdiCheckCircle}"
-              color="currentColor"
-            ></grampsjs-icon
-            ><br />
-            ${this._('New account registered successfully.')}
-            <br />
-            ${this.emailConfirmationRequired
-              ? this._(
-                  'Please confirm your e-mail address by clicking the link in the e-mail you received and then wait for the tree owner to activate your account.'
-                )
-              : html`
-                  ${this._('You can now log in with your username and password.')}
-                  <br />
-                  <span class="link" @click="${this._handleClickLogin}">
-                    ${this._('login')}
-                  </span>
-                `}
-          </p>
+          ${localAuthDisabled ? '' : this._renderLocalForm()}
+          ${oidcEnabled && !localAuthDisabled ? html`<hr />` : ''}
+          ${oidcEnabled
+            ? renderOidcButtons(this.oidcConfig.providers, {
+                translate: (...args) => this._(...args),
+                loadingProvider: this._oidcProvider,
+                onClick: id => this._submitOIDCLogin(id),
+              })
+            : ''}
           <p class="reset-link">
             ${this._('Already have an account?')}
             <span class="link" @click="${this._handleClickLogin}">
@@ -162,9 +177,97 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
     `
   }
 
+  _renderLocalForm() {
+    return html`
+      <div id="inner-form">
+        <md-outlined-text-field
+          required
+          outlined
+          autocapitalize="off"
+          id="username"
+          label="${this._('Username')}"
+          type="text"
+        ></md-outlined-text-field>
+        <md-outlined-text-field
+          required
+          outlined
+          autocapitalize="off"
+          id="password"
+          label="${this._('Password')}"
+          @input="${this._handlePasswordInput}"
+          type="password"
+        ></md-outlined-text-field>
+        <md-outlined-text-field
+          required
+          outlined
+          autocapitalize="off"
+          id="password2"
+          error-text="${this._('Passwords do not match.')}"
+          label="${this._('Confirm Password')}"
+          @input="${this._handleConfirmPasswordInput}"
+          type="password"
+        ></md-outlined-text-field>
+        <md-outlined-text-field
+          id="email"
+          required
+          label="${this._('E-mail address')}"
+          .value="${this.email}"
+          @input="${this.handleEmailInput}"
+          ?error="${this.emailError !== ''}"
+          error-text="${this.emailError}"
+          type="email"
+        ></md-outlined-text-field>
+        <md-outlined-text-field
+          required
+          outlined
+          id="fullname"
+          @input="${this._checkFormValid}"
+          label="${this._('Full name')}"
+          type="text"
+        ></md-outlined-text-field>
+        <md-filled-button
+          type="button"
+          @click="${this._register}"
+          ?disabled="${!this.isFormValid}"
+        >
+          ${this._('Register new account')}
+        </md-filled-button>
+      </div>
+      <p class="success" id="register-success" style="display:none;">
+        <grampsjs-icon
+          path="${mdiCheckCircle}"
+          color="currentColor"
+        ></grampsjs-icon
+        ><br />
+        ${this._('New account registered successfully.')}
+        <br />
+        ${this.emailConfirmationRequired
+          ? this._(
+              'Please confirm your e-mail address by clicking the link in the e-mail you received and then wait for the tree owner to activate your account.'
+            )
+          : html`
+              ${this._('You can now log in with your username and password.')}
+              <br />
+              <span class="link" @click="${this._handleClickLogin}">
+                ${this._('login')}
+              </span>
+            `}
+      </p>
+    `
+  }
+
+  async _submitOIDCLogin(providerId) {
+    this._oidcProvider = providerId
+    const res = await apiOIDCLogin(providerId, this.tree)
+    if ('error' in res) {
+      this._oidcProvider = ''
+      this._showError(res.error)
+    }
+  }
+
   _handleClickLogin() {
     this.register = false
-    this._handleNav('login')
+    this._handleNav(this._loginPath())
   }
 
   _handleNav(path) {
@@ -238,12 +341,12 @@ class GrampsjsFormRegister extends GrampsjsAppStateMixin(LitElement) {
     if ('error' in res) {
       this._showError(res.error)
     } else {
-      // Instances that provision the account immediately return
-      // {email_confirmation_required: false}; default to the stock two-step
-      // (e-mail confirmation) message when the flag is absent.
+      // Our fork: the server may provision the account immediately (no
+      // e-mail confirmation needed) — it says so in the response body.
       this.emailConfirmationRequired = res.email_confirmation_required !== false
       divSuccess.style.display = 'block'
       innerForm.style.display = 'none'
+      this._registered = true
     }
   }
 

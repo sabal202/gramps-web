@@ -1,4 +1,4 @@
-import {html} from 'lit'
+import {html, css} from 'lit'
 import '@material/web/button/outlined-button.js'
 import {mdiDeleteSweep} from '@mdi/js'
 
@@ -8,6 +8,19 @@ import '../components/GrampsjsSearchResultList.js'
 import '../components/GrampsjsIcon.js'
 
 export class GrampsjsViewRecentObject extends GrampsjsView {
+  static get styles() {
+    return [
+      super.styles,
+      css`
+        .toolbar {
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 8px;
+        }
+      `,
+    ]
+  }
+
   static get properties() {
     return {
       _data: {type: Array},
@@ -64,27 +77,28 @@ export class GrampsjsViewRecentObject extends GrampsjsView {
   }
 
   render() {
-    return html` <md-outlined-button
-        class="float-right"
-        @click="${this._handleClear}"
-        ?disabled=${this._data.length === 0}
-      >
-        <grampsjs-icon
-          slot="icon"
-          path="${mdiDeleteSweep}"
-          color="currentColor"
-          height="20"
-          width="20"
-        ></grampsjs-icon>
-        ${this._('Clear _All')}
-      </md-outlined-button>
-      <h2>${this._('Recently browsed objects')}</h2>
+    return html` <div class="toolbar">
+        <md-outlined-button
+          @click="${this._handleClear}"
+          ?disabled=${this._data.length === 0}
+        >
+          <grampsjs-icon
+            slot="icon"
+            path="${mdiDeleteSweep}"
+            color="currentColor"
+            height="20"
+            width="20"
+          ></grampsjs-icon>
+          ${this._('Clear _All')}
+        </md-outlined-button>
+      </div>
       ${this._data.length === 0
         ? html` <p>${this._('None')}.</p> `
         : html`
             <grampsjs-search-result-list
               .data="${this._searchResult.slice().reverse()}"
               .appState="${this.appState}"
+              showTags
               large
               noSep
               linked

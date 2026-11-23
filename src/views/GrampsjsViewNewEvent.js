@@ -4,7 +4,7 @@ import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 
-import {mdiAccountPlus, mdiDelete, mdiStar} from '@mdi/js'
+import {mdiAccountPlus, mdiDelete} from '@mdi/js'
 
 import {GrampsjsViewNewObject} from './GrampsjsViewNewObject.js'
 import {GrampsjsNewEventMixin} from '../mixins/GrampsjsNewEventMixin.js'
@@ -21,10 +21,9 @@ import {
   makeHandle,
   fireEvent,
   toWritableObject,
+  changeParticipantRefs,
 } from '../util.js'
 import '../components/GrampsjsImg.js'
-
-const PRIMARY_ROLES_EN = new Set(['Primary', 'Family'])
 
 export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
   GrampsjsViewNewObject
@@ -33,18 +32,6 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
     return [
       super.styles,
       css`
-        .role-star {
-          width: 14px;
-          height: 14px;
-          flex-shrink: 0;
-        }
-
-        span[slot='supporting-text'] {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
         .object-icon {
           display: flex;
           align-items: center;
@@ -89,10 +76,6 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
     `
   }
 
-  _isPrimaryRole(role) {
-    return PRIMARY_ROLES_EN.has(role)
-  }
-
   _renderParticipantsSection() {
     return html`
       <h3 class="label">${this._('Participants')}</h3>
@@ -104,16 +87,9 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
                 (p, i) => html`
                   <md-list-item type="text">
                     ${p.label}
-                    <span slot="supporting-text">
-                      ${this._isPrimaryRole(p.role?.string || p.role || '')
-                        ? html`<grampsjs-icon
-                            class="role-star"
-                            path="${mdiStar}"
-                            color="currentColor"
-                          ></grampsjs-icon>`
-                        : ''}
-                      ${this._(p.role?.string || p.role || '')}
-                    </span>
+                    <span slot="supporting-text"
+                      >${this._(p.role?.string || p.role || '')}</span
+                    >
                     ${p.backlink?.media_list?.length
                       ? html`<grampsjs-img
                           handle="${p.backlink.media_list[0].ref}"
@@ -260,11 +236,12 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
     for (const p of this._participants) {
       const endpoint = p.object_type === 'family' ? 'families' : 'people'
       // eslint-disable-next-line no-await-in-loop
-      const ok = await this._addEventRef(p.handle, endpoint, {
-        _class: 'EventRef',
-        ref: eventHandle,
-        role: p.role,
-      })
+      const ok = await this._addEventRef(
+        p.handle,
+        endpoint,
+        eventHandle,
+        p.role
+      )
       if (ok) anyRefAdded = true
     }
     if (anyRefAdded) {
@@ -279,7 +256,7 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
     this._reset()
   }
 
-  async _addEventRef(handle, endpoint, eventRef) {
+  async _addEventRef(handle, endpoint, eventHandle, role) {
     const resp = await this.appState.apiGet(`/api/${endpoint}/${handle}`)
     if (!('data' in resp)) {
       fireEvent(this, 'grampsjs:error', {
@@ -288,7 +265,11 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
       return false
     }
     const objData = toWritableObject(resp.data)
-    objData.event_ref_list = [...(objData.event_ref_list || []), eventRef]
+    objData.event_ref_list = changeParticipantRefs(
+      objData.event_ref_list,
+      eventHandle,
+      {action: 'add', role}
+    )
     const putResp = await this.appState.apiPut(
       `/api/${endpoint}/${handle}`,
       objData,
@@ -303,6 +284,7 @@ export class GrampsjsViewNewEvent extends GrampsjsNewEventMixin(
 
   _reset() {
     super._reset()
+    this.data = {_class: 'Event'}
     this._participants = []
     this._showParticipantDialog = false
   }

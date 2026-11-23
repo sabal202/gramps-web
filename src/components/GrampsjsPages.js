@@ -20,6 +20,7 @@ import '../views/GrampsjsViewMediaObjects.js'
 import '../views/GrampsjsViewChat.js'
 import '../views/GrampsjsViewExport.js'
 import '../views/GrampsjsViewCalendar.js'
+import '../views/GrampsjsViewImport.js'
 import '../views/GrampsjsViewPerson.js'
 import '../views/GrampsjsViewFamily.js'
 import '../views/GrampsjsViewPlace.js'
@@ -269,6 +270,17 @@ class GrampsjsPages extends GrampsjsAppStateMixin(LitElement) {
               .appState="${this.appState}"
               .homePersonDetails=${this.homePersonDetails}
             ></grampsjs-view-chat>
+          `
+        : ''}
+      ${this.appState.permissions.canImport
+        ? html`
+            <grampsjs-view-import
+              class="page"
+              ?active=${this.appState.path.page === 'import'}
+              .appState="${this.appState}"
+              .homePersonDetails=${this.homePersonDetails}
+              .homePersonMissing=${this.homePersonMissing}
+            ></grampsjs-view-import>
           `
         : ''}
       <grampsjs-view-export

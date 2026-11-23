@@ -69,6 +69,16 @@ export const emptyDate = {
   sortval: 0,
 }
 
+// Whether the tree holds no objects of any kind, per the object counts in
+// /api/metadata/. Unknown counts are not taken for an empty tree.
+export function treeIsEmpty(dbInfo) {
+  const counts = dbInfo?.object_counts
+  if (!counts) {
+    return false
+  }
+  return Object.values(counts).every(count => !count)
+}
+
 export function translate(strings, s) {
   if (s === undefined) {
     return ''
@@ -92,6 +102,19 @@ export function personProfileDisplayName(profile) {
     profile?.name ||
     ''
   )
+}
+
+// Handles of a person's own events and of the events of the families the
+// person is a parent in, without repeats. Family events need
+// `person.extended.families`, i.e. the person fetched with `extend=family_list`.
+export function personAndFamilyEventHandles(person) {
+  const refs = [
+    ...(person?.event_ref_list ?? []),
+    ...(person?.extended?.families ?? []).flatMap(
+      family => family?.event_ref_list ?? []
+    ),
+  ]
+  return [...new Set(refs.map(ref => ref.ref).filter(Boolean))]
 }
 
 function displaySurname(surname) {
@@ -215,6 +238,19 @@ export function getName(obj, type) {
       return ''
   }
 }
+
+// The Gramps primary object types, which have pages of their own
+export const primaryObjectTypes = [
+  'person',
+  'family',
+  'event',
+  'place',
+  'source',
+  'citation',
+  'repository',
+  'note',
+  'media',
+]
 
 export const objectIconPath = {
   person: mdiAccount,
@@ -351,6 +387,36 @@ export function toWritableObject(obj) {
   return writable
 }
 
+/*
+Change the references to an event in a participant's event list.
+
+`change` is one of
+- `{action: 'add', role}`: add a reference with this role
+- `{action: 'update', occurrence, data}`: merge data into a reference
+- `{action: 'remove', occurrence}`: remove a reference
+
+`occurrence` counts the references to this event in the list, which may
+refer to it more than once. Returns the new list, or null if there is no
+such reference.
+*/
+export function changeParticipantRefs(refList, eventHandle, change) {
+  const list = refList || []
+  if (change.action === 'add') {
+    return [...list, {_class: 'EventRef', ref: eventHandle, role: change.role}]
+  }
+  const indexes = list
+    .map((el, i) => (el?.ref === eventHandle ? i : -1))
+    .filter(i => i !== -1)
+  const index = indexes[change.occurrence]
+  if (index === undefined) {
+    return null
+  }
+  if (change.action === 'remove') {
+    return list.filter((_el, i) => i !== index)
+  }
+  return list.map((el, i) => (i === index ? {...el, ...change.data} : el))
+}
+
 // Gramps object class names, as used e.g. by the change history API
 export const endpointToObjectClass = {
   people: 'Person',
@@ -447,6 +513,24 @@ export const noteTypeStrings = {
   27: 'Analysis',
 }
 
+// First line of a note's text, shortened to 100 characters
+function noteFirstLine(note) {
+  const firstLine = note?.text?.string?.match(/[^\r\n]+/)?.[0]?.trim() || ''
+  return firstLine.length > 100 ? `${firstLine.slice(0, 100)}…` : firstLine
+}
+
+// Untranslated string of a Gramps type, given as a string or a type object
+export function typeString(type) {
+  return typeof type === 'string' ? type : type?.string || ''
+}
+
+// Untranslated note type
+function noteTypeString(note) {
+  return typeof note?.type === 'string'
+    ? note.type
+    : note?.type?.string || noteTypeStrings[note?.type?.value] || ''
+}
+
 export function objectDescription(type, obj, strings) {
   switch (type) {
     case 'person':
@@ -475,12 +559,8 @@ export function objectDescription(type, obj, strings) {
     case 'repository':
       return html`${getName(obj, type) || type}`
     case 'note':
-      return html`${translate(
-        strings,
-        typeof obj.type === 'string'
-          ? obj.type
-          : obj.type.string || noteTypeStrings[obj.type.value] || type
-      )}`
+      return html`${noteFirstLine(obj) ||
+      translate(strings, noteTypeString(obj) || type)}`
     case 'media':
       return html`${getName(obj, type) || translate(strings, 'Media Object')}`
     case 'tag':
@@ -490,21 +570,27 @@ export function objectDescription(type, obj, strings) {
   }
 }
 
+// Event profile as "<symbol> <date>, <place>"; empty without date and place
+function eventSummary(symbol, eventProfile) {
+  const parts = [
+    eventProfile?.date,
+    eventProfile?.place_name || eventProfile?.place,
+  ].filter(Boolean)
+  return parts.length ? `${symbol} ${parts.join(', ')}` : ''
+}
+
 export function objectDetail(type, obj, strings, settings = {}) {
   const symbols = getSymbols(settings, value => translate(strings, value))
   switch (type) {
     case 'person':
-      return `
-    ${
-      obj?.profile?.birth?.date
-        ? `${symbols.birthSymbol} ${obj.profile.birth.date}`
-        : ''
-    }${obj?.profile?.birth?.place && obj?.profile?.birth?.date ? ', ' : ''}${
-        obj?.profile?.birth?.place_name || obj?.profile?.birth?.place || ''
-      }
-    `
-    // case 'family':
-    //   return ''
+      return [
+        eventSummary(symbols.birthSymbol, obj?.profile?.birth),
+        eventSummary(symbols.deathSymbol, obj?.profile?.death),
+      ]
+        .filter(Boolean)
+        .join(' ')
+    case 'family':
+      return eventSummary(symbols.marriageSymbol, obj?.profile?.marriage)
     case 'event':
       return `
     ${obj?.profile?.date || ''}${
@@ -515,10 +601,10 @@ export function objectDetail(type, obj, strings, settings = {}) {
       return `
     ${obj?.profile?.type ? obj.profile.type : ''}
     `
-    // case 'source':
-    //   return ''
-    // case 'citation':
-    //   return ''
+    case 'source':
+      return obj?.author || obj?.profile?.author || ''
+    case 'citation':
+      return obj?.profile?.date || ''
     case 'repository':
       return `
     ${
@@ -531,8 +617,11 @@ export function objectDetail(type, obj, strings, settings = {}) {
     }
     `
     case 'note': {
-      const firstLine = obj?.text?.string?.match(/[^\r\n]+/)?.[0]?.trim() || ''
-      return firstLine.length > 100 ? `${firstLine.slice(0, 100)}…` : firstLine
+      // The type is the title of an empty note; General says nothing
+      const noteType = noteTypeString(obj)
+      return noteFirstLine(obj) && noteType !== 'General'
+        ? translate(strings, noteType)
+        : ''
     }
     case 'media':
       if (obj.mime?.startsWith('audio')) {
@@ -560,6 +649,13 @@ export function prettyTimeDiffTimestamp(timestamp, locale) {
   const dayjsLocale = locale === 'pt_PT' ? 'pt' : locale
   dayjs.locale(dayjsLocale.toLowerCase().replace('_', '-'))
   return dayjs.unix(timestamp).fromNow()
+}
+
+// Search query matching the last word as a prefix. Queries ending in
+// anything but a letter or digit (a wildcard, phrase quote, bracket or
+// space) are sent as typed.
+export function prefixSearchQuery(query) {
+  return /[\p{L}\p{N}]$/u.test(query) ? `${query}*` : query
 }
 
 export function debounce(func, wait) {
@@ -857,6 +953,17 @@ export const reportCategoryIcon = {
 
 export function arrayEqual(A, B) {
   return A.length === B.length && A.every(e => B.includes(e))
+}
+
+// move the element with index i in the array to index j
+export function moveTo(array, i, j) {
+  if (i < 0 || i >= array.length || j < 0 || j >= array.length || i === j) {
+    return array
+  }
+  const result = [...array]
+  const [element] = result.splice(i, 1)
+  result.splice(j, 0, element)
+  return result
 }
 
 function _toNumber(value) {
@@ -1284,6 +1391,17 @@ export function formatRateLimit(limits, lang = 'en') {
         )}/${formatRateLimitWindow(l.window_seconds, locale)}`
     )
     .join(', ')
+}
+
+// The Intl locale for a Gramps language code such as "pt_PT".
+export function intlLocale(lang) {
+  const locale = (lang || 'en').replace('_', '-')
+  try {
+    Intl.getCanonicalLocales(locale)
+  } catch {
+    return 'en'
+  }
+  return locale
 }
 
 // Formats a number of bytes with a decimal prefix, e.g. "1.5 MB".

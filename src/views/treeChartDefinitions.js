@@ -16,7 +16,8 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 // A chart definition describes one chart of the tree view:
 // - `settings`: the settings in the settings dialog. Each is stored in the
 //   user settings under `key` and has a `name` in the setting values, a
-//   `label`, a `type` and a `default`. A 'number' setting can have a `min`;
+//   `label`, a `type` and a `default`. A 'number' setting can have a `min`
+//   and a `max`;
 //   a 'select' setting has `options`, each with a `value` and a `label`.
 // - `editable`: whether people can be added to the chart in edit mode.
 // - `zoomable`: whether the chart has zoom and pan controls and keys.
@@ -364,7 +365,7 @@ export const chartDefinitions = {
       // The chart also shows other parent families, such as adoptive parents
       extend: `${treeExtend},parent_family_list`,
     }),
-    render: ({grampsId, values, data, canEdit}) => html`
+    render: ({grampsId, values, data, canEdit, appState}) => html`
       <grampsjs-relationship-chart
         grampsId=${grampsId}
         nameDisplayFormat=${values.nameDisplayFormat}
@@ -372,6 +373,7 @@ export const chartDefinitions = {
         ?showUnionDates=${values.showUnionDates}
         ?canEdit="${canEdit}"
         .data=${data}
+        .appState="${appState}"
       >
       </grampsjs-relationship-chart>
     `,
@@ -407,16 +409,21 @@ export const chartDefinitions = {
   },
 }
 
+// Returns a number setting's value raised to its minimum
+export function clampSettingValue(setting, value) {
+  return setting.min === undefined ? value : Math.max(value, setting.min)
+}
+
 // Returns the values of a chart's settings by name, from the user settings or
 // the defaults
 export function chartSettingValues(definition, settings = {}) {
   return Object.fromEntries(
     definition.settings.map(setting => {
       const value = settings[setting.key] ?? setting.default
-      // A value stored before the minimum was raised counts as the minimum
+      // A stored value outside the limits counts as the nearest limit
       return [
         setting.name,
-        setting.min === undefined ? value : Math.max(value, setting.min),
+        setting.type === 'number' ? clampSettingValue(setting, value) : value,
       ]
     })
   )

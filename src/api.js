@@ -152,8 +152,8 @@ export function saveMapViewport(lat, lng, zoom) {
   }
 }
 
-// Map style ('base' or 'ohm') and hidden overlay handles of the map view,
-// per tree.
+// Map style ('base' or 'ohm'), hidden overlay handles and overlay opacity
+// by handle of the map view, per tree.
 export function getMapLayerSettings() {
   try {
     const treeId = getTreeId() || 'unknown'
@@ -164,7 +164,15 @@ export function getMapLayerSettings() {
       typeof settings?.style === 'string' &&
       Array.isArray(settings?.hiddenOverlays)
     ) {
-      return settings
+      const {overlayOpacity} = settings
+      return {
+        ...settings,
+        // settings saved before opacity have no overlay opacity
+        overlayOpacity:
+          overlayOpacity && typeof overlayOpacity === 'object'
+            ? overlayOpacity
+            : {},
+      }
     }
   } catch (_) {
     // ignore
@@ -172,12 +180,16 @@ export function getMapLayerSettings() {
   return null
 }
 
-export function saveMapLayerSettings({style, hiddenOverlays}) {
+export function saveMapLayerSettings({
+  style,
+  hiddenOverlays,
+  overlayOpacity = {},
+}) {
   try {
     const treeId = getTreeId() || 'unknown'
     const existing =
       JSON.parse(localStorage.getItem('grampsjs_map_layers')) ?? {}
-    existing[treeId] = {style, hiddenOverlays}
+    existing[treeId] = {style, hiddenOverlays, overlayOpacity}
     localStorage.setItem('grampsjs_map_layers', JSON.stringify(existing))
   } catch (_) {
     // ignore
@@ -185,6 +197,16 @@ export function saveMapLayerSettings({style, hiddenOverlays}) {
 }
 
 export const TREE_CONFIG_APP_TITLE = 'frontend.appTitle'
+
+// The name the app shows for the tree: the app title set for it, else the
+// name of its database, or '' when it has neither
+export function getTreeName(appState) {
+  return (
+    appState?.treeConfig?.[TREE_CONFIG_APP_TITLE] ||
+    appState?.dbInfo?.database?.name ||
+    ''
+  )
+}
 export const TREE_CONFIG_PRIMARY_COLOR = 'frontend.primaryColor'
 export const TREE_CONFIG_SECONDARY_COLOR = 'frontend.secondaryColor'
 export const TREE_CONFIG_HOME_PAGE_NOTE = 'frontend.homePageNote'
@@ -349,7 +371,8 @@ export function setChatMessageHistoryRaw(blob, onlyIfEquals = undefined) {
 // Editor draft management
 const DRAFT_EXPIRY_DAYS = 7
 
-export function saveDraft(key, data) {
+// `base` is the text the draft was started from
+export function saveDraft(key, data, base) {
   const tree = getTreeId()
   if (!tree || !key) {
     return
@@ -361,6 +384,7 @@ export function saveDraft(key, data) {
 
     treeDrafts[key] = {
       data,
+      base,
       timestamp: Date.now(),
     }
 
@@ -564,14 +588,39 @@ export async function apiGetOIDCConfig() {
   }
 }
 
-export async function apiOIDCLogin(providerId) {
+// Whether new accounts can be registered, in `tree` if given. Resolves to
+// null when the server does not say, e.g. a backend without this endpoint.
+export async function apiGetRegistrationEnabled(tree = '') {
+  try {
+    const query = tree ? `?${new URLSearchParams({tree})}` : ''
+    const resp = await fetch(`${__APIHOST__}/api/register/config/${query}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    if (!resp.ok) {
+      return null
+    }
+    const {enabled} = await resp.json()
+    return typeof enabled === 'boolean' ? enabled : null
+  } catch {
+    return null
+  }
+}
+
+// `tree` names the tree a new account is created in; multi-tree servers
+// need it for identities that are not linked to an account yet.
+export async function apiOIDCLogin(providerId, tree = '') {
   try {
     if (!providerId) {
       throw new Error('Provider ID is required')
     }
-    window.location.href = `${__APIHOST__}/api/oidc/login/?provider=${encodeURIComponent(
-      providerId
-    )}`
+    const params = new URLSearchParams({provider: providerId})
+    if (tree) {
+      params.append('tree', tree)
+    }
+    window.location.href = `${__APIHOST__}/api/oidc/login/?${params}`
     return {success: true}
   } catch (error) {
     return {error: error.message}
@@ -752,6 +801,29 @@ export function getImmichAssetUrl(url) {
   return jwt === null
     ? `${__APIHOST__}${url}`
     : `${__APIHOST__}${url}${sep}jwt=${jwt}`
+}
+
+/**
+ * Whether a task result URL points to a finished export or media archive,
+ * the files the UI offers to download with the access token.
+ */
+export function isExportDownloadUrl(url) {
+  return (
+    typeof url === 'string' &&
+    (url.startsWith('/api/exporters/') || url.startsWith('/api/media/archive/'))
+  )
+}
+
+/**
+ * Downloads an export file through `anchor`, an `<a>` in the caller's
+ * template. The URL carries the access token, so the token is refreshed
+ * first.
+ */
+export async function downloadExportFile(appState, anchor, url, fileName) {
+  await appState.refreshTokenIfNeeded()
+  anchor.href = getExporterDownloadUrl(url)
+  anchor.download = fileName
+  anchor.click()
 }
 
 export function getTileUrl(handle, checksum = null) {
@@ -1064,11 +1136,16 @@ export class Auth {
   }
 }
 
-export async function apiGet(auth, endpoint) {
+// With `etag`, the request is conditional: an unchanged resource returns
+// `{notModified: true}` with the response headers and no data.
+export async function apiGet(auth, endpoint, {etag} = {}) {
   let status
   let resJson
   try {
     const headers = {}
+    if (etag) {
+      headers['If-None-Match'] = etag
+    }
     try {
       const accessToken = await auth.getValidAccessToken()
       headers.Authorization = `Bearer ${accessToken}`
@@ -1081,6 +1158,13 @@ export async function apiGet(auth, endpoint) {
       headers,
     })
     status = resp.status
+    if (etag && resp.status === 304) {
+      return {
+        notModified: true,
+        total_count: resp.headers.get('X-Total-Count'),
+        etag: resp.headers.get('ETag'),
+      }
+    }
     try {
       resJson = await resp.json()
     } catch (error) {
@@ -1167,12 +1251,55 @@ export async function apiChatStream(auth, payload, onEvent) {
   }
 }
 
+// Sends a request like fetch, with XMLHttpRequest, which reports the upload
+// progress: `onUploadProgress` receives the fraction of the body sent so far,
+// from 0 to 1. Resolves with an object offering the parts of a fetch Response
+// that apiPutPostDelete reads.
+export function sendWithUploadProgress(
+  url,
+  {method, headers, body},
+  onUploadProgress
+) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(method, url)
+    Object.entries(headers).forEach(([name, value]) =>
+      xhr.setRequestHeader(name, value)
+    )
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable && e.total > 0) {
+        onUploadProgress(e.loaded / e.total)
+      }
+    })
+    xhr.addEventListener('load', () =>
+      resolve({
+        status: xhr.status,
+        statusText: xhr.statusText,
+        json: async () => JSON.parse(xhr.responseText),
+        headers: {get: name => xhr.getResponseHeader(name)},
+      })
+    )
+    // fetch rejects with a TypeError on network failures, too
+    const fail = () => reject(new TypeError('Network error'))
+    xhr.addEventListener('error', fail)
+    xhr.addEventListener('abort', fail)
+    xhr.addEventListener('timeout', fail)
+    xhr.send(body)
+  })
+}
+
 export async function apiPutPostDelete(
   auth,
   method,
   endpoint,
   payload,
-  {isJson = true, dbChanged = true, requireFresh = false, skipAuth = false} = {}
+  {
+    isJson = true,
+    dbChanged = true,
+    requireFresh = false,
+    skipAuth = false,
+    onUploadProgress = null,
+  } = {}
 ) {
   let resJson
   let status
@@ -1194,11 +1321,15 @@ export async function apiPutPostDelete(
     if (isJson) {
       headers['Content-Type'] = 'application/json'
     }
-    const resp = await fetch(`${__APIHOST__}${endpoint}`, {
+    const request = {
       method,
       headers,
       body: isJson ? JSON.stringify(payload) : payload,
-    })
+    }
+    const url = `${__APIHOST__}${endpoint}`
+    const resp = onUploadProgress
+      ? await sendWithUploadProgress(url, request, onUploadProgress)
+      : await fetch(url, request)
     try {
       resJson = await resp.json()
     } catch (error) {

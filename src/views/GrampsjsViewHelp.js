@@ -3,23 +3,8 @@ import {css, html} from 'lit'
 import {mdiOpenInNew} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {fireEvent} from '../util.js'
-
-// non-English languages with translated documentation
-const supportedDocLangs = [
-  'de',
-  'fr',
-  'es',
-  'zh',
-  'vi',
-  'tr',
-  'ru',
-  'pt',
-  'ja',
-  'da',
-  'fi',
-  'it',
-  'uk',
-]
+import '@material/web/button/filled-tonal-button.js'
+import {docUrl} from '../docs.js'
 
 export class GrampsjsViewHelp extends GrampsjsView {
   static get styles() {
@@ -35,24 +20,14 @@ export class GrampsjsViewHelp extends GrampsjsView {
     ]
   }
 
-  _getDocLang() {
-    const lang = this.appState.i18n.lang.substring(0, 2)
-    if (supportedDocLangs.includes(lang)) {
-      return `${lang}/`
-    }
-    return ''
-  }
-
   renderContent() {
-    const docLang = this._getDocLang()
+    const {lang} = this.appState.i18n
     return html`
-      <h2>${this._('Help')}</h2>
-
       <div>
         <h3>${this._('Documentation')}</h3>
         <div class="button-container">
-          <md-outlined-button
-            href="https://www.grampsweb.org/${docLang}user-guide"
+          <md-filled-tonal-button
+            href="${docUrl('user-guide', lang)}"
             target="_blank"
           >
             ${this._('User Documentation')}
@@ -61,9 +36,9 @@ export class GrampsjsViewHelp extends GrampsjsView {
               slot="icon"
               color="currentColor"
             ></grampsjs-icon>
-          </md-outlined-button>
-          <md-outlined-button
-            href="https://www.grampsweb.org/${docLang}administration/admin"
+          </md-filled-tonal-button>
+          <md-filled-tonal-button
+            href="${docUrl('administration/admin', lang)}"
             target="_blank"
           >
             ${this._('Administrator Documentation')}
@@ -72,13 +47,13 @@ export class GrampsjsViewHelp extends GrampsjsView {
               slot="icon"
               color="currentColor"
             ></grampsjs-icon>
-          </md-outlined-button>
+          </md-filled-tonal-button>
         </div>
       </div>
 
       <div>
         <h3>${this._('Community')}</h3>
-        <md-outlined-button
+        <md-filled-tonal-button
           href="https://gramps.discourse.group/c/gramps-web"
           target="_blank"
         >
@@ -88,14 +63,16 @@ export class GrampsjsViewHelp extends GrampsjsView {
             slot="icon"
             color="currentColor"
           ></grampsjs-icon>
-        </md-outlined-button>
+        </md-filled-tonal-button>
       </div>
 
       <div>
         <h3>${this._('Quick Access')}</h3>
-        <md-outlined-button @click="${() => fireEvent(this, 'shortcuts:show')}">
+        <md-filled-tonal-button
+          @click="${() => fireEvent(this, 'shortcuts:show')}"
+        >
           ${this._('Keyboard Shortcuts')}
-        </md-outlined-button>
+        </md-filled-tonal-button>
       </div>
     `
   }

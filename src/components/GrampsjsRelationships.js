@@ -1,5 +1,6 @@
 import {LitElement, css, html} from 'lit'
 import '@material/web/button/outlined-button'
+import '@material/web/button/filled-tonal-button.js'
 import '@material/web/iconbutton/icon-button.js'
 import {
   mdiAccountMultiple,
@@ -19,6 +20,7 @@ import './GrampsjsFormNewParentFamily.js'
 import './GrampsjsFormNewPartnerFamily.js'
 import './GrampsjsIcon.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 
 export class GrampsjsRelationships extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -71,6 +73,12 @@ export class GrampsjsRelationships extends GrampsjsAppStateMixin(LitElement) {
           flex-wrap: wrap;
           margin-top: 0.5em;
           margin-bottom: 3em;
+        }
+
+        /* long labels wrap on narrow screens */
+        p.button-list md-outlined-button {
+          max-width: 100%;
+          text-wrap: wrap;
         }
       `,
     ]
@@ -404,7 +412,10 @@ export class GrampsjsRelationships extends GrampsjsAppStateMixin(LitElement) {
     return html`
       <h4>
         ${parentTitle}
-        ${this._renderFamilyBtn(familyProfile.gramps_id)}${reorderButtons}
+        ${this._renderFamilyBtn(
+          familyProfile.gramps_id,
+          this._familyFor(familyProfile)
+        )}${reorderButtons}
       </h4>
       <grampsjs-connected-parents
         familyGrampsId="${familyProfile.gramps_id}"
@@ -416,10 +427,10 @@ export class GrampsjsRelationships extends GrampsjsAppStateMixin(LitElement) {
     `
   }
 
-  _renderFamilyBtn(grampsId) {
-    return html` <md-outlined-button
+  _renderFamilyBtn(grampsId, family) {
+    return html` <md-filled-tonal-button
       class="familybtn"
-      @click="${() => this._handleButtonClick(grampsId)}"
+      href="/family/${grampsId}"
     >
       <grampsjs-icon
         path="${mdiAccountMultiple}"
@@ -427,24 +438,19 @@ export class GrampsjsRelationships extends GrampsjsAppStateMixin(LitElement) {
         slot="icon"
       ></grampsjs-icon>
       ${this._('Family')}
-    </md-outlined-button>`
+      ${renderPrivacyIcon(rowPrivacy(family), this.appState)}
+    </md-filled-tonal-button>`
   }
 
-  _handleButtonClick(grampsId) {
-    this.dispatchEvent(
-      new CustomEvent('nav', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          path: `family/${grampsId}`,
-        },
-      })
+  // the family object of a family profile
+  _familyFor(profile) {
+    return [...this.familyList, ...this.parentFamilyList].find(
+      obj => obj?.handle === profile.handle
     )
   }
 
   _renderChildren(profile, childrenTitle) {
-    const allFamilies = [...this.familyList, ...this.parentFamilyList]
-    const [family] = allFamilies.filter(obj => obj.handle === profile.handle)
+    const family = this._familyFor(profile)
     return html`
       ${profile?.children?.length
         ? html`

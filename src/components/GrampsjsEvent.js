@@ -1,6 +1,6 @@
 import {html, css} from 'lit'
 
-import '@material/web/button/outlined-button.js'
+import '@material/web/button/filled-tonal-button.js'
 import '@material/web/iconbutton/icon-button.js'
 
 import {mdiTimelineOutline, mdiPencil} from '@mdi/js'
@@ -121,14 +121,16 @@ export class GrampsjsEvent extends GrampsjsObject {
         ? html`
             <div style="clear:left;"></div>
             <p class="button-list">
-              <md-outlined-button @click="${this._handleTimelineButtonClick}">
+              <md-filled-tonal-button
+                @click="${this._handleTimelineButtonClick}"
+              >
                 ${this._('Show on timeline')}
                 <grampsjs-icon
                   path="${mdiTimelineOutline}"
                   color="currentColor"
                   slot="icon"
                 ></grampsjs-icon>
-              </md-outlined-button>
+              </md-filled-tonal-button>
             </p>
           `
         : ''}
@@ -180,14 +182,18 @@ export class GrampsjsEvent extends GrampsjsObject {
   }
 
   _renderTitle() {
+    return html`${this._eventTitle()}`
+  }
+
+  _eventTitle() {
     if (
       !this.data?.profile?.participants?.people?.length &&
       !this.data?.profile?.participants?.families?.length
     ) {
       // event without participants
-      return html`${this.data.profile.type}`
+      return this.data.profile.type
     }
-    return html`${this.data.profile.type}: ${this._renderPrimaryPeople()}`
+    return `${this.data.profile.type}: ${this._renderPrimaryPeople()}`
   }
 
   _handleEditDetails() {

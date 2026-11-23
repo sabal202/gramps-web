@@ -10,17 +10,11 @@ import '@material/web/dialog/dialog.js'
 import '../components/GrampsjsTimedelta.js'
 import '../components/GrampsjsSearchResultList.js'
 import '../components/GrampsjsDiffJson.js'
-import '../components/GrampsjsBreadcrumbs.js'
+import '../components/GrampsjsObjectActions.js'
 import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsTaskProgressIndicator.js'
 
-import {
-  mdiClose,
-  mdiUndo,
-  mdiAlertOutline,
-  mdiSourceCommit,
-  mdiOpenInNew,
-} from '@mdi/js'
+import {mdiClose, mdiUndo, mdiAlertOutline, mdiOpenInNew} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 
 import {renderIconSvg} from '../icons.js'
@@ -93,7 +87,7 @@ export class GrampsjsViewRevision extends GrampsjsView {
 
         p.user-time {
           font-size: 0.95em;
-          color: var(--grampsjs-body-font-color-60);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         span.user {
@@ -108,8 +102,18 @@ export class GrampsjsViewRevision extends GrampsjsView {
           gap: 0.5em;
         }
 
+        .revision-title {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+        }
+
         .revision-header h2 {
           margin-top: 0;
+        }
+
+        .revision-title grampsjs-object-actions {
+          margin-top: 2px;
         }
 
         .undo-button {
@@ -183,17 +187,15 @@ export class GrampsjsViewRevision extends GrampsjsView {
       return ''
     }
     return html`
-      <grampsjs-breadcrumbs
-        hideLock
-        hideBookmark
-        .data="${{gramps_id: this.transactionId}}"
-        .appState="${this.appState}"
-        objectsName="Revisions"
-        .objectIcon="${mdiSourceCommit}"
-      ></grampsjs-breadcrumbs>
-
       <div class="revision-header">
-        <h2>${this._getDescription()}</h2>
+        <div class="revision-title">
+          <h2>${this._getDescription()}</h2>
+          <grampsjs-object-actions
+            hideLock
+            hideBookmark
+            .appState="${this.appState}"
+          ></grampsjs-object-actions>
+        </div>
         ${this.appState.permissions.canEdit
           ? html`
               <md-filled-button
@@ -260,8 +262,7 @@ export class GrampsjsViewRevision extends GrampsjsView {
       <div id="detail-buttons">
         ${objectType && grampsId
           ? html`
-              <md-text-button
-                @click="${() => this._handleOpenObject(objectType, grampsId)}"
+              <md-text-button href="/${objectType}/${grampsId}"
                 >${renderIconSvg(
                   mdiOpenInNew,
                   '--md-sys-color-primary',
@@ -283,10 +284,6 @@ export class GrampsjsViewRevision extends GrampsjsView {
         .appState="${this.appState}"
       ></grampsjs-diff-json>
     `
-  }
-
-  _handleOpenObject(objectType, grampsId) {
-    fireEvent(this, 'nav', {path: `${objectType}/${grampsId}`})
   }
 
   _handleCloseDetail() {
@@ -440,6 +437,7 @@ export class GrampsjsViewRevision extends GrampsjsView {
     return html`<grampsjs-search-result-list
       @search-result:clicked=${this._handleEditedClicked}
       selectable
+      showTags
       .data="${this._getChanges(0).map(change => ({
         object_type: change.obj_class?.toLowerCase(),
         object: change.new_data,
@@ -454,6 +452,7 @@ export class GrampsjsViewRevision extends GrampsjsView {
       <grampsjs-search-result-list
         @search-result:clicked=${this._handleEditedClicked}
         selectable
+        showTags
         .data="${this._getChanges(2).map(change => ({
           object_type: change.obj_class?.toLowerCase(),
           object: change.old_data,
@@ -469,6 +468,7 @@ export class GrampsjsViewRevision extends GrampsjsView {
       <grampsjs-search-result-list
         @search-result:clicked=${this._handleEditedClicked}
         selectable
+        showTags
         .data="${this._getChanges(1).map(change => ({
           object_type: change.obj_class?.toLowerCase(),
           object: change.old_data,

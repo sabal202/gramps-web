@@ -1,11 +1,11 @@
-import {css, html} from 'lit'
+import {css, html, nothing} from 'lit'
 import {keyed} from 'lit/directives/keyed.js'
 import {map} from 'lit/directives/map.js'
 import {repeat} from 'lit/directives/repeat.js'
 
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/filled-button'
-import '@material/web/button/outlined-button'
+import '@material/web/button/filled-tonal-button.js'
 import '@material/web/button/text-button.js'
 import '@material/web/dialog/dialog.js'
 import '@material/web/fab/fab.js'
@@ -21,21 +21,23 @@ import {
   mdiFitToScreen,
   mdiHomeAccount,
   mdiPencil,
-  mdiPlus,
   mdiTargetAccount,
-  mdiGraphOutline, mdiArrowCollapseAll} from '@mdi/js'
+  mdiGraphOutline,
+  mdiArrowCollapseAll,
+} from '@mdi/js'
 import {GrampsjsView} from './GrampsjsView.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 import '../components/GrampsjsFormSelectObject.js'
 import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsPillToggle.js'
-import '../components/GrampsjsSvgDownloadButton.js'
+import '../components/GrampsjsDownloadButton.js'
 import '../components/GrampsjsTooltip.js'
 import '../components/GrampsjsTreeChartAddPerson.js'
 import {
   chartDataUrl,
   chartDefinitions,
   chartSettingValues,
+  clampSettingValue,
 } from './treeChartDefinitions.js'
 import {fireEvent, isKeyEventInInput} from '../util.js'
 import {chartTransitionDuration, formatChartName} from '../charts/util.js'
@@ -64,6 +66,11 @@ import {
 const zoomStep = 1.25
 const panStep = 100
 const viewportDuration = 300
+
+// Milliseconds a number setting waits after its last change before it is
+// saved, so that clicking through the steps of the field fetches the people
+// of the chart once
+const numberSettingDelay = 600
 
 // Changes of the chart viewport, by name
 const viewportActions = {
@@ -136,7 +143,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
         }
 
         #chart {
-          height: calc(100vh - 153px);
+          height: calc(var(--grampsjs-content-height) - 85px);
           margin-left: -40px;
           margin-right: -40px;
           margin-bottom: -25px;
@@ -149,14 +156,8 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           }
         }
 
-        @media (max-width: 599px) {
-          #chart {
-            height: calc(100vh - 145px);
-          }
-        }
-
         #controls md-icon-button,
-        #controls grampsjs-svg-download-button {
+        #controls grampsjs-download-button {
           --md-icon-button-icon-size: 26px;
         }
 
@@ -179,6 +180,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           color: var(--grampsjs-body-font-color);
           font: inherit;
           text-align: left;
+          text-decoration: none;
           cursor: pointer;
         }
 
@@ -217,12 +219,12 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
 
         #selected-person .gramps-id {
           font-size: 12px;
-          color: var(--grampsjs-body-font-color-50);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         #selected-person .chevron {
           flex: none;
-          color: var(--grampsjs-body-font-color-50);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         #controls .divider {
@@ -299,6 +301,8 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._selectedPerson = undefined
     this._editMode = false
     this._chartState = {}
+    // The timers of number settings waiting to be saved, by setting key
+    this._settingTimers = new Map()
     this._boundSelectPerson = this._selectPerson.bind(this)
     this._boundToggleEditMode = this._toggleEditMode.bind(this)
     this._boundDisableEditMode = this._disableEditMode.bind(this)
@@ -608,11 +612,11 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
 
   renderFab() {
     return html`
-      <md-fab variant="secondary" @click="${this._enableEditMode}">
+      <md-fab variant="primary" @click="${this._enableEditMode}">
         <grampsjs-icon
           slot="icon"
           .path="${mdiPencil}"
-          color="var(--mdc-theme-on-secondary)"
+          color="currentColor"
         ></grampsjs-icon>
       </md-fab>
     `
@@ -727,7 +731,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   }
 
   // The selected person, with the avatar of person lists, their name in the
-  // chart's name display format and their Gramps ID, as a button that opens
+  // chart's name display format and their Gramps ID, as a link to
   // their page
   renderSelectedPerson() {
     const profile = this._selectedPerson?.profile
@@ -736,10 +740,10 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
     const name = formatChartName(profile, this.settingValues.nameDisplayFormat)
     return html`
-      <button
+      <a
         id="selected-person"
+        href="/${this._selectedPersonPath}"
         aria-label="${this._('Person Details')}: ${name}"
-        @click=${this._goToPerson}
       >
         <span class="avatar"
           >${renderPersonAvatar(this._selectedPerson, profile.sex)}</span
@@ -755,7 +759,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           height="20"
           width="20"
         ></grampsjs-icon>
-      </button>
+      </a>
       <grampsjs-tooltip for="selected-person" .appState="${this.appState}"
         >${this._('Person Details')}</grampsjs-tooltip
       >
@@ -791,11 +795,12 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   // chart
   renderExportControls() {
     return html`
-      <grampsjs-svg-download-button
+      <grampsjs-download-button
         filename="${this.grampsId}-${this.chart}.svg"
-        .svgDocument=${() => this._chartComponent()?.svgDocument() ?? null}
+        mimeType="image/svg+xml"
+        .content=${() => this._chartComponent()?.svgDocument() ?? null}
         .appState="${this.appState}"
-      ></grampsjs-svg-download-button>
+      ></grampsjs-download-button>
     `
   }
 
@@ -880,11 +885,11 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
     return html`
       <md-filled-text-field
+        id="setting-${setting.name}"
         value=${value}
         type="number"
-        min=${setting.min}
-        @change=${e =>
-          this._changeSetting(setting, parseInt(e.target.value, 10))}
+        min=${setting.min ?? nothing}
+        @change=${e => this._changeNumberSetting(setting, e.target)}
       ></md-filled-text-field>
     `
   }
@@ -893,7 +898,43 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     this.appState.updateSettings({[setting.key]: value}, false)
   }
 
+  // Saves the value of a number setting's input, raised to its minimum, once it
+  // has not changed for `numberSettingDelay`, and shows the saved value in the
+  // input. An empty input is not saved.
+  _changeNumberSetting(setting, input) {
+    clearTimeout(this._settingTimers.get(setting.key))
+    const value = parseInt(input.value, 10)
+    if (Number.isNaN(value)) {
+      this._settingTimers.delete(setting.key)
+      return
+    }
+    this._settingTimers.set(
+      setting.key,
+      setTimeout(() => {
+        this._settingTimers.delete(setting.key)
+        const saved = clampSettingValue(setting, value)
+        // The input binding does not update an input whose setting keeps
+        // its value
+        input.value = String(saved)
+        this._changeSetting(setting, saved)
+      }, numberSettingDelay)
+    )
+  }
+
   _resetSettings() {
+    // A number setting waiting to be saved would undo its reset
+    for (const timer of this._settingTimers.values()) {
+      clearTimeout(timer)
+    }
+    this._settingTimers.clear()
+    // The input of a setting whose saved value is the default would keep
+    // showing an unsaved change
+    for (const setting of this.definition.settings) {
+      const input = this.renderRoot?.querySelector?.(`#setting-${setting.name}`)
+      if (setting.type === 'number' && input) {
+        input.value = String(setting.default)
+      }
+    }
     this.appState.updateSettings(
       Object.fromEntries(
         this.definition.settings.map(setting => [setting.key, setting.default])
@@ -952,12 +993,23 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   }
 
   // Shown whenever no home person is set. An empty tree has nobody to pick, so
-  // it offers person creation. The first person becomes the home person, which
-  // brings the user straight back here with a chart to look at.
+  // users who can add people are shown how to start: creating a person or
+  // importing. The first person created becomes the home person, which brings
+  // the user straight back here with a chart to look at.
   _renderNoHomePerson() {
-    // A missing object_counts counts as empty: person creation leads somewhere
-    // either way, while the picker has nothing to offer an empty tree.
+    // A missing object_counts counts as empty: person creation and import lead
+    // somewhere either way, while the picker has nothing to offer an empty
+    // tree.
     const hasPeople = this.appState.dbInfo?.object_counts?.people
+    if (!hasPeople && this.appState.permissions?.canAdd) {
+      return html`
+        <div class="with-margin">
+          <grampsjs-get-started
+            .appState="${this.appState}"
+          ></grampsjs-get-started>
+        </div>
+      `
+    }
     // The Home link is the escape hatch for users whose permissions leave them
     // no action below.
     return html`
@@ -966,39 +1018,24 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           ${this._('No Home Person set.')}
           <a href="/">${this._('Home')}</a>
         </p>
-        ${hasPeople
-          ? this._renderHomePersonPicker()
-          : this._renderAddFirstPerson()}
+        ${hasPeople ? this._renderHomePersonPicker() : ''}
       </div>
-    `
-  }
-
-  _renderAddFirstPerson() {
-    if (!this.appState.permissions?.canAdd) {
-      return ''
-    }
-    return html`
-      <md-filled-button href="/new_person">
-        <grampsjs-icon
-          slot="icon"
-          path="${mdiPlus}"
-          color="currentColor"
-        ></grampsjs-icon>
-        ${this._('New Person')}
-      </md-filled-button>
     `
   }
 
   _renderHomePersonPicker() {
     return html`
-      <md-outlined-button id="select-home-person" @click="${this._openPicker}">
+      <md-filled-tonal-button
+        id="select-home-person"
+        @click="${this._openPicker}"
+      >
         <grampsjs-icon
           slot="icon"
           path="${mdiPencil}"
           color="currentColor"
         ></grampsjs-icon>
         ${this._('Set _Home Person')}
-      </md-outlined-button>
+      </md-filled-tonal-button>
       <grampsjs-form-select-object
         @select-object:changed="${this._handleHomePerson}"
         objectType="person"
@@ -1079,11 +1116,8 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
   }
 
-  // Opens the page of the person shown below the controls bar, who is the
-  // previous person while a newly selected person is loading
-  _goToPerson() {
-    const grampsId = this._selectedPerson?.gramps_id ?? this.grampsId
-    fireEvent(this, 'nav', {path: `person/${grampsId}`})
+  get _selectedPersonPath() {
+    return `person/${this._selectedPerson?.gramps_id ?? this.grampsId}`
   }
 
   // Shows a person selected in a chart or elsewhere, such as on a person's

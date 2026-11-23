@@ -12,8 +12,8 @@ import {
 import {GrampsjsObject} from './GrampsjsObject.js'
 import './GrampsjsImg.js'
 import {isPlayableMime} from './GrampsjsMediaPlayer.js'
+import './GrampsjsEditableTitle.js'
 import './GrampsjsFormEditDate.js'
-import './GrampsjsFormEditTitle.js'
 import './GrampsjsFormEditMapLayer.js'
 import './GrampsjsFormSelectObject.js'
 import './GrampsjsFaces.js'
@@ -32,6 +32,7 @@ import './GrampsjsIcon.js'
 import '@material/web/iconbutton/icon-button.js'
 import '@material/web/dialog/dialog.js'
 import '@material/web/button/text-button.js'
+import '@material/web/button/filled-tonal-button.js'
 
 export class GrampsjsMediaObject extends GrampsjsObject {
   static get styles() {
@@ -147,21 +148,13 @@ export class GrampsjsMediaObject extends GrampsjsObject {
   renderProfile() {
     return html`
       <h2>
-        ${this.data.desc || this._('Media Object')}
-        ${this.edit
-          ? html`
-              <md-icon-button
-                class="edit"
-                aria-label="${this._('Edit')}"
-                @click="${this._handleEditTitle}"
-              >
-                <grampsjs-icon
-                  path="${mdiPencil}"
-                  color="currentColor"
-                ></grampsjs-icon>
-              </md-icon-button>
-            `
-          : ''}
+        <grampsjs-editable-title
+          .value="${this.data.desc}"
+          prop="desc"
+          placeholder="${this._('Media Object')}"
+          ?editable="${this.edit}"
+          .appState="${this.appState}"
+        ></grampsjs-editable-title>
       </h2>
 
       <dl>
@@ -398,14 +391,14 @@ export class GrampsjsMediaObject extends GrampsjsObject {
       ${this.dbInfo?.server?.ocr
         ? html`
             <p>
-              <md-outlined-button @click="${this._handleOcrClick}">
+              <md-filled-tonal-button @click="${this._handleOcrClick}">
                 <grampsjs-icon
                   slot="icon"
                   path="${mdiTextRecognition}"
                   color="currentColor"
                 ></grampsjs-icon>
                 ${this._('Text Recognition')}
-              </md-outlined-button>
+              </md-filled-tonal-button>
             </p>
           `
         : ''}
@@ -560,19 +553,6 @@ export class GrampsjsMediaObject extends GrampsjsObject {
     this.selectedRect = {}
   }
 
-  _handleEditTitle() {
-    this.dialogContent = html`
-      <grampsjs-form-edit-title
-        @object:save="${this._handleSaveTitle}"
-        @object:cancel="${this._handleCancelDialog}"
-        .appState="${this.appState}"
-        .data=${{desc: this.data?.desc || ''}}
-        prop="desc"
-      >
-      </grampsjs-form-edit-title>
-    `
-  }
-
   _handleEditDate() {
     this.dialogContent = html`
     <grampsjs-form-edit-date
@@ -585,13 +565,6 @@ export class GrampsjsMediaObject extends GrampsjsObject {
     `
   }
 
-  _handleSaveTitle(e) {
-    fireEvent(this, 'edit:action', {action: 'updateProp', data: e.detail.data})
-    e.preventDefault()
-    e.stopPropagation()
-    this.dialogContent = ''
-  }
-
   _handleSaveDate(e) {
     fireEvent(this, 'edit:action', {action: 'updateProp', data: e.detail.data})
     e.preventDefault()
@@ -602,6 +575,7 @@ export class GrampsjsMediaObject extends GrampsjsObject {
   _handleEditGeo() {
     this.dialogContent = html`
       <grampsjs-form-edit-map-layer
+        dialogTitle="${this._('Edit coordinates')}"
         @object:save="${this._handleSaveMap}"
         @object:cancel="${this._handleCancelDialog}"
         .appState="${this.appState}"

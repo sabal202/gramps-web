@@ -13,8 +13,6 @@ import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsTooltip.js'
 import {fireEvent, makeHandle} from '../util.js'
 
-const BASE_DIR = ''
-
 export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
   static get styles() {
     return [
@@ -57,28 +55,21 @@ export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
 
   // eslint-disable-next-line class-methods-use-this
   getUrl() {
-    if (this.grampsIds.length === 0) {
+    if (this.handles.length === 0) {
       return ''
     }
-    const rules = {
-      function: 'or',
-      rules: this.grampsIds.map(grampsId => ({
-        name: 'HasIdOf',
-        values: [grampsId],
-      })),
-    }
     const options = {
-      link_format: `${BASE_DIR}/{obj_class}/{gramps_id}`,
+      link_format: `/{obj_class}/{gramps_id}`,
     }
     return `/api/notes/?locale=${
       this.appState.i18n.lang || 'en'
-    }&profile=all&extend=all&formats=html&rules=${encodeURIComponent(
-      JSON.stringify(rules)
+    }&profile=all&extend=all&formats=html&handles=${this.handles.join(
+      ','
     )}&format_options=${encodeURIComponent(JSON.stringify(options))}`
   }
 
   renderElements() {
-    return html`${this._data.map(obj => this.renderNote(obj))} `
+    return html`${this._data.map((obj, i) => this.renderNote(obj, i))} `
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -146,19 +137,19 @@ export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  renderNote(obj) {
+  renderNote(obj, i) {
     return html`
       <div class="note-content">
         <grampsjs-note-content
           framed
           grampsId="${obj.gramps_id}"
-          content="${obj?.formatted?.html || obj?.text?.string}"
+          content="${obj?.formatted?.html || obj?.text?.string || ''}"
         ></grampsjs-note-content>
       </div>
-      ${this.edit
+      ${this.edit || !obj.gramps_id
         ? ''
         : html`<div class="note-meta">
-            <md-text-button href="${BASE_DIR}/note/${obj.gramps_id}">
+            <md-text-button href="/note/${obj.gramps_id}">
               ${this._('Details')}
             </md-text-button>
           </div>`}
@@ -166,8 +157,8 @@ export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
         ${this.edit
           ? html`
               <md-icon-button
-                @click="${() => this._handleNoteRefDel(obj.handle)}"
-                id="del-note-${obj.handle}"
+                @click="${() => this._handleNoteRefDel(i)}"
+                id="del-note-${i}"
               >
                 <grampsjs-icon
                   path="${mdiLinkOff}"
@@ -177,7 +168,7 @@ export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
                 ></grampsjs-icon>
               </md-icon-button>
               <grampsjs-tooltip
-                for="del-note-${obj.handle}"
+                for="del-note-${i}"
                 content="${this._('Remove note')}"
               ></grampsjs-tooltip>
             `
@@ -186,8 +177,8 @@ export class GrampsjsViewObjectNotes extends GrampsjsViewObjectsDetail {
     `
   }
 
-  _handleNoteRefDel(handle) {
-    fireEvent(this, 'edit:action', {action: 'delNoteRef', handle})
+  _handleNoteRefDel(index) {
+    fireEvent(this, 'edit:action', {action: 'delNoteRef', index})
   }
 
   _handleNewNoteSave(e) {

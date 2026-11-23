@@ -7,6 +7,7 @@ import './GrampsjsFormEditAttribute.js'
 import './GrampsjsIcon.js'
 
 import {fireEvent, linkUrls} from '../util.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 
 export class GrampsjsAttributes extends GrampsjsEditableList {
   static get styles() {
@@ -33,6 +34,8 @@ export class GrampsjsAttributes extends GrampsjsEditableList {
   constructor() {
     super()
     this.attributeCategory = ''
+    this.hasReorder = true
+    this.listProp = 'attribute_list'
   }
 
   row(obj, i) {
@@ -56,6 +59,7 @@ export class GrampsjsAttributes extends GrampsjsEditableList {
                 : obj.value,
               false
             )}
+        ${renderPrivacyIcon(rowPrivacy(obj), this.appState)}
         <span slot="supporting-text">${this._(obj.type)}</span>
         <grampsjs-icon
           slot="start"
@@ -84,6 +88,7 @@ export class GrampsjsAttributes extends GrampsjsEditableList {
     const data = {
       type: attr.type || '',
       value: attr.value || '',
+      private: !!attr.private,
     }
     this.dialogContent = html`
       <grampsjs-form-edit-attribute
@@ -125,7 +130,9 @@ export class GrampsjsAttributes extends GrampsjsEditableList {
     this.dialogContent = ''
   }
 
-  _handleAttrCancel() {
+  // the cancel event stops here, so a dialog around the list stays open
+  _handleAttrCancel(e) {
+    e.stopPropagation()
     this.dialogContent = ''
   }
 }

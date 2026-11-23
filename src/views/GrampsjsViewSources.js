@@ -2,7 +2,11 @@
 Sources list view
 */
 
-import {GrampsjsViewObjectsBase} from './GrampsjsViewObjectsBase.js'
+import {
+  GrampsjsViewObjectsBase,
+  privacyColumn,
+  tagsColumn,
+} from './GrampsjsViewObjectsBase.js'
 import {prettyTimeDiffTimestamp, filterCounts} from '../util.js'
 import {
   associationsFilter,
@@ -19,6 +23,8 @@ export class GrampsjsViewSources extends GrampsjsViewObjectsBase {
       {name: 'Title', key: 'title', sortKey: 'title'},
       {name: 'Author', key: 'author', sortKey: 'author'},
       {name: 'Publication info', key: 'pubinfo', sortKey: 'pubinfo'},
+      tagsColumn,
+      privacyColumn,
       {name: 'Last changed', key: 'change', sortKey: 'change'},
     ]
     this._objectsName = 'sources'
@@ -30,7 +36,7 @@ export class GrampsjsViewSources extends GrampsjsViewObjectsBase {
   }
 
   get _fetchUrl() {
-    return '/api/sources/?keys=gramps_id,title,author,pubinfo,change,handle'
+    return '/api/sources/?keys=gramps_id,title,author,pubinfo,change,handle,private,extended&extend=tag_list'
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -47,6 +53,7 @@ export class GrampsjsViewSources extends GrampsjsViewObjectsBase {
     const _ = s => this._(s)
     return [
       textFilter(_, {label: 'Title', rule: 'MatchesTitleSubstringOf'}),
+      textFilter(_, {label: 'Author', rule: 'HasSource', index: 1, numArgs: 4}),
       associationsFilter(_, filterCounts.sources),
       tagFilter(_),
       privacyFilter(_, {rule: 'SourcePrivate'}),
@@ -61,6 +68,7 @@ export class GrampsjsViewSources extends GrampsjsViewObjectsBase {
       author: row.author,
       pubinfo: row.pubinfo,
       change: prettyTimeDiffTimestamp(row.change, this.appState.i18n.lang),
+      tags: row?.extended?.tags ?? [],
     }
     return formattedRow
   }

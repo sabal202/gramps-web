@@ -6,6 +6,7 @@ import {GrampsjsEditableList} from './GrampsjsEditableList.js'
 import './GrampsjsIcon.js'
 import './GrampsjsFormRepoRef.js'
 import {fireEvent} from '../util.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 
 export class GrampsjsRepositories extends GrampsjsEditableList {
   static get properties() {
@@ -20,25 +21,26 @@ export class GrampsjsRepositories extends GrampsjsEditableList {
     this.objType = 'Repository'
     this.hasEdit = true
     this.hasReorder = true
+    this.listProp = 'reporef_list'
   }
 
   row(obj, i) {
+    const grampsId = this.extended[i]?.gramps_id
     return html`
       <md-list-item
-        type="button"
+        type="${this.edit || !grampsId ? 'button' : 'link'}"
+        href="${this.edit || !grampsId
+          ? ''
+          : `/${this._getItemPath(grampsId)}`}"
         class="${classMap({selected: i === this._selectedIndex})}"
         @click="${() => {
           if (this.edit) {
             this._handleSelected(i)
-          } else {
-            const grampsId = this.extended[i]?.gramps_id
-            if (grampsId) {
-              this._handleClick(grampsId)
-            }
           }
         }}"
       >
         ${this.extended[i]?.name ?? ''}
+        ${renderPrivacyIcon(rowPrivacy(this.extended[i], obj), this.appState)}
         ${obj.call_number || obj.media_type
           ? html`<span slot="supporting-text"
               >${[obj.call_number, this._(obj.media_type ?? '')]
@@ -120,28 +122,6 @@ export class GrampsjsRepositories extends GrampsjsEditableList {
       action: 'delRepository',
       handle: this._selectedIndex,
     })
-  }
-
-  _handleUp() {
-    fireEvent(this, 'edit:action', {
-      action: 'upRepository',
-      handle: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(true)
-  }
-
-  _handleDown() {
-    fireEvent(this, 'edit:action', {
-      action: 'downRepository',
-      handle: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(false)
-  }
-
-  _handleClick(grampsId) {
-    if (!this.edit) {
-      fireEvent(this, 'nav', {path: this._getItemPath(grampsId)})
-    }
   }
 
   // eslint-disable-next-line class-methods-use-this

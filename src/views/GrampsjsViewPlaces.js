@@ -2,7 +2,11 @@
 Places list view
 */
 
-import {GrampsjsViewObjectsBase} from './GrampsjsViewObjectsBase.js'
+import {
+  GrampsjsViewObjectsBase,
+  privacyColumn,
+  tagsColumn,
+} from './GrampsjsViewObjectsBase.js'
 import {
   prettyTimeDiffTimestamp,
   filterCounts,
@@ -14,6 +18,7 @@ import {
   privacyFilter,
   tagFilter,
   textFilter,
+  typeFilter,
 } from '../filterDefinitions.js'
 
 export class GrampsjsViewPlaces extends GrampsjsViewObjectsBase {
@@ -23,6 +28,8 @@ export class GrampsjsViewPlaces extends GrampsjsViewObjectsBase {
       {name: 'Gramps ID', key: 'grampsId', sortKey: 'gramps_id'},
       {name: 'Name', key: 'title', sortKey: 'title'},
       {name: 'Place type:', key: 'type'},
+      tagsColumn,
+      privacyColumn,
       {name: 'Last changed', key: 'change', sortKey: 'change'},
     ]
     this._objectsName = 'places'
@@ -54,7 +61,7 @@ export class GrampsjsViewPlaces extends GrampsjsViewObjectsBase {
   }
 
   get _fetchUrl() {
-    return '/api/places/?keys=gramps_id,name,place_type,change,handle'
+    return '/api/places/?keys=gramps_id,name,place_type,change,handle,private,extended&extend=tag_list'
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -71,6 +78,13 @@ export class GrampsjsViewPlaces extends GrampsjsViewObjectsBase {
     const _ = s => this._(s)
     return [
       textFilter(_, {label: 'Name', rule: 'HasData', numArgs: 3}),
+      typeFilter(_, {
+        label: 'Place type:',
+        typeName: 'place_types',
+        rule: 'HasData',
+        index: 1,
+        numArgs: 3,
+      }),
       associationsFilter(_, filterCounts.places),
       tagFilter(_),
       privacyFilter(_, {rule: 'PlacePrivate'}),
@@ -84,6 +98,7 @@ export class GrampsjsViewPlaces extends GrampsjsViewObjectsBase {
       title: row.name.value,
       type: row?.place_type?.string || row?.place_type || '',
       change: prettyTimeDiffTimestamp(row.change, this.appState.i18n.lang),
+      tags: row?.extended?.tags ?? [],
     }
   }
 }

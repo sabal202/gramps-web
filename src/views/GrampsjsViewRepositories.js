@@ -2,9 +2,18 @@
 Repositories list view
 */
 
-import {GrampsjsViewObjectsBase} from './GrampsjsViewObjectsBase.js'
+import {
+  GrampsjsViewObjectsBase,
+  privacyColumn,
+  tagsColumn,
+} from './GrampsjsViewObjectsBase.js'
 import {prettyTimeDiffTimestamp} from '../util.js'
-import {privacyFilter, tagFilter, textFilter} from '../filterDefinitions.js'
+import {
+  privacyFilter,
+  tagFilter,
+  textFilter,
+  typeFilter,
+} from '../filterDefinitions.js'
 
 export class GrampsjsViewRepositories extends GrampsjsViewObjectsBase {
   constructor() {
@@ -13,6 +22,8 @@ export class GrampsjsViewRepositories extends GrampsjsViewObjectsBase {
       {name: 'Gramps ID', key: 'grampsId', sortKey: 'gramps_id'},
       {name: 'Name', key: 'name', sortKey: 'name'},
       {name: 'Type', key: 'type', sortKey: 'type'},
+      tagsColumn,
+      privacyColumn,
       {name: 'Last changed', key: 'change', sortKey: 'change'},
     ]
     this._objectsName = 'repositories'
@@ -20,7 +31,7 @@ export class GrampsjsViewRepositories extends GrampsjsViewObjectsBase {
 
   // eslint-disable-next-line class-methods-use-this
   get _fetchUrl() {
-    return '/api/repositories/?keys=gramps_id,name,type,change,handle'
+    return '/api/repositories/?keys=gramps_id,name,type,change,handle,private,extended&extend=tag_list'
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -37,6 +48,13 @@ export class GrampsjsViewRepositories extends GrampsjsViewObjectsBase {
     const _ = s => this._(s)
     return [
       textFilter(_, {label: 'Name', rule: 'MatchesNameSubstringOf'}),
+      typeFilter(_, {
+        label: 'Type',
+        typeName: 'repository_types',
+        rule: 'HasRepo',
+        index: 1,
+        numArgs: 4,
+      }),
       tagFilter(_),
       privacyFilter(_, {rule: 'RepoPrivate'}),
     ]
@@ -49,6 +67,7 @@ export class GrampsjsViewRepositories extends GrampsjsViewObjectsBase {
       name: row.name,
       type: this._(row.type),
       change: prettyTimeDiffTimestamp(row.change, this.appState.i18n.lang),
+      tags: row?.extended?.tags ?? [],
     }
     return formattedRow
   }

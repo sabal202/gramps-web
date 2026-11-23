@@ -9,7 +9,6 @@ export const chartPalette = {
   // Opaque, so that links that run along each other look like one
   link: 'var(--grampsjs-chart-link)',
   familyMarker: 'var(--grampsjs-chart-link)',
-  familyMarkerFill: 'var(--grampsjs-chart-family-marker-fill)',
   triangle: 'var(--grampsjs-body-font-color-35)',
   triangleHover: 'var(--grampsjs-body-font-color-10)',
   shadow: 'var(--grampsjs-body-font-color-30)',
@@ -23,6 +22,22 @@ export const chartPalette = {
   legendText: 'var(--grampsjs-body-font-color)',
 }
 
+// Colours of categories, such as matches or event types, in a fixed order.
+// Neighbouring colours stay apart for colour-blind readers.
+export const categoricalColors = [
+  '#2a78d6',
+  '#eb6834',
+  '#1baf7a',
+  '#eda100',
+  '#e87ba4',
+  '#008300',
+  '#6250d6',
+  '#e34948',
+]
+
+// The colour of the remaining categories once the categorical colours run out
+export const categoricalOther = '#999999'
+
 // Colours of exported charts: the light theme as opaque colours on a white
 // background, so a saved file looks the same in any app and theme
 export const exportPalette = {
@@ -32,7 +47,6 @@ export const exportPalette = {
   text: '#1a1a1a',
   link: '#999999',
   familyMarker: '#999999',
-  familyMarkerFill: '#dcdcdc',
   triangle: '#a6a6a6',
   triangleHover: '#e6e6e6',
   shadow: '#b3b3b3',

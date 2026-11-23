@@ -1,10 +1,18 @@
 import {ChartCanvas, place} from './ChartCanvas.js'
 import {cornerRadius, roundedPath, sameX} from './connectors.js'
-import {appendFamilyMarker, familyMarkerPosition} from './familyMarker.js'
+import {
+  appendFamilyMarker,
+  familyMarkerPosition,
+  setFamilyInteraction,
+} from './familyMarker.js'
 import {UNKNOWN_MARITAL_STATUS} from './unionStatus.js'
-// Re-exported for the unit tests, which import from this module
-export {maritalStatusToMarker, formatUnionDates, unionStatusLabels} from './unionStatus.js'
 import {relationshipLayoutDefaults} from './layout/relationshipLayout.js'
+// Re-exported for the unit tests, which import from this module
+export {
+  maritalStatusToMarker,
+  formatUnionDates,
+  unionStatusLabels,
+} from './unionStatus.js'
 
 const {boxWidth, boxHeight} = relationshipLayoutDefaults
 
@@ -37,7 +45,7 @@ export function buildFamilyUnionMap(people) {
 // share are drawn once, as the source's trunk, and each link as the branch
 // from where it leaves the bar, so that a dashed link does not run along the
 // lines of the others.
-const markerPosition = familyMarkerPosition(boxHeight)
+const markerPosition = familyMarkerPosition
 
 // Returns the trunk of each source and the branch of each link. A link up to
 // a child in the same row, which arches over it, has no trunk.
@@ -248,8 +256,12 @@ export class RelationshipChart extends ChartCanvas {
 
   // Family markers are small, so they are redrawn on every update. The
   // marker of a family whose partners are not next to each other sits on a
-  // bracket that joins the bottoms of their cards.
-  drawExtras(nodes, {palette, unionMap, showUnionDates}) {
+  // bracket that joins the bottoms of their cards. Outside edit mode, the
+  // marker opens the preview of its family, like the cards of people do.
+  drawExtras(
+    nodes,
+    {palette, interactive, canEdit = false, unionMap, showUnionDates}
+  ) {
     const markers = nodes
       .filter(node => node.kind === 'family')
       .select('.family-marker')
@@ -257,7 +269,9 @@ export class RelationshipChart extends ChartCanvas {
     markers.each(function (node) {
       // eslint-disable-next-line no-param-reassign
       node.union =
-        unionMap?.[node.family?.handle] ?? unionMap?.[node.key] ?? unionMap?.[node.handle]
+        unionMap?.[node.family?.handle] ??
+        unionMap?.[node.key] ??
+        unionMap?.[node.handle]
     })
     markers
       .filter(node => node.bracket)
@@ -274,11 +288,10 @@ export class RelationshipChart extends ChartCanvas {
           `V${top}`,
         ].join('')
       )
-    appendFamilyMarker(markers, {
-      boxHeight,
-      palette,
-      showUnionDates,
-    })
+    appendFamilyMarker(markers, {palette, showUnionDates})
+    if (interactive && !canEdit) {
+      setFamilyInteraction(markers, {palette})
+    }
     // The bracket reaches the marker from one side only, so the marker's
     // own line would stick out on the other
     markers

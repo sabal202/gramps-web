@@ -5,6 +5,8 @@ import {
   apiRegisterUser,
   apiResetPassword,
   apiGetOIDCConfig,
+  apiGetRegistrationEnabled,
+  apiOIDCLogin,
   apiPutPostDelete,
   Auth,
   createFirstTree,
@@ -74,6 +76,65 @@ describe('apiGet authentication', () => {
 
     expect(result.error).toBeDefined()
     expect(result.error).to.be.a('string')
+  })
+})
+
+describe('apiGet conditional requests', () => {
+  const mockAuth = {
+    getValidAccessToken: vi.fn().mockResolvedValue('test-token'),
+  }
+
+  function stubResponse(status, headers = {}) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        status,
+        ok: status === 200,
+        statusText: '',
+        json: () =>
+          status === 304
+            ? Promise.reject(new SyntaxError('empty body'))
+            : Promise.resolve([{id: 1}]),
+        headers: {get: name => headers[name] ?? null},
+      })
+    )
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends no If-None-Match without an etag', async () => {
+    stubResponse(200)
+    await apiGet(mockAuth, '/api/transactions/history/')
+    const [, options] = fetch.mock.calls[0]
+    expect(options.headers).not.to.have.property('If-None-Match')
+  })
+
+  it('sends If-None-Match and reports a 304 as not modified', async () => {
+    stubResponse(304, {ETag: '"abc"', 'X-Total-Count': '7'})
+    const result = await apiGet(mockAuth, '/api/transactions/history/', {
+      etag: '"abc"',
+    })
+    const [, options] = fetch.mock.calls[0]
+    expect(options.headers).to.have.property('If-None-Match', '"abc"')
+    expect(result).to.deep.equal({
+      notModified: true,
+      total_count: '7',
+      etag: '"abc"',
+    })
+  })
+
+  it('returns data and the new etag on a 200', async () => {
+    stubResponse(200, {ETag: '"def"', 'X-Total-Count': '1'})
+    const result = await apiGet(mockAuth, '/api/transactions/history/', {
+      etag: '"abc"',
+    })
+    expect(result).to.deep.equal({
+      data: [{id: 1}],
+      total_count: '1',
+      etag: '"def"',
+    })
   })
 })
 
@@ -275,6 +336,62 @@ describe('apiRegisterUser error handling', () => {
   })
 })
 
+describe('apiGetRegistrationEnabled', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const stubFetch = response => {
+    const fetchMock = vi.fn().mockResolvedValue(response)
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('reports what the server says', async () => {
+    for (const enabled of [true, false]) {
+      stubFetch({ok: true, status: 200, json: () => Promise.resolve({enabled})})
+      expect(await apiGetRegistrationEnabled()).toBe(enabled)
+    }
+  })
+
+  it('asks about the given tree', async () => {
+    const fetchMock = stubFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({enabled: true}),
+    })
+    await apiGetRegistrationEnabled('tree a')
+    expect(fetchMock.mock.calls[0][0]).toMatch(
+      /\/api\/register\/config\/\?tree=tree\+a$/
+    )
+  })
+
+  it('asks without a tree when none is given', async () => {
+    const fetchMock = stubFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({enabled: true}),
+    })
+    await apiGetRegistrationEnabled()
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/register\/config\/$/)
+  })
+
+  it('resolves to null for a backend without the endpoint', async () => {
+    stubFetch({ok: false, status: 404, json: () => Promise.resolve({})})
+    expect(await apiGetRegistrationEnabled()).toBeNull()
+  })
+
+  it('resolves to null without a boolean answer', async () => {
+    stubFetch({ok: true, status: 200, json: () => Promise.resolve({})})
+    expect(await apiGetRegistrationEnabled()).toBeNull()
+  })
+
+  it('resolves to null when the request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    expect(await apiGetRegistrationEnabled()).toBeNull()
+  })
+})
+
 describe('apiGetOIDCConfig error handling', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -323,6 +440,51 @@ describe('apiGetOIDCConfig error handling', () => {
 
     const result = await apiGetOIDCConfig()
     expect(result.error).toBeDefined()
+  })
+})
+
+describe('apiOIDCLogin', () => {
+  let target
+
+  beforeEach(() => {
+    target = null
+    vi.stubGlobal('location', {
+      get href() {
+        return 'https://gramps.example.com/login'
+      },
+      set href(url) {
+        target = new URL(url, 'https://gramps.example.com')
+      },
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends the tree a new account is created in (#1661)', async () => {
+    await apiOIDCLogin('custom', 'tree-1')
+    expect(target.pathname).toBe('/api/oidc/login/')
+    expect(target.searchParams.get('provider')).toBe('custom')
+    expect(target.searchParams.get('tree')).toBe('tree-1')
+  })
+
+  it('leaves the tree out when there is none', async () => {
+    await apiOIDCLogin('custom')
+    expect(target.searchParams.get('provider')).toBe('custom')
+    expect(target.searchParams.has('tree')).toBe(false)
+  })
+
+  it('encodes the provider and tree', async () => {
+    await apiOIDCLogin('a&b', 'x y')
+    expect(target.searchParams.get('provider')).toBe('a&b')
+    expect(target.searchParams.get('tree')).toBe('x y')
+  })
+
+  it('refuses a missing provider without navigating', async () => {
+    const result = await apiOIDCLogin('', 'tree-1')
+    expect(result.error).toBeDefined()
+    expect(target).toBeNull()
   })
 })
 
@@ -699,5 +861,91 @@ describe('apiPutPostDelete success statuses', () => {
 
     expect(result).not.to.have.property('error')
     expect(result.data).to.deep.equal({})
+  })
+})
+
+describe('apiPutPostDelete upload progress', () => {
+  // An XMLHttpRequest that reports sending half the body, then the whole
+  // body, and answers with `status` and `body`.
+  const fakeXhr = (status, body) =>
+    class {
+      constructor() {
+        this.listeners = {}
+        this.upload = {
+          addEventListener: (name, fn) => {
+            this.uploadProgress = fn
+          },
+        }
+        this.headers = {}
+      }
+
+      open(method, url) {
+        Object.assign(this, {method, url})
+      }
+
+      setRequestHeader(name, value) {
+        this.headers[name] = value
+      }
+
+      addEventListener(name, fn) {
+        this.listeners[name] = fn
+      }
+
+      getResponseHeader() {
+        return null
+      }
+
+      send() {
+        this.uploadProgress({lengthComputable: true, loaded: 5, total: 10})
+        this.uploadProgress({lengthComputable: true, loaded: 10, total: 10})
+        Object.assign(this, {
+          status,
+          statusText: '',
+          responseText: JSON.stringify(body),
+        })
+        this.listeners.load()
+      }
+    }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('reports the progress and returns the response', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('XMLHttpRequest', fakeXhr(202, {task: {id: 't1'}}))
+    const onUploadProgress = vi.fn()
+
+    const result = await apiPutPostDelete(
+      undefined,
+      'POST',
+      '/api/importers/ged/file',
+      new Blob(['0 HEAD']),
+      {isJson: false, dbChanged: false, skipAuth: true, onUploadProgress}
+    )
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(onUploadProgress.mock.calls).toEqual([[0.5], [1]])
+    expect(result).toEqual({task: {id: 't1'}})
+  })
+
+  it('reports errors like fetch', async () => {
+    vi.stubGlobal('XMLHttpRequest', fakeXhr(413, {}))
+
+    const result = await apiPutPostDelete(
+      undefined,
+      'POST',
+      '/api/importers/ged/file',
+      new Blob(['0 HEAD']),
+      {
+        isJson: false,
+        dbChanged: false,
+        skipAuth: true,
+        onUploadProgress: () => {},
+      }
+    )
+
+    expect(result.error).toBe('Error 413')
+    expect(result.errorDetail.status).toBe(413)
   })
 })

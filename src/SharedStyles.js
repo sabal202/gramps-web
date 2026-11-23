@@ -3,14 +3,14 @@ import {css} from 'lit'
 export const sharedStyles = css`
   :host {
     line-height: 1.6;
-    --grampsjs-body-font-family: 'Inter var', sans-serif;
-    --grampsjs-heading-font-family: 'Inter var', sans-serif;
+    --grampsjs-body-font-family: 'Inter var', 'Gramps Symbols', sans-serif;
+    --grampsjs-heading-font-family: 'Inter var', 'Gramps Symbols', sans-serif;
     --grampsjs-mono-font-family: 'Commit Mono', monospace;
-    --md-ref-typeface-plain: 'Inter var', sans-serif;
+    --md-ref-typeface-plain: 'Inter var', 'Gramps Symbols', sans-serif;
     --grampsjs-body-font-size: 17px;
     font-size: var(--grampsjs-body-font-size);
     font-family: var(--grampsjs-body-font-family);
-    --grampsjs-body-font-weight: 340;
+    --grampsjs-body-font-weight: var(--grampsjs-font-weight-body);
     font-weight: var(--grampsjs-body-font-weight);
     --mdc-typography-font-family: var(--grampsjs-body-font-family);
     --md-sys-typescale-headline-small-font: var(--grampsjs-heading-font-family);
@@ -21,7 +21,7 @@ export const sharedStyles = css`
     --md-sys-typescale-body-small-font: var(--grampsjs-body-font-family);
     --md-sys-typescale-body-medium-font: var(--grampsjs-body-font-family);
     --md-sys-typescale-body-large-font: var(--grampsjs-body-font-family);
-    --md-primary-tab-label-text-weight: 425;
+    --md-primary-tab-label-text-weight: var(--grampsjs-font-weight-medium);
     --md-primary-tab-label-text-size: 16px;
     --md-primary-tab-active-indicator-height: 3px;
     --md-divider-thickness: 0px;
@@ -30,15 +30,19 @@ export const sharedStyles = css`
     --mdc-list-side-padding: 16px;
   }
 
+  /* the hover layer follows the corners */
   md-list-item {
+    border-radius: 8px;
     --md-list-item-label-text-weight: var(--grampsjs-body-font-weight);
     --md-list-item-label-text-size: 17px;
-    --md-list-item-supporting-text-color: var(--grampsjs-body-font-color-50);
+    --md-list-item-supporting-text-color: var(--grampsjs-text-secondary-color);
     --md-list-item-trailing-supporting-text-color: var(
-      --grampsjs-body-font-color-60
+      --grampsjs-text-secondary-color
     );
     --md-list-item-trailing-supporting-text-size: 0.875rem;
-    --md-list-item-trailing-supporting-text-weight: 380;
+    --md-list-item-trailing-supporting-text-weight: var(
+      --grampsjs-font-weight-body
+    );
   }
 
   label {
@@ -46,36 +50,37 @@ export const sharedStyles = css`
     place-items: center;
     gap: 12px;
     font-size: 15px;
-    font-weight: 350;
+    font-weight: var(--grampsjs-font-weight-body);
     color: var(--md-sys-color-on-background);
   }
 
   h2,
   h3,
   h4 {
-    font-weight: 500;
+    font-weight: var(--grampsjs-font-weight-medium);
     font-family: var(--grampsjs-heading-font-family);
     color: var(--grampsjs-color-shade-40);
   }
 
   h1 {
-    font-weight: 400;
+    font-weight: var(--grampsjs-font-weight-heading);
     font-family: var(--grampsjs-heading-font-family);
     font-size: 34px;
   }
 
   h2 {
-    font-weight: 550;
+    font-weight: var(--grampsjs-font-weight-heading);
     font-size: 30px;
     margin-top: 10px;
     margin-bottom: 30px;
   }
 
   h3 {
-    font-weight: 550;
-    font-size: 18px;
-    margin-top: 40px;
-    margin-bottom: 30px;
+    font-weight: var(--grampsjs-font-weight-heading);
+    font-size: var(--grampsjs-h3-font-size, 18px);
+    margin-top: var(--grampsjs-h3-margin-top, 40px);
+    margin-bottom: var(--grampsjs-h3-margin-bottom, 30px);
+    margin-inline: var(--grampsjs-block-inset, 0);
   }
 
   h4 {
@@ -89,7 +94,7 @@ export const sharedStyles = css`
 
   b,
   strong {
-    font-weight: 600;
+    font-weight: var(--grampsjs-font-weight-heading);
   }
 
   a:link,
@@ -130,7 +135,24 @@ export const sharedStyles = css`
   }
 
   .md {
-    font-weight: 400;
+    font-weight: var(--grampsjs-font-weight-body);
+  }
+
+  /* Tonal buttons and floating action buttons (md-fab variant="primary")
+     in the light primary tint */
+  md-filled-tonal-button,
+  md-filled-tonal-icon-button {
+    --md-sys-color-secondary-container: var(--grampsjs-tonal-color);
+    --md-sys-color-on-secondary-container: var(--grampsjs-on-tonal-color);
+    --md-filled-tonal-button-hover-container-elevation: 0;
+    --md-filled-tonal-button-label-text-weight: var(
+      --grampsjs-font-weight-medium
+    );
+  }
+
+  md-fab {
+    --md-sys-color-primary-container: var(--grampsjs-tonal-color);
+    --md-sys-color-on-primary-container: var(--grampsjs-on-tonal-color);
   }
 
   hr {
@@ -141,8 +163,8 @@ export const sharedStyles = css`
 
   dt {
     font-size: 14px;
-    color: var(--grampsjs-body-font-color-50);
-    font-weight: 400;
+    color: var(--grampsjs-text-secondary-color);
+    font-weight: var(--grampsjs-font-weight-body);
     margin-bottom: 0.2em;
   }
 
@@ -156,19 +178,18 @@ export const sharedStyles = css`
     margin-right: 3rem;
   }
 
+  /* --grampsjs-block-inset indents headings and paragraphs to line up with
+     list items, as in the dashboard's panels */
   p {
     margin-top: 1.2em;
     margin-bottom: 1.2em;
+    margin-inline: var(--grampsjs-block-inset, 0);
   }
 
   .avatar.skeleton {
     width: 44px;
     height: 44px;
     border-radius: 22px;
-  }
-
-  .float-right {
-    float: right;
   }
 
   grampsjs-icon.inline {
@@ -192,19 +213,8 @@ export const sharedStyles = css`
     margin-right: 1em;
   }
 
-  .event i svg path {
-    fill: var(--grampsjs-body-font-color-40);
-  }
-
-  .event i {
-    color: var(--grampsjs-body-font-color-40);
-    font-size: 16px;
-    font-style: normal;
-  }
-
-  .event i svg {
-    height: 16px;
-    width: auto;
+  .sym {
+    color: var(--grampsjs-text-secondary-color);
   }
 
   .edit {
@@ -264,7 +274,6 @@ export const sharedStyles = css`
     border-left: 4px solid var(--grampsjs-alert-border-color);
     border-radius: 5px;
     padding: 0.8em 1em;
-    font-size: 0.8em;
     color: var(--grampsjs-body-font-color);
     margin: 1.5em 0;
   }
@@ -317,10 +326,6 @@ export const sharedStyles = css`
     position: relative;
     top: 6px;
     right: 10px;
-  }
-
-  h2.editable:hover {
-    background-color: var(--grampsjs-editable-title-hover-background-color);
   }
 
   .monospace {
@@ -441,6 +446,27 @@ export const personListItemStyles = [
     }
   `,
 ]
+
+/* Items of a container reordered with DragReorderController, which marks the
+   container with the `reorderable` class */
+export const reorderableStyles = css`
+  .reorderable > * {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .reorderable > [dragging] {
+    position: relative;
+    z-index: 1;
+    cursor: grabbing;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .reorderable > [drag-shift] {
+    transition: transform 0.15s ease;
+  }
+`
 
 /* Drives all six md-icon-button colour tokens from one variable. An inherited
    `color` does not reach the icon, so include these styles and set:
@@ -598,14 +624,21 @@ export const buttonColorStyles = css`
 `
 
 /* Icon buttons sitting on the app bar inherit its colour, and are 48px so that
-   they line up with each other and with the bar's own height. */
+   they line up with each other and with the bar's own height; very narrow
+   screens set --grampsjs-app-bar-button-size to a smaller size. */
 export const appBarIconButtonStyles = [
   iconButtonColorStyles,
   css`
     md-icon-button {
       --grampsjs-icon-button-color: currentColor;
-      --md-icon-button-state-layer-width: 48px;
-      --md-icon-button-state-layer-height: 48px;
+      --md-icon-button-state-layer-width: var(
+        --grampsjs-app-bar-button-size,
+        48px
+      );
+      --md-icon-button-state-layer-height: var(
+        --grampsjs-app-bar-button-size,
+        48px
+      );
     }
   `,
 ]

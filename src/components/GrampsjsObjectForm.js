@@ -4,6 +4,8 @@ import '@material/web/dialog/dialog.js'
 import '@material/web/button/text-button.js'
 import '@material/web/button/filled-button.js'
 
+import './GrampsjsFormPrivate.js'
+import './GrampsjsHelpButton.js'
 import {sharedStyles} from '../SharedStyles.js'
 import {fireEvent, emptyDate} from '../util.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -57,6 +59,9 @@ export class GrampsjsObjectForm extends GrampsjsAppStateMixin(LitElement) {
       isFormValid: {type: Boolean},
       new: {type: Boolean},
       dialogTitle: {type: String},
+      // docs path for a help button after the dialog title, such as
+      // 'user-guide/dna-matches/'
+      helpPath: {type: String},
       hideCancelButton: {type: Boolean},
       hideSaveButton: {type: Boolean},
       // Skip resetting the form on save and cancel, for embedders that
@@ -77,6 +82,7 @@ export class GrampsjsObjectForm extends GrampsjsAppStateMixin(LitElement) {
     this.isFormValid = false
     this.new = false
     this.dialogTitle = ''
+    this.helpPath = ''
     this.hideSaveButton = false
     this.hideCancelButton = false
     this.noReset = false
@@ -137,7 +143,15 @@ export class GrampsjsObjectForm extends GrampsjsAppStateMixin(LitElement) {
         @cancel="${e => e.preventDefault()}"
         open
       >
-        <div slot="headline">${this.dialogTitle}</div>
+        <div slot="headline">
+          ${this.dialogTitle}
+          ${this.helpPath
+            ? html`<grampsjs-help-button
+                path="${this.helpPath}"
+                .appState="${this.appState}"
+              ></grampsjs-help-button>`
+            : ''}
+        </div>
         <div slot="content" @formdata:changed="${this._handleFormData}">
           ${this.dialogIsOpen ? this.renderForm() : ''}
         </div>
@@ -158,6 +172,18 @@ export class GrampsjsObjectForm extends GrampsjsAppStateMixin(LitElement) {
           </md-filled-button>
         </div>
       </md-dialog>
+    `
+  }
+
+  // switch for `this.data.private`, stored by _handleFormData
+  renderPrivate() {
+    return html`
+      <div class="spacer"></div>
+      <grampsjs-form-private
+        id="private"
+        ?checked="${this.data?.private}"
+        .appState="${this.appState}"
+      ></grampsjs-form-private>
     `
   }
 

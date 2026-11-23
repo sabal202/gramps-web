@@ -23,7 +23,9 @@ import '../components/GrampsjsMapVectorLayer.js'
 import {
   apiVersionAtLeast,
   getGregorianYears,
+  personAndFamilyEventHandles,
   personProfileDisplayName,
+  prefixSearchQuery,
 } from '../util.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 import {
@@ -53,8 +55,9 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       super.styles,
       css`
         :host {
+          display: block;
           margin: 0;
-          margin-top: -4px;
+          border-top: 1px solid var(--grampsjs-divider-strong-color);
         }
 
         .wikidata-hint {
@@ -96,6 +99,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       _mapStyle: {type: String},
       _minYear: {type: Number},
       _hiddenOverlaysHandles: {type: Array},
+      _overlayOpacity: {type: Object},
       _zoom: {type: Number},
     }
   }
@@ -112,13 +116,15 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       WIKIDATA_LAYER_HANDLE,
     ]
     this._mapStyle = layerSettings?.style ?? 'base'
+    this._overlayOpacity = layerSettings?.overlayOpacity ?? {}
     this._selected = ''
     this._valueSearch = ''
     this._searchFilter = DEFAULT_SEARCH_FILTER
     // What the details panel shows: null or one of
     // {type: 'place', handle, name}
-    // {type: 'person', person, data, placeHandles}, where data and
-    //   placeHandles are filled in once the person has loaded
+    // {type: 'person', person, data, familyEvents, events, placeHandles},
+    //   where all but person are filled in once the person and their family
+    //   events have loaded; events holds both own and family events
     // {type: 'wikidata', qid, label, lat, long}, where lat and long are null
     //   for a building that is not loaded
     this._selection = null
@@ -298,7 +304,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         layerSwitcher
         locateControl
         width="100%"
-        height="calc(100dvh - 64px - 36px)"
+        height="calc(var(--grampsjs-content-height) - 37px)"
         latitude="${center[0]}"
         longitude="${center[1]}"
         year="${this._year}"
@@ -309,6 +315,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         @map:load="${this._handleMapLoad}"
         @map:moveend="${this._handleMoveEnd}"
         @map:overlay-toggle="${this._handleOverlayToggle}"
+        @map:overlay-opacity="${this._handleOverlayOpacity}"
         @map:marker-clicked="${this._handleMapMarkerClicked}"
         @map:wikidata-clicked="${this._handleWikidataClicked}"
         id="map"
@@ -316,7 +323,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         >${this._renderLayers()} ${this._renderVectorLayers()}
         ${this._renderWikidataLayer()}
         <grampsjs-map-person-lines-layer
-          .events="${personData?.extended?.events ?? EMPTY_ARRAY}"
+          .events="${this._personSelection?.events ?? EMPTY_ARRAY}"
           .places="${personData ? this._dataPlaces : EMPTY_ARRAY}"
         ></grampsjs-map-person-lines-layer>
         <grampsjs-map-places-layer
@@ -385,12 +392,13 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     `
   }
 
-  _renderPersonBox({person, data}) {
+  _renderPersonBox({person, data, familyEvents}) {
     return html`
       <grampsjs-person-box
         handle="${data ? person.handle : ''}"
         name="${personProfileDisplayName(person.profile)}"
         .personData="${data}"
+        .familyEvents="${familyEvents ?? EMPTY_ARRAY}"
         .appState="${this.appState}"
       ></grampsjs-person-box>
     `
@@ -405,6 +413,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     saveMapLayerSettings({
       style: this._mapStyle,
       hiddenOverlays: this._hiddenOverlaysHandles,
+      overlayOpacity: this._overlayOpacity,
     })
   }
 
@@ -464,6 +473,15 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         if (this._selection?.type === 'wikidata') this._clearSearchBox()
       }
     }
+  }
+
+  // GrampsjsMap applies the opacity to the tile layer while the slider is
+  // dragged; the view stores and saves the value the drag ends on.
+  _handleOverlayOpacity(event) {
+    const {overlay, opacity, final} = event.detail
+    if (!final) return
+    this._overlayOpacity = {...this._overlayOpacity, [overlay.handle]: opacity}
+    this._saveLayerSettings()
   }
 
   _handleTimeSliderChange(event) {
@@ -532,11 +550,38 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       return
     }
     const extPerson = data.data
-    const placeHandles = (extPerson.extended?.events || [])
-      .map(event => event.place)
-      .filter(Boolean)
-    this._select({...selection, data: extPerson, placeHandles})
+    const familyEvents = await this._fetchFamilyEvents(extPerson)
+    if (this._selection !== selection) return
+    const events = [
+      ...(extPerson.extended?.events || []).filter(Boolean),
+      ...familyEvents,
+    ]
+    const placeHandles = events.map(event => event.place).filter(Boolean)
+    this._select({
+      ...selection,
+      data: extPerson,
+      familyEvents,
+      events,
+      placeHandles,
+    })
     this._fitPersonPlaces(placeHandles)
+  }
+
+  // The events of the families the person is a parent in that are not also
+  // the person's own events, each with its profile. Empty if they fail to load.
+  async _fetchFamilyEvents(extPerson) {
+    const ownHandles = new Set(
+      (extPerson.event_ref_list || []).map(ref => ref.ref)
+    )
+    const handles = personAndFamilyEventHandles(extPerson).filter(
+      handle => !ownHandles.has(handle)
+    )
+    if (handles.length === 0) return []
+    const lang = this.appState.i18n.lang || 'en'
+    const result = await this.appState.apiGet(
+      `/api/events/?handles=${handles.join(',')}&profile=self&locale=${lang}`
+    )
+    return 'data' in result ? result.data : []
   }
 
   _fitPersonPlaces(handles) {
@@ -685,6 +730,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         handle="${obj.handle}"
         checksum="${obj.checksum}"
         .bounds="${bounds}"
+        .opacity="${this._overlayOpacity[obj.handle] ?? 1}"
         ?hidden="${this._hiddenOverlaysHandles.includes(obj.handle)}"
       ></grampsjs-map-tile-layer>
     `
@@ -753,7 +799,11 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     })
     // The selected place's files are listed wherever the map is.
     const overlays = [
-      ...visibleLayers.map(toOverlay),
+      // only tile overlays will have the slider
+      ...visibleLayers.map(obj => ({
+        ...toOverlay(obj),
+        opacity: this._overlayOpacity[obj.handle] ?? 1,
+      })),
       ...this._placeVectors.layers.map(l => ({
         ...toOverlay(l.media),
         desc: l.media.desc || l.media.gramps_id,
@@ -883,7 +933,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       return
     }
     const typeFilter = this._searchFilter || DEFAULT_SEARCH_FILTER
-    const query = encodeURIComponent(`${value}*`)
+    const query = encodeURIComponent(prefixSearchQuery(value))
     const locale = this.appState.i18n.lang || 'en'
     const data = await this.appState.apiGet(
       `/api/search/?query=${query}&locale=${locale}&profile=self&page=1&pagesize=20&type=${typeFilter}`

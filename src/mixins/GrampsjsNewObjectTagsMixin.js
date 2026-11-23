@@ -1,6 +1,7 @@
 import {html} from 'lit'
 import '../components/GrampsjsTags.js'
 import '../components/GrampsjsFormNewTag.js'
+import {fetchAllTags} from '../tags.js'
 
 export const GrampsjsNewObjectTagsMixin = superClass =>
   class extends superClass {
@@ -17,7 +18,9 @@ export const GrampsjsNewObjectTagsMixin = superClass =>
       this._tagDialogContent = ''
     }
 
-    _renderTagsForm() {
+    // `hideTags` are the names of tags not shown, such as a tag marking
+    // the kind of object
+    _renderTagsForm(hideTags = []) {
       const selectedTags = this._allTags.filter(t =>
         (this.data.tag_list || []).includes(t.handle)
       )
@@ -25,6 +28,7 @@ export const GrampsjsNewObjectTagsMixin = superClass =>
         <h3 class="label">${this._('Tags')}</h3>
         <grampsjs-tags
           .data="${selectedTags}"
+          .hideTags="${hideTags}"
           edit
           noHeading
           .appState="${this.appState}"
@@ -71,10 +75,7 @@ export const GrampsjsNewObjectTagsMixin = superClass =>
     }
 
     async _fetchAllTags() {
-      const lang = this.appState?.i18n?.lang || 'en'
-      const data = await this.appState.apiGet(
-        `/api/tags/?locale=${lang}&pagesize=500`
-      )
+      const data = await fetchAllTags(this.appState)
       if ('data' in data) {
         this._allTags = data.data
       }

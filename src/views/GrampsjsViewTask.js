@@ -1,50 +1,118 @@
 import {html} from 'lit'
 
+import '../components/GrampsjsObjectActions.js'
 import '../components/GrampsjsTask.js'
 import {GrampsjsViewSource} from './GrampsjsViewSource.js'
+import {fireEvent} from '../util.js'
+import {taskNote} from '../taskConstants.js'
 
+// The page of a task, edited in place. It has no edit mode, so the FAB and
+// the edit mode shortcut do nothing; the page deletes the task itself.
 export class GrampsjsViewTask extends GrampsjsViewSource {
   constructor() {
     super()
     this._className = 'source'
   }
 
+  // a task can't be bookmarked, and its privacy is edited in place
+  renderActions() {
+    return html`
+      <grampsjs-object-actions
+        .data="${this._data}"
+        .appState="${this.appState}"
+        ?edit="${this.canEdit}"
+        hideBookmark
+      ></grampsjs-object-actions>
+    `
+  }
+
   renderElement() {
     return html`
       <grampsjs-task
-        @task:update-note-text="${this._handleUpdateNoteText}"
-        @task:add-note-text="${this._handleAddNoteText}"
+        .saveNote="${data => this._saveNote(data)}"
         .source="${this._data}"
         .appState="${this.appState}"
-        ?edit="${this.edit}"
-        ?canEdit="${this.canEdit}"
+        .actions="${this.renderActions()}"
+        @task:delete="${this._deleteSelf}"
       ></grampsjs-task>
     `
   }
 
-  // eslint-disable-next-line class-methods-use-this
-  async _handleUpdateNoteText(event) {
-    const data = event.detail
-    await this.appState.apiPut(`/api/notes/${data.handle}`, data)
-    this._updateData(false)
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  async _handleAddNoteText(event) {
-    const data = event.detail
-    const res = await this.appState.apiPost('/api/notes/', data)
-    if ('data' in res) {
-      const [obj] = res.data
-      this.addHandle(obj.handle, this._data, this._className, 'note_list')
+  // Updates the task's note, or adds it if `data` has no handle. Resolves to
+  // whether the save succeeded, after the task is reloaded.
+  async _saveNote(data) {
+    const res = data.handle
+      ? await this.appState.apiPut(`/api/notes/${data.handle}`, data)
+      : await this.appState.apiPost('/api/notes/', data)
+    if ('error' in res) {
+      fireEvent(this, 'grampsjs:error', {message: res.error})
+      return false
     }
-    this._updateData(false)
+    if (data.handle) {
+      await this._updateData(false)
+      return true
+    }
+    const [obj] = res.data
+    return this.addHandle(obj.handle, this._data, this._className, 'note_list')
   }
 
-  // no FAB
+  // eslint-disable-next-line class-methods-use-this
+  get _pathAfterDelete() {
+    return 'tasks'
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  _objectPath(grampsId) {
+    return `task/${grampsId}`
+  }
+
+  // The note with the description gets the privacy of the task. It becomes
+  // private before the task and public after it, so a failed request never
+  // leaves the description more public than the task.
+  async handleEditAction(e) {
+    const isPrivate = e.detail.data?.private
+    const note = taskNote(this._data)
+    if (
+      e.detail.action !== 'updateProp' ||
+      isPrivate === undefined ||
+      !note ||
+      Boolean(note.private) === isPrivate
+    ) {
+      super.handleEditAction(e)
+      return
+    }
+    const updateTask = () =>
+      this.updateProp(
+        this._data,
+        this._className,
+        e.detail.data,
+        e.detail.editorDraftPrefix
+      )
+    if (!isPrivate && !(await updateTask())) {
+      return
+    }
+    const res = await this.appState.apiPut(`/api/notes/${note.handle}`, {
+      ...note,
+      private: isPrivate,
+    })
+    if ('error' in res) {
+      fireEvent(this, 'grampsjs:error', {message: res.error})
+      return
+    }
+    if (isPrivate) {
+      await updateTask()
+    } else {
+      await this._updateData(false)
+    }
+  }
+
   // eslint-disable-next-line class-methods-use-this
   renderFab() {
     return ''
   }
+
+  // eslint-disable-next-line class-methods-use-this
+  _toggleEditMode() {}
 }
 
 window.customElements.define('grampsjs-view-task', GrampsjsViewTask)

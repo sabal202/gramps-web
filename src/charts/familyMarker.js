@@ -1,155 +1,207 @@
+import {fireEvent} from '../util.js'
 import {chartPalette} from './palette.js'
+import {isHoverDevice} from './util.js'
 import {
   maritalStatusToMarker,
   formatUnionDates,
   unionStatusLabels,
 } from './unionStatus.js'
 
-// Returns the position of a family's marker relative to its family node, for
-// partner cards that are `boxHeight` pixels high. The colour stripe of a card
-// reaches 4 pixels past its left edge, so the gap between the two partners is
-// centred 2 pixels left of the family node.
-export const familyMarkerPosition = boxHeight => [-2, boxHeight / 2 - 10]
+// Radius of a family's node, which fills most of the gap between the
+// partners' cards
+const nodeRadius = 12
 
-// Appends a marker for the family of each node in the selection, in the gap
-// between the cards of the two partners, which are `boxHeight` pixels high.
-// The marker encodes the union status (from the node's `union` datum:
-// {maritalStatus, marriage, divorce} — see buildUnionMap): rings on a short
-// line, a slash across the rings for divorces, a cross above for widowed,
-// and an optional year label underneath. Families without a derived status
-// keep the plain bar; a married couple always shows the double ring.
+// Half the visible gap between the cards of two adjacent partners, from the
+// edge of one card to the colour stripe of the other
+const halfGap = 18
+
+// Position of a family's marker relative to its family node, at the height of
+// the middle of the partners' cards. The colour stripe of a card reaches 4
+// pixels past its left edge, so the gap between the two partners is centred
+// 2 pixels left of the family node.
+export const familyMarkerPosition = [-2, 0]
+
+// Appends a node for the family of each node in the selection, in the gap
+// between the cards of the two partners, on a line that joins the two cards.
+// Partners who are not next to each other are joined by a bracket, which the
+// caller draws.
+// The chip encodes the union status (from the node's `union` datum:
+// {maritalStatus, marriage, divorce} — see buildFamilyUnionMap): rings inside
+// the chip, a slash across them for divorces, a cross above for widowed, and
+// an optional year label above. Families without a derived status follow the
+// upstream convention: solid chip for married, dashed otherwise.
 export function appendFamilyMarker(
   nodes,
-  {boxHeight = 90, palette = chartPalette, showUnionDates = false} = {}
+  {palette = chartPalette, showUnionDates = false} = {}
 ) {
-  const [x, y] = familyMarkerPosition(boxHeight)
+  const [x, y] = familyMarkerPosition
   const withUnion = nodes.filter(
     d => d.union && d.union.maritalStatus !== 'unknown'
   )
-  const plain = nodes.filter(
-    d => !d.union || d.union.maritalStatus === 'unknown'
-  )
-  const marriedPlain = plain.filter(d => d.family?.type === 'Married')
 
-  // Union bar: dashed for partners, solid otherwise
-  const bars = nodes.filter(
-    d => !d.union || maritalStatusToMarker(d.union.maritalStatus).dashed === false
-  )
-  bars
+  nodes
+    .filter(d => !d.bracket)
     .append('line')
-    .attr('x1', x - 11)
-    .attr('x2', x + 11)
+    .attr('class', 'partner-line')
+    .attr('x1', x - halfGap)
+    .attr('x2', x + halfGap)
     .attr('y1', y)
     .attr('y2', y)
     .attr('stroke', palette.familyMarker)
     .attr('stroke-width', 1.5)
   nodes
-    .filter(
-      d =>
-        d.union &&
-        maritalStatusToMarker(d.union.maritalStatus).dashed
+    .append('circle')
+    .attr('class', d =>
+      d.family?.type === 'Married' ? 'family-chip married' : 'family-chip'
     )
-    .append('line')
-    .attr('x1', x - 11)
-    .attr('x2', x + 11)
-    .attr('y1', y)
-    .attr('y2', y)
+    .attr('r', nodeRadius)
+    .attr('cx', x)
+    .attr('cy', y)
+    .attr('fill', palette.personBox)
     .attr('stroke', palette.familyMarker)
     .attr('stroke-width', 1.5)
-    .attr('stroke-dasharray', '3,2')
+    .attr('stroke-dasharray', d => {
+      if (d.union && d.union.maritalStatus !== 'unknown') {
+        return maritalStatusToMarker(d.union.maritalStatus).dashed
+          ? '4 3'
+          : null
+      }
+      return d.family?.type === 'Married' ? null : '4 3'
+    })
 
   // Accessible label: name the union status on each family node (SVG <title>)
   withUnion
     .append('title')
-    .text(d => unionStatusLabels[d.union.maritalStatus] ?? d.union.maritalStatus)
+    .text(
+      d => unionStatusLabels[d.union.maritalStatus] ?? d.union.maritalStatus
+    )
 
-  // Ring(s): two for married/divorced, one for partners/widowed, none for unknown
-  withUnion
-    .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings >= 1)
-    .append('circle')
-    .attr('class', 'union-ring union-ring-left')
-    .attr('r', 5)
-    .attr('cx', d =>
-      maritalStatusToMarker(d.union.maritalStatus).rings === 2 ? x - 5 : x
-    )
-    .attr('cy', y)
-    .attr('stroke', palette.familyMarker)
-    .attr('stroke-width', 1)
-    .attr('fill', d =>
-      maritalStatusToMarker(d.union.maritalStatus).filled
-        ? palette.familyMarkerFill
-        : 'none'
-    )
-  withUnion
-    .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings === 2)
-    .append('circle')
-    .attr('class', 'union-ring union-ring-right')
-    .attr('r', 5)
-    .attr('cx', x + 5)
-    .attr('cy', y)
-    .attr('stroke', palette.familyMarker)
-    .attr('stroke-width', 1)
-    .attr('fill', d =>
-      maritalStatusToMarker(d.union.maritalStatus).filled
-        ? palette.familyMarkerFill
-        : 'none'
-    )
+  // Union status overlays never intercept the chip's hover/click events
+  const overlay = sel => sel.attr('pointer-events', 'none')
+
+  // Ring(s): two for married/divorced, one for partners/widowed
+  overlay(
+    withUnion
+      .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings >= 1)
+      .append('circle')
+      .attr('class', 'union-ring union-ring-left')
+      .attr('r', 5)
+      .attr('cx', d =>
+        maritalStatusToMarker(d.union.maritalStatus).rings === 2 ? x - 5 : x
+      )
+      .attr('cy', y)
+      .attr('stroke', palette.familyMarker)
+      .attr('stroke-width', 1)
+      .attr('fill', d =>
+        maritalStatusToMarker(d.union.maritalStatus).filled
+          ? palette.familyMarkerFill
+          : 'none'
+      )
+  )
+  overlay(
+    withUnion
+      .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings === 2)
+      .append('circle')
+      .attr('class', 'union-ring union-ring-right')
+      .attr('r', 5)
+      .attr('cx', x + 5)
+      .attr('cy', y)
+      .attr('stroke', palette.familyMarker)
+      .attr('stroke-width', 1)
+      .attr('fill', d =>
+        maritalStatusToMarker(d.union.maritalStatus).filled
+          ? palette.familyMarkerFill
+          : 'none'
+      )
+  )
 
   // Divorce slash — diagonal line across the rings
-  withUnion
-    .filter(d => maritalStatusToMarker(d.union.maritalStatus).slash)
-    .append('line')
-    .attr('class', 'union-slash')
-    .attr('x1', x - 8)
-    .attr('x2', x + 8)
-    .attr('y1', y + 6)
-    .attr('y2', y - 6)
-    .attr('stroke', 'var(--md-sys-color-error)')
-    .attr('stroke-width', 1.5)
-
-  // Widowed cross above the ring
-  withUnion
-    .filter(d => maritalStatusToMarker(d.union.maritalStatus).cross)
-    .append('line')
-    .attr('class', 'union-cross-v')
-    .attr('x1', x)
-    .attr('x2', x)
-    .attr('y1', y - 5)
-    .attr('y2', y - 11)
-    .attr('stroke', palette.familyMarker)
-    .attr('stroke-width', 1.5)
-  withUnion
-    .filter(d => maritalStatusToMarker(d.union.maritalStatus).cross)
-    .append('line')
-    .attr('class', 'union-cross-h')
-    .attr('x1', x - 3)
-    .attr('x2', x + 3)
-    .attr('y1', y - 8)
-    .attr('y2', y - 8)
-    .attr('stroke', palette.familyMarker)
-    .attr('stroke-width', 1.5)
-
-  // Union date label under the marker
-  if (showUnionDates) {
+  overlay(
     withUnion
-      .filter(d => formatUnionDates(d.union.maritalStatus, d.union))
-      .append('text')
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'middle')
-      .attr('font-size', '10px')
-      .attr('fill', palette.text)
-      .attr('x', x)
-      .attr('y', y - 16)
-      .text(d => formatUnionDates(d.union.maritalStatus, d.union))
-  }
+      .filter(d => maritalStatusToMarker(d.union.maritalStatus).slash)
+      .append('line')
+      .attr('class', 'union-slash')
+      .attr('x1', x - 8)
+      .attr('x2', x + 8)
+      .attr('y1', y + 6)
+      .attr('y2', y - 6)
+      .attr('stroke', 'var(--md-sys-color-error)')
+      .attr('stroke-width', 1.5)
+  )
 
-  // Families without a derived status: keep the plain married ring look
-  marriedPlain
-    .append('circle')
-    .attr('class', 'married')
-    .attr('r', 6)
-    .attr('cx', x)
-    .attr('cy', y)
-    .attr('stroke', palette.familyMarker)
-    .attr('fill', palette.familyMarkerFill)
+  // Widowed cross above the chip
+  overlay(
+    withUnion
+      .filter(d => maritalStatusToMarker(d.union.maritalStatus).cross)
+      .append('line')
+      .attr('class', 'union-cross-v')
+      .attr('x1', x)
+      .attr('x2', x)
+      .attr('y1', y - 14)
+      .attr('y2', y - 20)
+      .attr('stroke', palette.familyMarker)
+      .attr('stroke-width', 1.5)
+  )
+  overlay(
+    withUnion
+      .filter(d => maritalStatusToMarker(d.union.maritalStatus).cross)
+      .append('line')
+      .attr('class', 'union-cross-h')
+      .attr('x1', x - 3)
+      .attr('x2', x + 3)
+      .attr('y1', y - 17)
+      .attr('y2', y - 17)
+      .attr('stroke', palette.familyMarker)
+      .attr('stroke-width', 1.5)
+  )
+
+  // Union date label above the chip
+  if (showUnionDates) {
+    overlay(
+      withUnion
+        .filter(d => formatUnionDates(d.union.maritalStatus, d.union))
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('font-size', '10px')
+        .attr('fill', palette.text)
+        .attr('x', x)
+        .attr('y', y - 26)
+        .text(d => formatUnionDates(d.union.maritalStatus, d.union))
+    )
+  }
+}
+
+// Makes the node of each family in the selection open the preview of the
+// family: on hover, like the cards of people, and pinned on a click or tap,
+// which also reaches it on touch devices. A hovered node gets a darker
+// outline.
+export function setFamilyInteraction(nodes, {palette = chartPalette} = {}) {
+  const show = (element, family, pinned) =>
+    fireEvent(window, 'object:preview-show', {
+      objectType: 'family',
+      grampsId: family.gramps_id,
+      anchorRect: element.getBoundingClientRect(),
+      chart: true,
+      pinned,
+    })
+  nodes
+    .filter(d => d.family?.gramps_id)
+    .select('.family-chip')
+    .style('cursor', 'pointer')
+    .on('mouseenter', function (event, d) {
+      if (isHoverDevice()) {
+        this.setAttribute('stroke', palette.text)
+        show(this, d.family, false)
+      }
+    })
+    .on('mouseleave', function () {
+      if (isHoverDevice()) {
+        this.setAttribute('stroke', palette.familyMarker)
+        fireEvent(window, 'object:preview-hide')
+      }
+    })
+    .on('click', function (event, d) {
+      show(this, d.family, true)
+    })
 }

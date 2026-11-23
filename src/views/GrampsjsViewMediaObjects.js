@@ -8,7 +8,6 @@ import {
   mdiViewGrid,
   mdiSortAscending,
   mdiSortDescending,
-  mdiCheckboxMultipleOutline,
 } from '@mdi/js'
 import {GrampsjsViewObjectsBase} from './GrampsjsViewObjectsBase.js'
 import {
@@ -17,7 +16,6 @@ import {
   filterCounts,
   clickKeyHandler,
 } from '../util.js'
-import {tagColorToCss} from '../color.js'
 import {
   associationsFilter,
   mimeFilter,
@@ -27,8 +25,10 @@ import {
   textFilter,
   yearsFilter,
 } from '../filterDefinitions.js'
+import {renderPrivacyIcon} from '../objectRender.js'
 import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsTooltip.js'
+import '../components/GrampsjsTagChips.js'
 import './GrampsjsViewMediaLightbox.js'
 import '@material/web/select/filled-select'
 import '@material/web/select/select-option'
@@ -40,16 +40,6 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
     return [
       super.styles,
       css`
-        .controls-row {
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          column-gap: 16px;
-          row-gap: 12px;
-          padding: 12px 0 4px;
-          margin-bottom: 16px;
-        }
-
         .view-switcher {
           display: flex;
           align-items: center;
@@ -64,11 +54,9 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
         .sort-control md-filled-select {
           min-width: 180px;
           --md-filled-select-text-field-container-color: transparent;
-        }
-
-        grampsjs-filters {
-          display: block;
-          margin: 28px 0;
+          --md-filled-select-text-field-container-height: 40px;
+          --md-filled-select-text-field-top-space: 0px;
+          --md-filled-select-text-field-bottom-space: 0px;
         }
 
         /* Gallery (grid) view */
@@ -126,18 +114,8 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
           pointer-events: none;
         }
 
-        .select-page {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 4px 4px 4px 8px;
-          margin-top: 16px;
-          font-size: 14px;
-          color: var(--grampsjs-body-font-color-70);
-        }
-
         .tile-check md-checkbox,
-        .select-page md-checkbox,
+        .batch-toolbar md-checkbox,
         .media-list-item md-checkbox {
           --md-checkbox-outline-color: var(--grampsjs-body-font-color-30);
           --md-checkbox-hover-outline-color: var(--grampsjs-body-font-color-50);
@@ -158,7 +136,7 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
         /* List view */
 
         .media-list {
-          margin-top: 8px;
+          margin-top: 20px;
         }
 
         .media-list-item {
@@ -166,8 +144,12 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
           align-items: center;
           gap: 16px;
           padding: 8px 4px;
-          border-bottom: 1px solid var(--grampsjs-body-font-color-10);
+          border-bottom: 1px solid var(--grampsjs-divider-color);
           cursor: pointer;
+        }
+
+        .media-list-item:last-child {
+          border-bottom: none;
         }
 
         .media-list-item:hover {
@@ -199,15 +181,27 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
           min-width: 0;
         }
 
+        /* the lock of private media stays visible after a truncated title */
         .media-list-title {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          display: flex;
+          align-items: center;
+          gap: 4px;
           margin-bottom: 2px;
         }
 
+        .media-list-title span {
+          min-width: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .media-list-title grampsjs-icon {
+          flex-shrink: 0;
+        }
+
         .media-list-meta {
-          color: var(--grampsjs-body-font-color-60);
+          color: var(--grampsjs-text-secondary-color);
           font-size: 14px;
           white-space: nowrap;
           overflow: hidden;
@@ -215,20 +209,7 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
         }
 
         .tags-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
           margin-top: 4px;
-        }
-
-        .tag-chip {
-          display: inline-block;
-          border-radius: var(--md-sys-shape-corner-small, 8px);
-          padding: 1px 8px;
-          font-size: 12px;
-          border: 1px solid var(--tag-color);
-          color: var(--tag-color);
-          background-color: var(--tag-color-bg);
         }
       `,
     ]
@@ -259,7 +240,7 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
   get _fetchUrl() {
     return `/api/media/?locale=${
       this.appState.i18n.lang || 'en'
-    }&profile=self&keys=gramps_id,mime,desc,change,handle,checksum,profile,extended&extend=tag_list`
+    }&profile=self&keys=gramps_id,mime,desc,change,handle,private,checksum,profile,extended&extend=tag_list`
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -274,20 +255,14 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
 
   renderContent() {
     return html`
-      <h2>${this._('Media')}</h2>
       ${this._renderFilter()}
-      ${this._selectionMode
-        ? html`${this._renderBatchToolbar()}${this._renderSelectPage()}`
-        : ''}
-      ${this._galleryView ? this.renderAltView() : this._renderMediaList()}
-      <grampsjs-pagination
-        page="${this._page}"
-        pages="${this._pages}"
-        total="${this._totalCount}"
-        pageSize="${this._pageSize}"
-        @page:changed="${this._handlePageChanged}"
-        .appState="${this.appState}"
-      ></grampsjs-pagination>
+      ${this._selectionMode ? this._renderBatchToolbar() : ''}
+      ${this._showGetStarted
+        ? this._renderGetStarted()
+        : html`${this._galleryView
+            ? this.renderAltView()
+            : this._renderMediaList()}
+          ${this._renderPagination()}`}
       ${this.canAdd ? this.renderFab() : ''}
       <grampsjs-view-media-lightbox
         active
@@ -303,21 +278,14 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
     `
   }
 
-  _renderFilter() {
+  _renderToolbarTrailing() {
     return html`
-      <div class="controls-row">
-        <div class="view-switcher">${this._renderViewButton()}</div>
-        <div class="sort-control">${this._renderSortControl()}</div>
-        ${this.appState.permissions.canEdit ? this._renderSelectButton() : ''}
+      <div slot="trailing" class="sort-control">
+        ${this._renderSortControl()}
       </div>
-      <grampsjs-filters
-        @filters:changed="${this._handleFiltersChanged}"
-        .appState="${this.appState}"
-        .definitions="${this.filterDefinitions}"
-        namespace="${this.filterNamespace}"
-        ?errorGql="${this.error}"
-      >
-      </grampsjs-filters>
+      <div slot="trailing" class="view-switcher">
+        ${this._renderViewButton()}
+      </div>
     `
   }
 
@@ -339,39 +307,17 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
     ]
   }
 
-  _renderSelectButton() {
-    const icon = color => html`<grampsjs-icon
-      slot="icon"
-      .path="${mdiCheckboxMultipleOutline}"
-      height="20"
-      color="${color}"
-    ></grampsjs-icon>`
-    return this._selectionMode
-      ? html`<md-filled-button @click="${this._toggleSelectionMode}">
-          ${icon(
-            'var(--md-filled-button-label-text-color, var(--mdc-theme-on-primary))'
-          )}
-          ${this._('Select')}
-        </md-filled-button>`
-      : html`<md-outlined-button @click="${this._toggleSelectionMode}">
-          ${icon('var(--mdc-theme-primary)')} ${this._('Select')}
-        </md-outlined-button>`
-  }
-
   _renderSelectPage() {
     const selected = this._rawData.filter(row =>
       this._isSelected(row.handle)
     ).length
     return html`
-      <div class="select-page">
-        <md-checkbox
-          ?checked="${selected === this._rawData.length && selected > 0}"
-          ?indeterminate="${selected > 0 && selected < this._rawData.length}"
-          @change="${this._handleSelectPage}"
-          aria-label="${this._('_Select All')}"
-        ></md-checkbox>
-        <span>${this._('_Select All')}</span>
-      </div>
+      <md-checkbox
+        ?checked="${selected === this._rawData.length && selected > 0}"
+        ?indeterminate="${selected > 0 && selected < this._rawData.length}"
+        @change="${this._handleSelectPage}"
+        aria-label="${this._('_Select All')}"
+      ></md-checkbox>
     `
   }
 
@@ -453,7 +399,10 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
           ></grampsjs-img>
         </div>
         <div class="media-list-content">
-          <div class="media-list-title">${row.desc || row.gramps_id}</div>
+          <div class="media-list-title">
+            <span>${row.desc || row.gramps_id}</span>
+            ${renderPrivacyIcon(row.private, this.appState, {inline: false})}
+          </div>
           ${row.profile?.date
             ? html`<div class="media-list-meta">${row.profile.date}</div>`
             : ''}
@@ -464,15 +413,10 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
           </div>
           ${row.extended?.tags?.length
             ? html`<div class="tags-row">
-                ${row.extended.tags.map(
-                  tag => html`<span
-                    class="tag-chip"
-                    style="--tag-color:${tagColorToCss(
-                      tag.color
-                    )};--tag-color-bg:${tagColorToCss(tag.color, 0.1)}"
-                    >${tag.name}</span
-                  >`
-                )}
+                <grampsjs-tag-chips
+                  dense
+                  .data="${row.extended.tags}"
+                ></grampsjs-tag-chips>
               </div>`
             : ''}
         </div>
@@ -483,10 +427,10 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
   _renderSortControl() {
     const sortKey = this._sort ? this._sort.substring(1) : 'change'
     const isAscending = this._sort.startsWith('+')
-    const iconColor = 'var(--grampsjs-color-icon-selected)'
     return html`
       <md-filled-select
-        label="${this._('Sort by')}"
+        aria-label="${this._('Sort by')}"
+        title="${this._('Sort by')}"
         @change="${this._handleSortKeyChange}"
       >
         ${this._columns
@@ -510,7 +454,6 @@ export class GrampsjsViewMediaObjects extends GrampsjsViewObjectsBase {
         <grampsjs-icon
           path="${isAscending ? mdiSortAscending : mdiSortDescending}"
           height="24"
-          color="${iconColor}"
         ></grampsjs-icon>
       </md-icon-button>
       <grampsjs-tooltip for="btn-sort-direction" .appState="${this.appState}">

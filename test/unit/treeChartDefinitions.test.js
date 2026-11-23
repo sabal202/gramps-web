@@ -1,4 +1,4 @@
-import {describe, it, expect, vi} from 'vitest'
+import {afterEach, describe, it, expect, vi} from 'vitest'
 import {render} from 'lit'
 import {
   chartDataUrl,
@@ -40,6 +40,13 @@ describe('chart definitions', () => {
       relationshipChartAnc: 0,
     })
     expect(relationship.separation).toBe(0)
+  })
+
+  it('keeps any degree of separation from the minimum up', () => {
+    const {relationship} = chartDefinitions
+    expect(
+      chartSettingValues(relationship, {relationshipChartAnc: 20}).separation
+    ).toBe(20)
   })
 
   it('fetches one more generation than the settings count', () => {
@@ -88,6 +95,26 @@ describe('chart definitions', () => {
     expect(url).toContain('locale=de')
   })
 
+  it('passes the app state to every chart', () => {
+    const appState = {settings: {symbolSet: 'text'}, i18n: {lang: 'en'}}
+    for (const [name, definition] of Object.entries(chartDefinitions)) {
+      const container = document.createElement('div')
+      render(
+        definition.render({
+          grampsId: 'I1',
+          values: chartSettingValues(definition, {}),
+          data: [],
+          canEdit: false,
+          appState,
+          expanded: new Set(),
+          state: {},
+        }),
+        container
+      )
+      expect(container.firstElementChild.appState, name).toBe(appState)
+    }
+  })
+
   it('only allows adding people to the charts that have cards', () => {
     const editable = Object.entries(chartDefinitions)
       .filter(([, definition]) => definition.editable)
@@ -134,15 +161,92 @@ describe('GrampsjsViewTree', () => {
     expect(apiGet).toHaveBeenCalledTimes(2)
   })
 
-  it('gives each setting its own input when the chart changes', () => {
-    // The Material elements call attachInternals() in their constructor,
-    // which happy-dom does not implement
-    if (!HTMLElement.prototype.attachInternals) {
-      HTMLElement.prototype.attachInternals = () => ({
-        setFormValue() {},
-        setValidity() {},
-      })
+  describe('number settings', () => {
+    const separation = chartDefinitions.relationship.settings[0]
+    const ancestors = chartDefinitions.ancestor.settings[0]
+
+    function makeSettingsView() {
+      vi.useFakeTimers()
+      const {view} = makeView()
+      const updateSettings = vi.fn()
+      view.appState.updateSettings = updateSettings
+      return {view, updateSettings}
     }
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const input = value => ({value: String(value)})
+
+    it('saves only the last of quick changes', () => {
+      const {view, updateSettings} = makeSettingsView()
+      for (const value of [3, 4, 5]) {
+        view._changeNumberSetting(separation, input(value))
+        vi.advanceTimersByTime(200)
+      }
+      expect(updateSettings).not.toHaveBeenCalled()
+      vi.runAllTimers()
+      expect(updateSettings.mock.calls).toEqual([
+        [{relationshipChartAnc: 5}, false],
+      ])
+    })
+
+    it('saves each of two settings changed together', () => {
+      const {view, updateSettings} = makeSettingsView()
+      view._changeNumberSetting(separation, input(3))
+      view._changeNumberSetting(ancestors, input(7))
+      vi.runAllTimers()
+      expect(updateSettings.mock.calls).toEqual([
+        [{relationshipChartAnc: 3}, false],
+        [{treeChartAnc: 7}, false],
+      ])
+    })
+
+    it('saves and shows a value raised to the minimum and skips an empty field', () => {
+      const {view, updateSettings} = makeSettingsView()
+      const field = input(-3)
+      view._changeNumberSetting(separation, field)
+      vi.runAllTimers()
+      expect(field.value).toBe('0')
+      view._changeNumberSetting(separation, input(3))
+      view._changeNumberSetting(separation, input(''))
+      vi.runAllTimers()
+      expect(updateSettings.mock.calls).toEqual([
+        [{relationshipChartAnc: 0}, false],
+      ])
+    })
+
+    it('saves a high degree of separation unchanged', () => {
+      const {view, updateSettings} = makeSettingsView()
+      const field = input(40)
+      view._changeNumberSetting(separation, field)
+      vi.runAllTimers()
+      expect(field.value).toBe('40')
+      expect(updateSettings.mock.calls).toEqual([
+        [{relationshipChartAnc: 40}, false],
+      ])
+    })
+
+    it('drops a waiting change on reset and shows the default', () => {
+      const {view, updateSettings} = makeSettingsView()
+      view._currentTabId = TREE_VIEWS.indexOf('relationship')
+      const field = document.createElement('input')
+      field.id = 'setting-separation'
+      field.value = '3'
+      const root = document.createElement('div')
+      root.append(field)
+      view.renderRoot = root
+      view._changeNumberSetting(separation, field)
+      view._resetSettings()
+      vi.runAllTimers()
+      expect(field.value).toBe('2')
+      expect(updateSettings).toHaveBeenCalledOnce()
+      expect(updateSettings.mock.calls[0][0].relationshipChartAnc).toBe(2)
+    })
+  })
+
+  it('gives each setting its own input when the chart changes', () => {
     const {view} = makeView()
     view._ = s => s
     const container = document.createElement('div')
@@ -161,6 +265,7 @@ describe('GrampsjsViewTree', () => {
     render(view.renderControls(), container)
     const descendant = inputs()
     expect(Object.keys(descendant)).toEqual([
+      'setting-descendants',
       'setting-orientation',
       'setting-nameDisplayFormat',
       'setting-showMaidenName',
@@ -349,16 +454,13 @@ describe('GrampsjsViewTree', () => {
     expect(view._selectedPerson.gramps_id).toBe('I2')
   })
 
-  it('opens the page of the shown person while the selected person is loading', () => {
+  it('links to the page of the shown person while the selected person is loading', () => {
     const {view} = makeView()
     view._data = [{gramps_id: 'I1', profile: {name_given: 'Ann'}}]
     view.willUpdate(new Map())
     view.grampsId = 'I2'
     view.willUpdate(new Map())
-    const paths = []
-    view.addEventListener('nav', e => paths.push(e.detail.path))
-    view._goToPerson()
-    expect(paths).toEqual(['person/I1'])
+    expect(view._selectedPersonPath).toBe('person/I1')
   })
 
   describe('viewport keys', () => {

@@ -1,7 +1,7 @@
 import {html} from 'lit'
+import {mdiLock, mdiLockOutline} from '@mdi/js'
 
-import {asteriskIcon, crossIcon} from './icons.js'
-import {hex6ToCss, hex12ToCss} from './color.js'
+import {tagColorToCss} from './color.js'
 import {
   familyTitleFromProfile,
   eventTitleFromProfile,
@@ -17,37 +17,6 @@ import {
 import './components/GrampsjsObjectLink.js'
 import './components/GrampsjsImg.js'
 import './components/GrampsjsIcon.js'
-
-// Replaced at build time by rollup
-const BASE_DIR = ''
-
-export function renderPerson(personProfile) {
-  return html`
-    <span class="event">
-      <grampsjs-icon
-        class="inline ${personProfile.sex === 'M' ? 'male' : 'female'}"
-        path="${objectIconPath.person}"
-        color="currentColor"
-      ></grampsjs-icon>
-      <grampsjs-object-link
-        object-type="person"
-        gramps-id="${personProfile.gramps_id}"
-        >${personProfile.name_given || '…'}
-        ${personProfile.name_surname || '…'}</grampsjs-object-link
-      >
-    </span>
-    ${personProfile?.birth?.date
-      ? html` <span class="event"
-          ><i>${asteriskIcon}</i> ${personProfile.birth.date}</span
-        >`
-      : ''}
-    ${personProfile?.death?.date
-      ? html` <span class="event"
-          ><i>${crossIcon}</i> ${personProfile.death.date}</span
-        >`
-      : ''}
-  `
-}
 
 export function showObject(type, obj, strings) {
   switch (type) {
@@ -81,7 +50,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.event}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/${type}/${obj.gramps_id}"
+        <a href="/${type}/${obj.gramps_id}"
           >${eventTitleFromProfile(obj.profile || {}) ||
           (typeof obj.type === 'string'
             ? obj.type
@@ -106,9 +75,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.source}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/${type}/${obj.gramps_id}"
-          >${getName(obj, type) || type}
-        </a>
+        <a href="/${type}/${obj.gramps_id}">${getName(obj, type) || type} </a>
       `
     case 'citation':
       return html`
@@ -117,7 +84,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.citation}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/${type}/${obj.gramps_id}"
+        <a href="/${type}/${obj.gramps_id}"
           >${citationTitleFromProfile(obj.profile || {}) || type}
         </a>
       `
@@ -128,9 +95,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.repository}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/${type}/${obj.gramps_id}"
-          >${getName(obj, type) || type}
-        </a>
+        <a href="/${type}/${obj.gramps_id}">${getName(obj, type) || type} </a>
       `
     case 'note':
       return html`
@@ -139,7 +104,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.note}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/${type}/${obj.gramps_id}"
+        <a href="/${type}/${obj.gramps_id}"
           >${translate(
             strings,
             typeof obj.type === 'string'
@@ -155,9 +120,7 @@ export function showObject(type, obj, strings) {
           path="${objectIconPath.media}"
           color="currentColor"
         ></grampsjs-icon>
-        <a href="${BASE_DIR}/media/${obj.gramps_id}"
-          >${getName(obj, type) || type}
-        </a>
+        <a href="/media/${obj.gramps_id}">${getName(obj, type) || type} </a>
       `
     case 'tag':
       return html``
@@ -223,20 +186,48 @@ export function renderIcon(obj, slot = 'graphic', iconPath = null) {
     ></grampsjs-icon>`
   }
   if (obj.object_type === 'tag') {
-    const color =
-      obj.object?.color?.length > 7
-        ? hex12ToCss(obj.object.color, 0.6)
-        : hex6ToCss(obj.object.color, 0.6)
     return html`<grampsjs-icon
       slot="${slot}"
       path="${objectIconPath[obj.object_type]}"
-      color="var(--grampsjs-color-icon)"
-      style="background-color:${color};"
+      color="${tagColorToCss(obj.object?.color)}"
     ></grampsjs-icon>`
   }
   return html`<grampsjs-icon
     slot="${slot}"
     path="${iconPath || objectIconPath[obj.object_type]}"
     color="var(--grampsjs-color-icon)"
+  ></grampsjs-icon>`
+}
+
+/*
+Privacy of a row in a list of secondary objects: 'private' when the item, or
+the object it links to, is private, 'link' when only the link is, '' otherwise.
+*/
+export function rowPrivacy(item, link = null) {
+  if (item?.private) {
+    return 'private'
+  }
+  return link?.private ? 'link' : ''
+}
+
+/*
+Small icon for a row privacy, shown to users who can view private data.
+Inline, it follows the title after a space and a margin, centred on the
+capital height of the surrounding text (about 0.72em) at any font size.
+*/
+export function renderPrivacyIcon(privacy, appState, {inline = true} = {}) {
+  if (!privacy || !appState?.permissions?.canViewPrivate) {
+    return ''
+  }
+  return html`<grampsjs-icon
+    width="16"
+    height="16"
+    style="${inline
+      ? 'vertical-align: calc(0.36em - 8px); margin-left: 3px'
+      : ''}"
+    path="${privacy === 'link' ? mdiLockOutline : mdiLock}"
+    color="var(--grampsjs-body-font-color-30)"
+    role="img"
+    aria-label="${translate(appState.i18n?.strings ?? {}, 'Private')}"
   ></grampsjs-icon>`
 }

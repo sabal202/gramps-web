@@ -11,8 +11,6 @@ import path from 'path'
 
 const API_URL = process.env.API_URL === undefined ? '' : process.env.API_URL
 
-const BASE_DIR = process.env.BASE_DIR === undefined ? '' : process.env.BASE_DIR
-
 const developmentMode = process.env.ROLLUP_WATCH === 'true'
 
 const outputDir = 'dist'
@@ -57,8 +55,6 @@ export default {
       minify: !developmentMode,
       extractAssets: false,
       transformHtml: [
-        htmlStr =>
-          htmlStr.replace('<base href="/">', `<base href="${BASE_DIR}/">`),
         htmlStr => htmlStr.replace('</body>', `${swRegistrationScript}</body>`),
       ],
     }),
@@ -73,6 +69,12 @@ export default {
           dest: 'dist/webawesome-styles',
         },
         {src: './maplibre-gl.css', dest: 'dist/'},
+        // served as .js, see MAPLIBRE_WORKER_URL in GrampsjsMap.js
+        {
+          src: 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs',
+          dest: 'dist/',
+          rename: 'maplibre-gl-worker.js',
+        },
         {src: './global.css', dest: 'dist/'},
         {src: './tippy.css', dest: 'dist/'},
         {src: './src/config.js', dest: 'dist/'},
@@ -84,7 +86,6 @@ export default {
     }),
     replace({
       'http://localhost:5555': API_URL,
-      BASE_DIR: JSON.stringify(BASE_DIR),
       preventAssignment: true,
       'process.env.NODE_ENV': JSON.stringify('production'),
     }),

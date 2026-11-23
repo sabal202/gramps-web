@@ -7,6 +7,8 @@ import {
   mdiAccountMultiple,
   mdiAccountFilter,
   mdiFilter,
+  mdiPencil,
+  mdiDelete,
 } from '@mdi/js'
 
 import {sharedStyles} from '../SharedStyles.js'
@@ -20,6 +22,8 @@ const TOOL_ICONS = {
   filter_people: mdiAccountFilter,
   filter_events: mdiFilter,
   filter_families: mdiFilter,
+  propose_change: mdiPencil,
+  propose_delete: mdiDelete,
 }
 
 const toolIcon = name => TOOL_ICONS[name] ?? mdiWrench
@@ -40,7 +44,7 @@ class GrampsjsChatToolCalls extends LitElement {
 
         .status-text {
           font-size: 13px;
-          color: var(--grampsjs-body-font-color-50);
+          color: var(--grampsjs-text-secondary-color);
           margin-left: 6px;
         }
 
@@ -95,7 +99,7 @@ class GrampsjsChatToolCalls extends LitElement {
           background: var(--grampsjs-color-shade-230);
           border-radius: 8px;
           font-size: 12px;
-          color: var(--grampsjs-body-font-color-50);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         .detail-name {

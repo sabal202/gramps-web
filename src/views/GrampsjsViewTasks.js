@@ -8,6 +8,7 @@ import '../components/GrampsjsIcon.js'
 import {GrampsjsStaleDataMixin} from '../mixins/GrampsjsStaleDataMixin.js'
 
 import {fireEvent, toWritableObject} from '../util.js'
+import {rulesEqual} from '../filterDefinitions.js'
 
 export class GrampsjsViewTasks extends GrampsjsStaleDataMixin(GrampsjsView) {
   static get styles() {
@@ -34,29 +35,31 @@ export class GrampsjsViewTasks extends GrampsjsStaleDataMixin(GrampsjsView) {
     super()
     this._data = []
     this._filters = []
+    // URI of the latest request of the task list
+    this._latestUri = ''
   }
 
   render() {
-    return html`<h2>${this._('Tasks')}</h2>
-
+    return html`
       <grampsjs-tasks
         .appState="${this.appState}"
         .data="${this._data}"
+        ?loading="${this.loading}"
         @tasks:update-attribute="${this._handleUpdateAttribute}"
         @filters:changed="${this._handleFiltersChanged}"
-        ?canEdit="${this.appState.permissions.canEdit}"
       ></grampsjs-tasks>
 
-      ${this.appState.permissions.canAdd ? this.renderFab() : ''} `
+      ${this.appState.permissions.canAdd ? this.renderFab() : ''}
+    `
   }
 
   renderFab() {
     return html`
-      <md-fab variant="secondary" @click=${this._handleClickAdd}>
+      <md-fab variant="primary" @click=${this._handleClickAdd}>
         <grampsjs-icon
           slot="icon"
           .path="${mdiPlus}"
-          color="var(--mdc-theme-on-secondary)"
+          color="currentColor"
         ></grampsjs-icon>
       </md-fab>
     `
@@ -64,11 +67,6 @@ export class GrampsjsViewTasks extends GrampsjsStaleDataMixin(GrampsjsView) {
 
   _handleClickAdd() {
     fireEvent(this, 'nav', {path: 'new_task'})
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  _getAttribute(obj, key) {
-    return obj.attribute_list.filter(att => att.type === key)[0]?.value
   }
 
   async _fetchData() {
@@ -87,23 +85,16 @@ export class GrampsjsViewTasks extends GrampsjsStaleDataMixin(GrampsjsView) {
     )}&locale=${
       this.appState.i18n.lang || 'en'
     }&sort=-gramps_id&extend=tag_list`
+    this._latestUri = uri
     const data = await this.appState.apiGet(uri)
+    // a later request has replaced this one
+    if (uri !== this._latestUri) {
+      return
+    }
     this.loading = false
     if ('data' in data) {
       this.error = false
-      // sort
-      const labelOrder = {
-        Open: 1,
-        'In Progress': 2,
-        Blocked: 3,
-        other: 4,
-        Done: 5,
-      }
-      this._data = data.data.sort(
-        (a, b) =>
-          labelOrder[this._getAttribute(a, 'Status') || 'other'] -
-          labelOrder[this._getAttribute(b, 'Status') || 'other']
-      )
+      this._data = data.data
     }
     if ('error' in data) {
       this.error = true
@@ -111,28 +102,40 @@ export class GrampsjsViewTasks extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
   }
 
+  // Updates the tasks one after another and reports the first failure
   async _handleUpdateAttribute(event) {
-    const {key} = event.detail
-    const {value} = event.detail
-    for (let i = 0; i < event.detail.objects.length; i += 1) {
-      const object = event.detail.objects[i]
+    const {objects, key, value} = event.detail
+    let error = ''
+    for (const object of objects) {
       const rest = toWritableObject(object)
       rest.attribute_list = [
         ...rest.attribute_list.filter(att => att.type !== key),
-        {type: key, value},
+        {_class: 'SrcAttribute', type: key, value},
       ]
       // eslint-disable-next-line no-await-in-loop
-      await this.appState.apiPut(`/api/sources/${object.handle}`, rest, {
-        dbChanged: false,
-      })
+      const result = await this.appState.apiPut(
+        `/api/sources/${object.handle}`,
+        rest,
+        {dbChanged: false}
+      )
+      if ('error' in result && !error) {
+        error = result.error
+      }
     }
     fireEvent(this, 'db:changed')
+    if (error) {
+      fireEvent(this, 'grampsjs:error', {message: error})
+    }
   }
 
+  // the list filters the status and priority itself, so only a change of
+  // the other filters needs a new request
   _handleFiltersChanged(e) {
-    this._filters = e.detail.filters
-    e.preventDefault()
     e.stopPropagation()
+    if (rulesEqual(e.detail.filters, this._filters)) {
+      return
+    }
+    this._filters = e.detail.filters
     this._fetchData()
   }
 

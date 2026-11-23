@@ -10,6 +10,9 @@ export class GrampsjsMediaFileStatus extends GrampsjsMediaStatus {
           ? html`${this.errorMessage(this._data.data)}`
           : html`${iconSuccess}`}
         ${this._('%s media objects with missing file', nTot)}
+        ${nTot && this.appState.permissions.canImport
+          ? html`&middot; <a href="/import">${this._('Import Media Files')}</a>`
+          : ''}
       </span>
     `
   }
@@ -21,7 +24,8 @@ export class GrampsjsMediaFileStatus extends GrampsjsMediaStatus {
 
   // eslint-disable-next-line class-methods-use-this
   getUrl() {
-    return '/api/media/?keys=checksum,gramps_id&sort=gramps_id&filemissing=1'
+    // the path tells users which file to look for
+    return '/api/media/?keys=checksum,gramps_id,path&sort=gramps_id&filemissing=1'
   }
 }
 

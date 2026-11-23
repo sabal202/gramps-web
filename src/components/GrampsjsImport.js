@@ -5,12 +5,15 @@ import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 
 import {fireEvent} from '../util.js'
-import {awaitTaskResponse} from '../taskResponse.js'
+import {awaitTaskResponse, showUploadProgress} from '../taskResponse.js'
 import './GrampsjsFormUpload.js'
 import './GrampsjsTaskProgressIndicator.js'
 import './GrampsjsImportPreviewDialog.js'
 import './GrampsjsImportCounts.js'
 import './GrampsjsImportExportReport.js'
+import './GrampsjsHelpButton.js'
+import './GrampsjsDocButton.js'
+import './GrampsjsHomePerson.js'
 
 const fileExtension = file => file.name.split('.').pop().toLowerCase()
 
@@ -23,7 +26,8 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
           display: none;
         }
 
-        .alert.error {
+        /* error messages from the backend can span several lines */
+        .alert.error.multiline {
           white-space: pre-line;
         }
       `,
@@ -37,17 +41,24 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
       _uploadHint: {type: String},
       _importResult: {type: Object},
       _importError: {type: String},
+      _askHomePerson: {type: Boolean},
+      homePersonDetails: {type: Object},
+      homePersonMissing: {type: Boolean},
     }
   }
 
   constructor() {
     super()
+    this.homePersonDetails = {}
+    this.homePersonMissing = false
     // The selected file, if it can be imported.
     this._file = null
     this._busy = false
     this._uploadHint = ''
     this._importResult = null
     this._importError = ''
+    // Whether no home person was set when the import finished
+    this._askHomePerson = false
     // Token of the running preview and import. Selecting another file
     // replaces it, so a run whose task never reports back blocks nothing;
     // the replaced run stops at its next step.
@@ -56,7 +67,20 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
 
   render() {
     return html`
-      <h3>${this._('Import Family Tree')}</h3>
+      <h3>
+        ${this._('Import Family Tree')}
+        <grampsjs-help-button
+          path="administration/import/"
+          .appState="${this.appState}"
+        ></grampsjs-help-button>
+      </h3>
+
+      <p>
+        ${this._(
+          'Supported formats: %s',
+          'Gramps XML (.gramps), GEDCOM (.ged), GeneWeb (.gw), Pro-Gen (.def), vCard (.vcf), CSV (.csv)'
+        )}
+      </p>
 
       <p>
         <grampsjs-form-upload
@@ -77,7 +101,7 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
         >
         <grampsjs-task-progress-indicator
           id="progress-tree"
-          taskName="importFile"
+          .taskName="${this._busy ? '' : 'importFile'}"
           size="20"
           hideAfter="0"
           .appState="${this.appState}"
@@ -85,13 +109,27 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
         ></grampsjs-task-progress-indicator>
       </p>
       ${this._importError
-        ? html`<p class="alert error">${this._importError}</p>`
+        ? html`<p class="alert error multiline">${this._importError}</p>`
         : ''}
       ${this._renderImportResult()}
       <grampsjs-import-preview-dialog
         .appState="${this.appState}"
       ></grampsjs-import-preview-dialog>
     `
+  }
+
+  _renderZipHint() {
+    return html`<div class="alert error">
+      ${this._('ZIP archives cannot be imported.')}
+      ${this._(
+        'If it contains a GEDCOM (.ged) file, unzip it and upload that file.'
+      )}
+      <grampsjs-doc-button
+        path="administration/import/"
+        label="${this._('How to fix this')}"
+        .appState="${this.appState}"
+      ></grampsjs-doc-button>
+    </div>`
   }
 
   _renderImportResult() {
@@ -105,13 +143,44 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
           .appState="${this.appState}"
           .counts="${this._importResult}"
         ></grampsjs-import-counts>
+        ${this._renderMediaHint()} ${this._renderNextSteps()}
         <grampsjs-import-export-report
           .appState="${this.appState}"
           .messages="${this._importResult.messages}"
-          heading="${this._('Problems found during the import')}"
+          heading="${this._('Report')}"
+          filename="import-report.txt"
+          collapsed
         ></grampsjs-import-export-report>
       </div>
     `
+  }
+
+  // A family tree file only refers to media files by path, so their files are
+  // uploaded in the media import below the tree import.
+  _renderMediaHint() {
+    if (!this._importResult?.media) {
+      return ''
+    }
+    return html`<p>
+      ${this._(
+        'Media files are imported separately, under %s.',
+        this._('Import Media Files')
+      )}
+    </p>`
+  }
+
+  // Without a home person, the family tree chart has no one to start from,
+  // so after importing people the user is asked to choose one.
+  _renderNextSteps() {
+    if (!this._importResult?.people || !this._askHomePerson) {
+      return ''
+    }
+    return html`<grampsjs-home-person
+      .appState="${this.appState}"
+      .homePersonDetails=${this.homePersonDetails}
+      .homePersonMissing=${this.homePersonMissing}
+      .homePersonGrampsId="${this.appState.settings?.homePerson ?? ''}"
+    ></grampsjs-home-person>`
   }
 
   // Previews the selected file, asks for confirmation and imports it.
@@ -155,6 +224,7 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
       return
     }
     this._importResult = imported.data ?? null
+    this._askHomePerson = !this.appState.settings?.homePerson
     this._finish()
   }
 
@@ -163,13 +233,35 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
   // with null and leaves the indicator to the new run.
   async _post(op, file, dryRun) {
     const prog = this.renderRoot.querySelector('#progress-tree')
+    // Detach from the task of a replaced or previous run, so its status
+    // updates do not overwrite this upload's progress. While busy, the
+    // indicator has no taskName, so it does not reattach to such a task by
+    // name either; the run attaches its own task. Changing the task ID
+    // resets and closes the indicator on its next update, so wait for it.
+    if (prog.taskId) {
+      prog.taskId = ''
+      await prog.updateComplete
+      if (this._op !== op) {
+        return null
+      }
+    }
     prog.reset()
     prog.open = true
     const query = dryRun ? '?dry_run=true' : ''
     const res = await this.appState.apiPost(
       `/api/importers/${fileExtension(file)}/file${query}`,
       file,
-      {isJson: false, dbChanged: false}
+      {
+        isJson: false,
+        dbChanged: false,
+        // the page shows the import's progress and outcome itself
+        saving: false,
+        onUploadProgress: fraction => {
+          if (this._op === op) {
+            showUploadProgress(this.appState, prog, fraction)
+          }
+        },
+      }
     )
     if (this._op !== op) {
       return null
@@ -181,8 +273,9 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
     })
     // a replaced run still reports its outcome, but not its error
     if (outcome.error !== undefined && this._op === op) {
-      prog.errorMessage = outcome.error
-      this._importError = outcome.error
+      const error = outcome.error || this._('Import failed')
+      prog.errorMessage = error
+      this._importError = error
     }
     return outcome
   }
@@ -221,6 +314,11 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
     }
 
     const ext = fileExtension(uploadForm.file)
+    // a GEDZip file (.gdz) is a ZIP archive, too
+    if (ext === 'zip' || ext === 'gdz') {
+      this._uploadHint = this._renderZipHint()
+      return
+    }
     if (!['gpkg', 'gramps', 'gw', 'def', 'vcf', 'csv', 'ged'].includes(ext)) {
       this._uploadHint = html`<p class="alert error">
         ${this._('Unsupported format')}
@@ -238,15 +336,7 @@ export class GrampsjsImport extends GrampsjsAppStateMixin(LitElement) {
       </p>`
       return
     }
-    if (ext !== 'gramps') {
-      this._uploadHint = html`<p class="alert warn">
-        ${this._(
-          'If you intend to synchronize an existing Gramps database with Gramps Web, use the Gramps XML (.gramps) format instead.'
-        )}
-      </p>`
-    } else {
-      this._uploadHint = ''
-    }
+    this._uploadHint = ''
     this._file = uploadForm.file
   }
 }

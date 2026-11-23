@@ -2,7 +2,7 @@ import {html, css, LitElement} from 'lit'
 import '@material/web/button/filled-button.js'
 import '@material/web/chips/chip-set.js'
 import '@material/web/chips/assist-chip.js'
-import {mdiNotificationClearAll, mdiAccountHeart} from '@mdi/js'
+import {mdiAccountHeart, mdiChatPlusOutline} from '@mdi/js'
 
 import {sharedStyles} from '../SharedStyles.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
@@ -19,7 +19,9 @@ import {
   apiChatStream,
 } from '../api.js'
 import {stripChatHistoryRaw} from '../chatHistory.js'
-import {fireEvent} from '../util.js'
+import {chatVisionAvailable} from '../chatImages.js'
+import {markProposalsReported, previousProposalStatus} from '../chatProposal.js'
+import {fireEvent, makeHandle} from '../util.js'
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -115,9 +117,8 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         }
 
         .clear-btn {
-          position: relative;
-          top: 20px;
-          left: 0px;
+          padding: 20px 0 8px 0;
+          flex-shrink: 0;
         }
 
         .home-banner {
@@ -162,6 +163,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       _liveToolCalls: {type: Array},
       _liveStatus: {type: String},
       _liveText: {type: String},
+      _applyingProposal: {type: String},
     }
   }
 
@@ -173,6 +175,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     this._liveToolCalls = []
     this._liveStatus = ''
     this._liveText = ''
+    this._applyingProposal = ''
     // Whether the conversation should re-pin to the bottom after the next
     // render. Captured before each update so we only auto-scroll when the user
     // was already reading the latest messages (not when they scrolled up).
@@ -224,7 +227,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
           >
             <grampsjs-icon
               slot="icon"
-              path="${mdiNotificationClearAll}"
+              path="${mdiChatPlusOutline}"
               color="currentColor"
             ></grampsjs-icon>
             ${this._('New')}
@@ -252,7 +255,13 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
                   <grampsjs-chat-message
                     type="${message.role}"
                     .message="${message.message}"
+                    .images="${message.images ?? []}"
                     .metadata="${message.metadata ?? null}"
+                    .proposal="${message.proposal ?? null}"
+                    proposalStatus="${message.proposalStatus ?? ''}"
+                    ?proposalDisabled="${this._busy}"
+                    @chat-proposal:apply="${() =>
+                      this._applyProposal(message.proposal)}"
                     .appState="${this.appState}"
                   ></grampsjs-chat-message>
                 `
@@ -291,7 +300,8 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
             : ''}
           <div class="prompt">
             <grampsjs-chat-prompt
-              ?loading="${this.loading}"
+              ?loading="${this._busy}"
+              ?vision="${chatVisionAvailable(this.appState.dbInfo)}"
               @chat:prompt="${this._handlePrompt}"
               .appState="${this.appState}"
             ></grampsjs-chat-prompt>
@@ -305,35 +315,124 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     if (!message.message) {
       return
     }
-    const {messages} = this
-
-    if (message.role === 'ai') {
-      // for AI messages, we display the message word by word
-      // to simulate streaming response (which it's not, but
-      // users may be used to it.)
-      const words = message.message.split(' ')
-      const nWords = words.length
-      for (let end = 1; end <= nWords; end += 1) {
+    if (message.role !== 'ai') {
+      this.messages = [...this.messages.slice(-(maxLength - 1)), message]
+      return
+    }
+    // for AI messages, we display the message word by word
+    // to simulate streaming response (which it's not, but
+    // users may be used to it.)
+    const words = message.message.split(' ')
+    const nWords = words.length
+    this.messages = [
+      ...this.messages.slice(-(maxLength - 1)),
+      {...message, message: words[0]},
+    ]
+    for (let end = 1; end <= nWords; end += 1) {
+      if (end > 1) {
+        // the last message is rebuilt from its live state, which may have
+        // changed meanwhile, e.g. its proposal been applied
+        const last = this.messages[this.messages.length - 1]
         this.messages = [
-          ...messages.slice(-(maxLength - 1)),
-          {...message, message: words.slice(0, end).join(' ')},
+          ...this.messages.slice(0, -1),
+          {...last, message: words.slice(0, end).join(' ')},
         ]
-        // eslint-disable-next-line no-await-in-loop
-        await delay(Math.ceil(1000 / nWords))
       }
-    } else {
-      this.messages = [...messages.slice(-(maxLength - 1)), message]
+      // eslint-disable-next-line no-await-in-loop
+      await delay(Math.ceil(1000 / nWords))
     }
   }
 
+  // The AI message of a chat result, keeping the history of the conversation
+  // for the next query
+  _aiMessage(result) {
+    if (result.message_history_raw) {
+      setChatMessageHistoryRaw(result.message_history_raw)
+    }
+    // the query that got this answer told the assistant about them
+    this.messages = markProposalsReported(this.messages)
+    const message = {
+      role: 'ai',
+      message: result.response,
+      metadata: result.metadata ?? null,
+    }
+    if (result.proposal?.transaction?.length > 0) {
+      message.proposal = {...result.proposal, id: makeHandle()}
+    }
+    return message
+  }
+
+  // Whether the assistant answers or a proposal is being applied. Neither may
+  // start while the other runs, as the answer could hold a proposal made for
+  // the tree as it was before the changes.
+  get _busy() {
+    return this.loading || !!this._applyingProposal
+  }
+
+  async _applyProposal(proposal) {
+    if (!proposal || this._busy) return
+    this._applyingProposal = proposal.id
+    const result = await this.appState.apiPost(
+      `/api/transactions/?message=${encodeURIComponent(
+        'Changes proposed by the assistant'
+      )}`,
+      proposal.transaction
+    )
+    this._applyingProposal = ''
+    if ('error' in result) {
+      fireEvent(this, 'grampsjs:error', {message: result.error})
+      // the transaction is rejected as a whole, e.g. as a record has changed
+      // since the proposal was made, and would be again
+      if (result.errorDetail?.status === 400) {
+        this._setProposalStatus(proposal.id, 'outdated')
+      }
+      return
+    }
+    this._setProposalStatus(proposal.id, 'applied')
+    fireEvent(this, 'transaction:undo', {
+      message: 'Changes applied',
+      transaction: result.data,
+      redirect: 'chat',
+    })
+  }
+
+  // Sets the status of a proposal. Once one is applied, the others that are
+  // still open are outdated: they were made for the tree as it was before,
+  // and records they add could get the same Gramps IDs.
+  _setProposalStatus(id, status) {
+    this.messages = this.messages.map(message => {
+      if (!message.proposal || message.proposalStatus) return message
+      if (message.proposal.id === id) {
+        return status === 'applied'
+          ? {...message, proposalStatus: status, proposalUnreported: true}
+          : {...message, proposalStatus: status}
+      }
+      return status === 'applied'
+        ? {...message, proposalStatus: 'outdated'}
+        : message
+    })
+    setChatHistory(this.messages)
+  }
+
+  // Only the thumbnails of attached images are kept in the conversation, as
+  // it is stored in the browser; the images are sent with this query only
   _handlePrompt(event) {
+    const images = event.detail.images ?? []
     const message = {
       role: 'human',
       message: event.detail.message,
     }
+    if (images.length > 0) {
+      message.images = images.map(image => image.thumbnail)
+    }
+    // before the prompt is added, which can drop the oldest message
+    const previousProposal = previousProposalStatus(this.messages)
     this._addMessage(message, 7)
     setChatHistory(this.messages)
-    this._generateResponse()
+    this._generateResponse(
+      images.map(image => image.data),
+      previousProposal
+    )
   }
 
   _pollChatTask(taskId, onProgress) {
@@ -364,9 +463,14 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     })
   }
 
-  _buildChatPayload() {
+  // Build the payload for a chat request: query, images, previous-proposal
+  // status, home person, and message history.
+  _buildChatPayload(images = [], previousProposal = '') {
     const payload = {
       query: this.messages[this.messages.length - 1].message,
+    }
+    if (images.length > 0) {
+      payload.images = images
     }
     // Tell the backend who the user is, so the assistant can resolve
     // self-references ("my cousins") to the home person without asking.
@@ -379,19 +483,27 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       payload.message_history_raw = stripChatHistoryRaw(rawHistory)
     } else if (this.messages.length > 1) {
       // Fallback for sessions pre-dating message_history_raw; can be removed later.
-      payload.history = this.messages.slice(0, this.messages.length - 1)
+      payload.history = this.messages
+        .slice(0, this.messages.length - 1)
+        .map(({role, message}) => ({role, message}))
+    }
+    // the model doesn't see its proposals in the stripped history
+    if (previousProposal) {
+      payload.previous_proposal = previousProposal
     }
     return payload
   }
 
   // Real token streaming via SSE; falls back to the background/polling path if
   // streaming is unavailable (old server, network error, unsupported client).
-  async _generateResponse() {
+  // `previousProposal` is what to tell the assistant about its proposals, see
+  // previousProposalStatus
+  async _generateResponse(images = [], previousProposal = '') {
     this.loading = true
     this._liveText = ''
     this._liveToolCalls = []
     this._liveStatus = ''
-    const payload = this._buildChatPayload()
+    const payload = this._buildChatPayload(images, previousProposal)
     let receivedAny = false
     let finalized = false
     const fireError = (msg, detail = {}) =>
@@ -445,7 +557,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         this._liveText = ''
         this._liveToolCalls = []
         this._liveStatus = ''
-        return this._generateResponseBackground()
+        return this._generateResponseBackground(images, previousProposal)
       }
       fireError(err?.message || this._('An error occurred'))
       this.messages = [
@@ -462,9 +574,9 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     return undefined
   }
 
-  async _generateResponseBackground() {
+  async _generateResponseBackground(images = [], previousProposal = '') {
     this.loading = true
-    const payload = this._buildChatPayload()
+    const payload = this._buildChatPayload(images, previousProposal)
     const data = await this.appState.apiPost(
       '/api/chat/?background=1&verbose=1',
       payload,
@@ -500,15 +612,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         message = {role: 'error', message: this._('An error occurred')}
       }
       if (status?.state === 'SUCCESS' && status?.result_object?.response) {
-        const result = status.result_object
-        if (result.message_history_raw) {
-          setChatMessageHistoryRaw(result.message_history_raw)
-        }
-        message = {
-          role: 'ai',
-          message: result.response,
-          metadata: result.metadata ?? null,
-        }
+        message = this._aiMessage(status.result_object)
       } else if (!message) {
         const errMsg =
           (status?.state === 'FAILURE' && status.result_object) ||
@@ -517,15 +621,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         message = {role: 'error', message: this._(errMsg)}
       }
     } else if (data?.data?.response) {
-      const result = data.data
-      if (result.message_history_raw) {
-        setChatMessageHistoryRaw(result.message_history_raw)
-      }
-      message = {
-        role: 'ai',
-        message: result.response,
-        metadata: result.metadata ?? null,
-      }
+      message = this._aiMessage(data.data)
     } else {
       fireError('An error occurred')
       message = {role: 'error', message: this._('An error occurred')}
@@ -534,7 +630,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
     this.loading = false
     this._liveToolCalls = []
     this._liveStatus = ''
-    await this._addMessage(message, 6)
+    await this._addMessage(message, 7)
     setChatHistory(this.messages)
     if (data?.task?.id) {
       setChatTaskId(null, data.task.id)
@@ -603,15 +699,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
       }
       let message
       if (status?.state === 'SUCCESS' && status?.result_object?.response) {
-        const result = status.result_object
-        if (result.message_history_raw) {
-          setChatMessageHistoryRaw(result.message_history_raw)
-        }
-        message = {
-          role: 'ai',
-          message: result.response,
-          metadata: result.metadata ?? null,
-        }
+        message = this._aiMessage(status.result_object)
       } else if (status) {
         const errMsg =
           (status?.state === 'FAILURE' && status.result_object) ||
@@ -620,7 +708,7 @@ class GrampsjsChat extends GrampsjsAppStateMixin(LitElement) {
         message = {role: 'error', message: this._(errMsg)}
       }
       if (message) {
-        await this._addMessage(message, 6)
+        await this._addMessage(message, 7)
         setChatHistory(this.messages)
       }
       setChatTaskId(null, taskId)

@@ -2,9 +2,12 @@ import {describe, it, expect} from 'vitest'
 import {render, html} from 'lit'
 import {
   translate,
+  objectDescription,
   objectDetail,
+  prefixSearchQuery,
   personTitleFromProfile,
   personDisplayName,
+  personAndFamilyEventHandles,
   reportSelectItemLabel,
   reportSelectItemValue,
   familyTitleFromProfile,
@@ -66,7 +69,21 @@ describe('translate', () => {
       {symbolSet: 'text'}
     )
     expect(result).to.include('b. 1990')
-    expect(result).not.to.include('∗ 1990')
+    expect(result).not.to.include('* 1990')
+  })
+
+  it('shows birth and death with places in person detail', () => {
+    const result = objectDetail(
+      'person',
+      {
+        profile: {
+          birth: {date: '1850', place_name: 'Paris'},
+          death: {date: '1920', place_name: 'Berlin'},
+        },
+      },
+      {}
+    )
+    expect(result).to.equal('* 1850, Paris † 1920, Berlin')
   })
 
   it('strips leading underscore', () => {
@@ -79,6 +96,48 @@ describe('translate', () => {
 
   it('returns empty string for undefined key', () => {
     expect(translate(strings, undefined)).to.equal('')
+  })
+})
+
+describe('note title and detail', () => {
+  const strings = {Research: 'Forschung', General: 'Allgemein'}
+
+  function title(note) {
+    const div = document.createElement('div')
+    render(html`${objectDescription('note', note, strings)}`, div)
+    return div.textContent.trim()
+  }
+
+  it('uses the first line as title and the type as detail', () => {
+    const note = {type: 'Research', text: {string: 'Census 1900\nmore'}}
+    expect(title(note)).to.equal('Census 1900')
+    expect(objectDetail('note', note, strings)).to.equal('Forschung')
+  })
+
+  it('leaves out the General type', () => {
+    const note = {type: {string: '', value: 1}, text: {string: 'Census'}}
+    expect(objectDetail('note', note, strings)).to.equal('')
+  })
+
+  it('uses the type as title of an empty note', () => {
+    const note = {type: 'General', text: {string: ''}}
+    expect(title(note)).to.equal('Allgemein')
+    expect(objectDetail('note', note, strings)).to.equal('')
+  })
+})
+
+describe('prefixSearchQuery', () => {
+  it('appends a wildcard after a letter or digit', () => {
+    expect(prefixSearchQuery('Anna Smi')).to.equal('Anna Smi*')
+    expect(prefixSearchQuery('Müller')).to.equal('Müller*')
+    expect(prefixSearchQuery('I0042')).to.equal('I0042*')
+  })
+
+  it('keeps queries ending in other characters', () => {
+    expect(prefixSearchQuery('Smi*')).to.equal('Smi*')
+    expect(prefixSearchQuery('"Anna Smith"')).to.equal('"Anna Smith"')
+    expect(prefixSearchQuery('(Anna OR Maria)')).to.equal('(Anna OR Maria)')
+    expect(prefixSearchQuery('Smith ')).to.equal('Smith ')
   })
 })
 
@@ -803,5 +862,33 @@ describe('taskErrorMessage', () => {
 
   it('is empty without a status', () => {
     expect(taskErrorMessage(undefined)).toBe('')
+  })
+})
+
+describe('personAndFamilyEventHandles', () => {
+  it('returns own and family event handles without repeats', () => {
+    const person = {
+      event_ref_list: [{ref: 'E1'}, {ref: 'E2'}],
+      extended: {
+        families: [
+          {event_ref_list: [{ref: 'E3'}, {ref: 'E1'}]},
+          null,
+          {event_ref_list: [{ref: 'E4'}]},
+        ],
+      },
+    }
+    expect(personAndFamilyEventHandles(person)).toEqual([
+      'E1',
+      'E2',
+      'E3',
+      'E4',
+    ])
+  })
+
+  it('returns own events when families are not loaded', () => {
+    expect(
+      personAndFamilyEventHandles({event_ref_list: [{ref: 'E1'}]})
+    ).toEqual(['E1'])
+    expect(personAndFamilyEventHandles(null)).toEqual([])
   })
 })

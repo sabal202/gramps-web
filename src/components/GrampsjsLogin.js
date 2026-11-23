@@ -3,17 +3,18 @@ import {html, css, LitElement} from 'lit'
 
 import '@material/web/progress/circular-progress.js'
 import '@material/web/button/filled-button'
-import '@material/web/button/outlined-button'
+import '@material/web/button/filled-tonal-button.js'
 
 import {mdiCheckCircle} from '@mdi/js'
 
 import './GrampsjsIcon.js'
-import './GrampsjsOidcButton.js'
+import {renderOidcButtons} from './GrampsjsOidcButton.js'
 import {sharedStyles} from '../SharedStyles.js'
 import {
   apiGetTokens,
   apiResetPassword,
   apiGetOIDCConfig,
+  apiGetRegistrationEnabled,
   apiOIDCLogin,
 } from '../api.js'
 import {fireEvent} from '../util.js'
@@ -116,24 +117,20 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
           --button-height: 48px;
         }
 
-        .button-container md-outlined-button,
+        .button-container md-filled-tonal-button,
         .button-container md-filled-button {
           flex: 1;
           height: var(--button-height);
         }
 
-        .button-container md-outlined-button {
-          --md-outlined-button-container-height: var(--button-height);
-          --md-outlined-button-leading-space: 8px;
-          --md-outlined-button-trailing-space: 8px;
-          --md-outlined-button-top-space: 0px;
-          --md-outlined-button-bottom-space: 0px;
+        .button-container md-filled-tonal-button {
+          --md-filled-tonal-button-container-height: var(--button-height);
+          --md-filled-tonal-button-leading-space: 8px;
+          --md-filled-tonal-button-trailing-space: 8px;
+          --md-filled-tonal-button-top-space: 0px;
+          --md-filled-tonal-button-bottom-space: 0px;
           min-height: var(--button-height);
           max-height: var(--button-height);
-        }
-
-        .button-container md-outlined-button::part(outline) {
-          height: var(--button-height);
         }
 
         .button-container md-filled-button {
@@ -202,6 +199,7 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
       oidcConfig: {type: Object},
       _loggingIn: {type: Boolean},
       _oidcProvider: {type: String},
+      _registrationEnabled: {type: Boolean},
     }
   }
 
@@ -214,7 +212,35 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
     this.oidcConfig = {}
     this._loggingIn = false
     this._oidcProvider = ''
+    // undefined while loading, null when the server does not say
+    this._registrationEnabled = undefined
     this._boundHandlePageShow = this._handlePageShow.bind(this)
+  }
+
+  willUpdate(changed) {
+    if (changed.has('tree')) {
+      this._loadRegistrationEnabled()
+    }
+  }
+
+  async _loadRegistrationEnabled() {
+    const {tree} = this
+    this._registrationEnabled = undefined
+    const enabled = await apiGetRegistrationEnabled(tree)
+    if (this.tree === tree) {
+      this._registrationEnabled = enabled
+    }
+  }
+
+  // Hidden while loading, so that servers without registration never
+  // flash the button.
+  _showRegisterButton() {
+    if (window.grampsjsConfig.hideRegisterLink) {
+      return false
+    }
+    return (
+      this._registrationEnabled === true || this._registrationEnabled === null
+    )
   }
 
   async connectedCallback() {
@@ -304,15 +330,18 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
                   <label for="password">${this._('Password')}</label>
                 </div>
                 <div class="button-container">
-                  ${window.grampsjsConfig.hideRegisterLink
-                    ? ''
-                    : html`
-                        <md-outlined-button
-                          @click="${() => this._handleNav('register')}"
+                  ${this._showRegisterButton()
+                    ? html`
+                        <md-filled-tonal-button
+                          @click="${() =>
+                            this._handleNav(
+                              this.tree ? `register/${this.tree}` : 'register'
+                            )}"
                         >
                           ${this._('Register new account')}
-                        </md-outlined-button>
-                      `}
+                        </md-filled-tonal-button>
+                      `
+                    : ''}
                   <md-filled-button type="submit">
                     ${this._loggingIn
                       ? html`<md-circular-progress
@@ -339,21 +368,11 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
             ? html`<hr />`
             : ''}
           ${this.oidcConfig?.enabled && this.oidcConfig?.providers
-            ? this.oidcConfig.providers.map(
-                provider => html`
-                  <grampsjs-oidc-button
-                    .provider="${provider.id}"
-                    .providerName="${provider.name}"
-                    .onClick="${() => this._submitOIDCLogin(provider.id)}"
-                    .buttonText="${this._getOIDCButtonText(
-                      provider.id,
-                      provider.name
-                    )}"
-                    .signingInText="${this._('Signing in...')}"
-                    .loading="${this._oidcProvider === provider.id}"
-                  ></grampsjs-oidc-button>
-                `
-              )
+            ? renderOidcButtons(this.oidcConfig.providers, {
+                translate: (...args) => this._(...args),
+                loadingProvider: this._oidcProvider,
+                onClick: id => this._submitOIDCLogin(id),
+              })
             : ''}
         </form>
       </div>
@@ -362,10 +381,6 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
 
   _handleNav(path) {
     fireEvent(this, 'nav', {path})
-  }
-
-  _getOIDCButtonText(providerId, providerName) {
-    return `${this._('Continue with %s', providerName)}`
   }
 
   _credChanged(e) {
@@ -422,7 +437,7 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
               @click="${() => {
                 this.resetpw = false
               }}"
-              >${this._('_Back')}</span
+              >${this._('Back to login')}</span
             >
           </p>
         </form>
@@ -462,7 +477,7 @@ class GrampsjsLogin extends GrampsjsAppStateMixin(LitElement) {
       return
     }
     this._oidcProvider = providerId
-    const res = await apiOIDCLogin(providerId)
+    const res = await apiOIDCLogin(providerId, this.tree)
     if ('error' in res) {
       this._oidcProvider = ''
       this._showError(res.error)

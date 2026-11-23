@@ -2,7 +2,6 @@ import {
   getSettings,
   getPermissions,
   getTreeConfig,
-  getTreeId,
   setTreeConfig,
   apiGet,
   Auth,
@@ -57,7 +56,7 @@ export function getInitialAppState() {
   function notifyTasks() {
     fireEvent(window, 'tasks:changed', {tasks: [...activeTasks.values()]})
     // Also update the notification bell count to include running tasks.
-    // Re-use notifications:changed so GrampsjsMainMenu picks it up without
+    // Re-use notifications:changed so GrampsjsAppBar picks it up without
     // needing a separate listener.
     fireEvent(window, 'notifications:changed', {
       notifications: [...notifications],
@@ -284,13 +283,6 @@ export function getInitialAppState() {
     return result
   }
 
-  function checkTreeMissing(result) {
-    if (shouldSignalTreeMissing(result, getTreeId())) {
-      fireEvent(window, 'tree:missing')
-    }
-    return result
-  }
-
   return {
     auth,
     screenSize: 'small',
@@ -303,6 +295,7 @@ export function getInitialAppState() {
       canEdit: false,
       canViewPrivate: false,
       canManageUsers: false,
+      canImport: false,
       canUseChat: false,
       canUpgradeTree: false,
       canEditTree: false,
@@ -318,15 +311,17 @@ export function getInitialAppState() {
       pageId: '',
       pageId2: '',
     },
-    apiGet: endpoint => {
+    // `background: true` keeps the request out of the progress indicator.
+    apiGet: (endpoint, {background = false, ...options} = {}) => {
+      if (background) {
+        return apiGet(auth, endpoint, options)
+      }
       activeGetCount += 1
       notifyCounters()
-      return apiGet(auth, endpoint)
-        .finally(() => {
-          activeGetCount = Math.max(0, activeGetCount - 1)
-          notifyCounters()
-        })
-        .then(checkTreeMissing)
+      return apiGet(auth, endpoint, options).finally(() => {
+        activeGetCount = Math.max(0, activeGetCount - 1)
+        notifyCounters()
+      })
     },
     apiPost: (endpoint, payload, options = {}) => {
       const {saving: isSave = true} = options
@@ -335,9 +330,9 @@ export function getInitialAppState() {
         activeSaveCount += 1
         notifyCounters()
       }
-      return apiPutPostDelete(auth, 'POST', endpoint, payload, options)
-        .then(result => (isSave ? completeSave(result) : result))
-        .then(checkTreeMissing)
+      return apiPutPostDelete(auth, 'POST', endpoint, payload, options).then(
+        result => (isSave ? completeSave(result) : result)
+      )
     },
     apiPut: (endpoint, payload, options = {}) => {
       const {saving: isSave = true} = options
@@ -346,9 +341,9 @@ export function getInitialAppState() {
         activeSaveCount += 1
         notifyCounters()
       }
-      return apiPutPostDelete(auth, 'PUT', endpoint, payload, options)
-        .then(result => (isSave ? completeSave(result) : result))
-        .then(checkTreeMissing)
+      return apiPutPostDelete(auth, 'PUT', endpoint, payload, options).then(
+        result => (isSave ? completeSave(result) : result)
+      )
     },
     apiDelete: (endpoint, options = {}) => {
       const {saving: isSave = true} = options
@@ -363,9 +358,7 @@ export function getInitialAppState() {
         endpoint,
         options.payload ?? {},
         options
-      )
-        .then(result => (isSave ? completeSave(result) : result))
-        .then(checkTreeMissing)
+      ).then(result => (isSave ? completeSave(result) : result))
     },
     refreshTokenIfNeeded: (force = false) => auth.getValidAccessToken(force),
     signout: () => auth.signout(),
@@ -419,14 +412,6 @@ export function getInitialAppState() {
   }
 }
 
-// A 403 can mean many things (ordinary permission denials use the same error
-// envelope), so the status is only a trigger to check the token we already
-// hold - the absence of a `tree` claim is what actually means "no tree
-// selected", never the error message text.
-export function shouldSignalTreeMissing(result, treeId) {
-  return result?.errorDetail?.status === 403 && !treeId
-}
-
 // Matched against the tab's pinned tree, not the shared token, so task state
 // stays scoped to the tree whose data this tab loaded. Tasks without a `tree`
 // field (older backends, tree-independent tasks) are shown in every tree.
@@ -451,6 +436,7 @@ export function appStateUpdatePermissions(appState) {
     canEdit: rawPermissions.includes('EditObject'),
     canViewPrivate: rawPermissions.includes('ViewPrivate'),
     canManageUsers: rawPermissions.includes('EditOtherUser'),
+    canImport: rawPermissions.includes('ImportFile'),
     canUseChat: rawPermissions.includes('UseChat'),
     canUpgradeTree: rawPermissions.includes('UpgradeSchema'),
     canEditTree: rawPermissions.includes('EditTree'),

@@ -1,13 +1,17 @@
 import {LitElement, css, html} from 'lit'
+import {classMap} from 'lit/directives/class-map.js'
 import {
   mdiArrowLeft,
   mdiArrowRight,
   mdiDelete,
   mdiLinkPlus,
+  mdiLock,
+  mdiLockOpenVariantOutline,
+  mdiLockOutline,
   mdiPlus,
 } from '@mdi/js'
 
-import {sharedStyles} from '../SharedStyles.js'
+import {reorderableStyles, sharedStyles} from '../SharedStyles.js'
 import './GrampsjsImg.js'
 import './GrampsjsIcon.js'
 import '../views/GrampsjsViewMediaLightbox.js'
@@ -16,11 +20,14 @@ import './GrampsjsFormNewMedia.js'
 import '@material/web/iconbutton/icon-button.js'
 import {fireEvent} from '../util.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
+import {DragReorderController} from '../dragReorderController.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 
 export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
     return [
       sharedStyles,
+      reorderableStyles,
       css`
         .gallery {
           display: grid;
@@ -40,18 +47,22 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           position: relative;
         }
 
+        .reorderable > .tile:not([dragging]) {
+          cursor: grab;
+        }
+
         .tile grampsjs-img {
           position: absolute;
           inset: 0;
         }
 
-        .profile-picture-badge {
+        .first-tile-badge {
           position: absolute;
           top: 4px;
           left: 4px;
-          right: 4px;
+          right: 40px;
           width: fit-content;
-          max-width: calc(100% - 8px);
+          max-width: calc(100% - 44px);
           box-sizing: border-box;
           padding: 4px 8px;
           border-radius: var(--md-sys-shape-corner-small, 8px);
@@ -65,6 +76,23 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           pointer-events: none;
         }
 
+        .privacy-badge {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          display: flex;
+          padding: 4px;
+          border-radius: 50%;
+          background: var(--md-sys-color-surface-container-highest);
+          pointer-events: none;
+        }
+
+        .privacy-button {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+        }
+
         .tile-overlay {
           position: absolute;
           bottom: 4px;
@@ -73,7 +101,8 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           gap: 2px;
         }
 
-        .tile-overlay md-icon-button {
+        .tile-overlay md-icon-button,
+        .privacy-button {
           --md-icon-button-container-width: 32px;
           --md-icon-button-container-height: 32px;
           --md-icon-button-icon-size: 18px;
@@ -94,7 +123,8 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
       media: {type: Array},
       dialogContent: {type: String},
       edit: {type: Boolean},
-      profilePicture: {type: Boolean},
+      // the label of the first tile in edit mode, such as "Profile picture"
+      firstTileLabel: {type: String},
       _lightboxSelected: {type: Number},
     }
   }
@@ -104,27 +134,54 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
     this.mediaRef = []
     this.media = []
     this.edit = false
-    this.profilePicture = false
+    this.firstTileLabel = ''
     this.dialogContent = ''
     this._lightboxSelected = 0
+    this._dragReorder = new DragReorderController(this, {
+      grid: true,
+      getContainer: () =>
+        this.edit ? this.renderRoot.querySelector('.gallery') : null,
+      getCount: () => this.media.length,
+      onMove: (from, to) => this._handleMediaRefMove(from, to),
+    })
+  }
+
+  updated(changed) {
+    if (changed.has('edit') || changed.has('media')) {
+      // the tiles under an ongoing drag may have changed
+      this._dragReorder.end()
+    }
   }
 
   render() {
+    const firstTileIndex = this._firstTileIndex()
     return html`
-      <div class="gallery">
-        ${this.media.map((mediaObj, i) => this._renderThumbnail(i))}
+      <div
+        class="${classMap({gallery: true, reorderable: this.edit})}"
+        @pointerdown="${this._dragReorder.handlePointerDown}"
+        @dragstart="${this._dragReorder.handleDragStart}"
+      >
+        ${this.media.map((mediaObj, i) =>
+          this._renderThumbnail(i, firstTileIndex)
+        )}
       </div>
 
       ${this.edit
         ? html`
             <div class="edit-actions">
-              <md-icon-button @click="${this.openMediaRef}">
+              <md-icon-button
+                aria-label="${this._('Select an existing media object')}"
+                @click="${this.openMediaRef}"
+              >
                 <grampsjs-icon
                   path="${mdiLinkPlus}"
                   color="var(--mdc-theme-secondary)"
                 ></grampsjs-icon>
               </md-icon-button>
-              <md-icon-button @click="${this.openNewMedia}">
+              <md-icon-button
+                aria-label="${this._('Add a new media object')}"
+                @click="${this.openNewMedia}"
+              >
                 <grampsjs-icon
                   path="${mdiPlus}"
                   color="var(--mdc-theme-secondary)"
@@ -150,9 +207,27 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
     `
   }
 
-  _renderThumbnail(i) {
+  // the tile that is first once the ongoing drag, if any, is dropped
+  _firstTileIndex() {
+    const {target} = this._dragReorder
+    if (!target) {
+      return 0
+    }
+    if (target.to === 0) {
+      return target.from
+    }
+    // the second tile moves up when the first one is dragged away
+    return target.from === 0 ? 1 : 0
+  }
+
+  _renderThumbnail(i, firstTileIndex) {
     const {handle, mime, checksum} = this.media[i]
     const {rect} = this.mediaRef[i]
+    const privacyIcon = renderPrivacyIcon(
+      rowPrivacy(this.media[i], this.mediaRef[i]),
+      this.appState,
+      {inline: false}
+    )
     return html`
       <div class="tile">
         <grampsjs-img
@@ -165,10 +240,13 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           checksum="${checksum}"
           @click="${() => this._handleClick(i)}"
         ></grampsjs-img>
-        ${this.edit && this.profilePicture && i === 0
-          ? html`<span class="profile-picture-badge"
-              >${this._('Profile picture')}</span
-            >`
+        ${this.edit && this.firstTileLabel && i === firstTileIndex
+          ? html`<span class="first-tile-badge">${this.firstTileLabel}</span>`
+          : ''}
+        ${this.edit
+          ? this._renderPrivacyButton(i)
+          : privacyIcon
+          ? html`<span class="privacy-badge">${privacyIcon}</span>`
           : ''}
         ${this.edit
           ? html`
@@ -176,6 +254,7 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
                 ${i > 0
                   ? html`
                       <md-icon-button
+                        aria-label="${this._('Move Left')}"
                         @click="${e => {
                           e.stopPropagation()
                           this._handleMediaRefLeft(i)
@@ -191,6 +270,7 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
                 ${i < this.media.length - 1
                   ? html`
                       <md-icon-button
+                        aria-label="${this._('Move right')}"
                         @click="${e => {
                           e.stopPropagation()
                           this._handleMediaRefRight(i)
@@ -204,6 +284,7 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
                     `
                   : ''}
                 <md-icon-button
+                  aria-label="${this._('Remove')}"
                   @click="${e => {
                     e.stopPropagation()
                     this._handleMediaRefDel(i)
@@ -219,6 +300,42 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
           : ''}
       </div>
     `
+  }
+
+  /*
+  Toggles the privacy of the media object, for every object it is linked
+  to. The icon also shows a private link, which is set elsewhere.
+  */
+  _renderPrivacyButton(i) {
+    const media = this.media[i]
+    const privacy = rowPrivacy(media, this.mediaRef[i])
+    const paths = {private: mdiLock, link: mdiLockOutline}
+    return html`
+      <md-icon-button
+        class="privacy-button"
+        aria-label="${media.private
+          ? this._('Record is private')
+          : this._('Record is public')}"
+        @click="${e => {
+          e.stopPropagation()
+          this._handleMediaPrivacy(i)
+        }}"
+      >
+        <grampsjs-icon
+          path="${paths[privacy] ?? mdiLockOpenVariantOutline}"
+          color="var(--mdc-theme-secondary)"
+        ></grampsjs-icon>
+      </md-icon-button>
+    `
+  }
+
+  _handleMediaPrivacy(index) {
+    const media = this.media[index]
+    fireEvent(this, 'edit:action', {
+      action: 'updateLinkedMedia',
+      media,
+      data: {private: !media.private},
+    })
   }
 
   _handleRectClick(event) {
@@ -259,16 +376,25 @@ export class GrampsjsGallery extends GrampsjsAppStateMixin(LitElement) {
     }
   }
 
+  _handleMediaRefMove(from, to) {
+    fireEvent(this, 'edit:action', {
+      action: 'moveListItem',
+      prop: 'media_list',
+      index: from,
+      to,
+    })
+  }
+
   _handleMediaRefDel(index) {
     fireEvent(this, 'edit:action', {action: 'delMediaRef', index})
   }
 
   _handleMediaRefLeft(index) {
-    fireEvent(this, 'edit:action', {action: 'upMediaRef', index})
+    this._handleMediaRefMove(index, index - 1)
   }
 
   _handleMediaRefRight(index) {
-    fireEvent(this, 'edit:action', {action: 'downMediaRef', index})
+    this._handleMediaRefMove(index, index + 1)
   }
 
   openNewMedia() {

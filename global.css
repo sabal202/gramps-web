@@ -86,7 +86,12 @@ body {
   --grampsjs-alert-success-font-color: #41ad49;
   --grampsjs-task-open: #007bff;
   --grampsjs-task-progress: #ff9800;
-  --grampsjs-task-done: rgba(65, 173, 73, 0.4);
+  --grampsjs-task-done-solid: rgb(65, 173, 73);
+  --grampsjs-task-done: color-mix(
+    in srgb,
+    var(--grampsjs-task-done-solid) 40%,
+    transparent
+  );
   --grampsjs-editable-title-hover-background-color: color-mix(
     in srgb,
     var(--mdc-theme-secondary) 20%,
@@ -97,14 +102,8 @@ body {
     var(--md-sys-color-primary) 32%,
     transparent
   );
-  --grampsjs-connection-chart-border-color: color-mix(
-    in srgb,
-    var(--md-sys-color-primary) 40%,
-    transparent
-  );
   --grampsjs-connection-chart-person-box: #e6e6e6;
   --grampsjs-chart-person-box: rgb(230, 230, 230);
-  --grampsjs-chart-family-marker-fill: rgb(220, 220, 220);
   --grampsjs-chart-link: rgb(153, 153, 153);
   --grampsjs-editable-list-hover-background-color: color-mix(
     in srgb,
@@ -132,17 +131,85 @@ body {
     transparent
   );
   --grampsjs-color-link-font: var(--mdc-theme-secondary);
+  /* towards the text colour: darker in the light theme, lighter in the dark */
   --grampsjs-color-link-hover: color-mix(
     in srgb,
     var(--mdc-theme-secondary) 80%,
-    black
+    var(--md-sys-color-on-surface)
   );
-  --grampsjs-color-page-loading-progress: var(--mdc-theme-secondary);
+  --grampsjs-color-page-loading-progress: var(--md-sys-color-primary);
+  /* faint tints of the tree's primary colour */
+  --grampsjs-drawer-background-color: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 6%,
+    var(--md-sys-color-surface)
+  );
+  /* tonal: a light tint of the primary colour with dark primary text, for
+     selected menu items, tonal buttons and the floating action button */
+  --grampsjs-tonal-color: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 14%,
+    var(--md-sys-color-surface)
+  );
+  --grampsjs-on-tonal-color: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 70%,
+    var(--md-sys-color-on-surface)
+  );
+  --grampsjs-drawer-selected-color: var(--grampsjs-tonal-color);
+  /* keep light tag colors such as yellow readable on light surfaces (see
+     tagColorToCss); the dark theme lifts the limit */
+  --grampsjs-tag-lightness-max: 0.55;
+  /* menus: compact rows and a soft shadow */
+  --md-menu-item-one-line-container-height: 44px;
+  --md-menu-item-label-text-size: 14px;
+  --md-menu-item-label-text-weight: var(--grampsjs-font-weight-body);
+  --md-menu-item-leading-space: 12px;
+  --md-menu-container-shadow-color: rgba(0, 0, 0, 0.6);
+  /* menus and other popovers, such as the search results; the dark theme
+     raises them a step, as their shadow does not show there */
+  --grampsjs-popover-color: var(--md-sys-color-surface-container);
+  --md-menu-container-color: var(--grampsjs-popover-color);
+  /* row dividers in tables, and the stronger line under a table's header */
+  --grampsjs-divider-color: var(--grampsjs-body-font-color-10);
+  --grampsjs-divider-strong-color: var(--grampsjs-body-font-color-20);
+  /* panels that group a page's independent blocks, such as the dashboard's */
+  --grampsjs-panel-color: var(--grampsjs-drawer-background-color);
+  --grampsjs-drawer-selected-font-color: var(--grampsjs-on-tonal-color);
+  /* font weights of the variable font */
+  --grampsjs-font-weight-body: 380;
+  --grampsjs-font-weight-medium: 500;
+  --grampsjs-font-weight-heading: 590;
+  /* filled text fields and selects: a warm tint of the field grey, 8px
+     corners (also used by menus) and readable helper text */
+  --md-sys-shape-corner-extra-small: 8px;
+  --grampsjs-field-color: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 6%,
+    var(--md-sys-color-surface-container-highest)
+  );
+  --md-filled-text-field-container-color: var(--grampsjs-field-color);
+  --md-filled-select-text-field-container-color: var(--grampsjs-field-color);
+  --md-filled-text-field-supporting-text-size: 13px;
+  --md-filled-select-text-field-supporting-text-size: 13px;
+  --md-filled-text-field-supporting-text-color: var(
+    --grampsjs-text-secondary-color
+  );
+  --md-filled-select-text-field-supporting-text-color: var(
+    --grampsjs-text-secondary-color
+  );
+  /* secondary text such as labels, dates and muted rows; content text uses
+     --grampsjs-body-font-color */
+  --grampsjs-text-secondary-color: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface-variant) 80%,
+    var(--md-sys-color-surface)
+  );
 }
 
 :root[data-theme='light'] {
-  --grampsjs-top-app-bar-background-color: var(--mdc-theme-primary);
-  --grampsjs-top-app-bar-font-color: var(--mdc-theme-on-primary);
+  --grampsjs-top-app-bar-background-color: var(--md-sys-color-surface);
+  --grampsjs-top-app-bar-font-color: var(--md-sys-color-on-surface);
   --grampsjs-body-font-color: rgba(0, 0, 0, 0.8);
   --grampsjs-body-font-color-0: rgba(0, 0, 0, 0);
   --grampsjs-body-font-color-2: rgba(0, 0, 0, 0.02);
@@ -174,7 +241,6 @@ body {
   --grampsjs-color-shade-240: rgb(240, 240, 240);
   --grampsjs-color-shade-255: rgb(255, 255, 255);
   --grampsjs-color-monospace: rgba(125, 0, 0, 0.8);
-  --grampsjs-color-drawer-text: #444;
   --grampsjs-color-icon-default: #9e9e9e;
   --grampsjs-color-icon-selected: #393939;
   --grampsjs-color-skeleton-background: #eee;
@@ -193,13 +259,25 @@ body {
   --grampsjs-color-ytree-default-person-icon-background: #bbb;
   --grampsjs-note-color: #333;
   --grampsjs-note-highlight-strength: 45%;
+  /* GOQL syntax highlighting, after VS Code's Light+ theme */
+  --grampsjs-color-code-keyword: #0000ff;
+  --grampsjs-color-code-control: #af00db;
+  --grampsjs-color-code-constant: #0000ff;
+  --grampsjs-color-code-function: #795e26;
+  --grampsjs-color-code-type: #267f99;
+  --grampsjs-color-code-enum: #0070c1;
+  --grampsjs-color-code-variable: #001080;
+  --grampsjs-color-code-string: #a31515;
+  --grampsjs-color-code-number: #098658;
+  --grampsjs-color-code-text: #000000;
+  --grampsjs-color-code-bracket-1: #0431fa;
+  --grampsjs-color-code-bracket-2: #2b812b;
+  --grampsjs-color-code-bracket-3: #7b3814;
   /* --md-sys-color-* tokens are set dynamically by applyColors() in theme.js */
 }
 
 :root[data-theme='dark'] {
-  --grampsjs-top-app-bar-background-color: var(
-    --md-sys-color-surface-container
-  );
+  --grampsjs-top-app-bar-background-color: var(--md-sys-color-surface);
   --grampsjs-top-app-bar-font-color: var(--md-sys-color-on-surface);
   --grampsjs-body-font-color: rgba(255, 255, 255, 0.8);
   --grampsjs-body-font-color-0: rgba(255, 255, 255, 0);
@@ -231,11 +309,9 @@ body {
   --grampsjs-color-shade-230: rgb(25, 25, 25);
   --grampsjs-color-shade-240: rgb(15, 15, 15);
   --grampsjs-chart-person-box: rgb(48, 48, 48);
-  --grampsjs-chart-family-marker-fill: rgb(62, 62, 62);
   --grampsjs-chart-link: rgb(117, 117, 117);
   --grampsjs-color-shade-255: rgb(0, 0, 0);
   --grampsjs-color-monospace: rgba(255, 100, 100, 0.85);
-  --grampsjs-color-drawer-text: #bbb;
   --grampsjs-color-icon-default: #616161;
   --grampsjs-color-icon-selected: #c6c6c6;
   --grampsjs-color-skeleton-background: #222;
@@ -260,7 +336,17 @@ body {
   --grampsjs-note-highlight-strength: 30%;
   /* keep tag colors readable on dark surfaces (see tagColorToCss) */
   --grampsjs-tag-lightness-min: 0.7;
+  --grampsjs-tag-lightness-max: 1;
   --grampsjs-map-marker-color: #bb1f11;
+  /* the dark primary is light, so a small share adds little colour: a
+     stronger tint keeps tonal elements apart from panels */
+  --grampsjs-tonal-color: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 24%,
+    var(--md-sys-color-surface)
+  );
+  --grampsjs-popover-color: var(--md-sys-color-surface-container-high);
+  --grampsjs-logout-font-color: var(--md-sys-color-error);
   /* --md-sys-color-* tokens are set dynamically by applyColors() in theme.js */
   --mdc-select-fill-color: var(--md-sys-color-surface-container-highest);
   --mdc-select-ink-color: var(--md-sys-color-on-surface);
@@ -301,4 +387,18 @@ body {
   --mdc-theme-text-icon-on-background: var(--grampsjs-body-font-color-60);
   --mdc-checkbox-unchecked-color: var(--md-sys-color-on-surface-variant);
   --mdc-checkbox-disabled-color: rgba(229, 226, 225, 0.38);
+  /* GOQL syntax highlighting, after VS Code's Dark+ theme */
+  --grampsjs-color-code-keyword: #569cd6;
+  --grampsjs-color-code-control: #c586c0;
+  --grampsjs-color-code-constant: #569cd6;
+  --grampsjs-color-code-function: #dcdcaa;
+  --grampsjs-color-code-type: #4ec9b0;
+  --grampsjs-color-code-enum: #4fc1ff;
+  --grampsjs-color-code-variable: #9cdcfe;
+  --grampsjs-color-code-string: #ce9178;
+  --grampsjs-color-code-number: #b5cea8;
+  --grampsjs-color-code-text: #d4d4d4;
+  --grampsjs-color-code-bracket-1: #ffd700;
+  --grampsjs-color-code-bracket-2: #da70d6;
+  --grampsjs-color-code-bracket-3: #179fff;
 }

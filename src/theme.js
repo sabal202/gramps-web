@@ -65,7 +65,7 @@ export function applyColors(
   }
 
   // Primary: use seed's own tone clamped to [30, 50] so users see their chosen
-  // colour on the app bar. Tone 30-50 always reads white on-primary text.
+  // colour on primary buttons. Tone 30-50 always reads white on-primary text.
   const primaryTone = isDark
     ? Math.min(80, Math.max(60, Math.round(primaryHct.tone)))
     : Math.min(50, Math.max(30, Math.round(primaryHct.tone)))
@@ -105,6 +105,14 @@ export function applyColors(
     '--mdc-theme-on-secondary',
     actionTone < 60 ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.87)'
   )
+
+  // The browser bar on mobile matches the app bar, which uses the surface colour.
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute(
+      'content',
+      root.style.getPropertyValue('--md-sys-color-surface')
+    )
 }
 
 export function applyScheme(

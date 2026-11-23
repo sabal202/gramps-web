@@ -2,6 +2,7 @@ import {css, html} from 'lit'
 import {classMap} from 'lit/directives/class-map.js'
 
 import {fireEvent} from '../util.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 import {renderPersonAvatar, renderPersonDates} from './personListUtils.js'
 import {GrampsjsEditableList} from './GrampsjsEditableList.js'
 import {getSymbols} from '../symbols.js'
@@ -39,12 +40,13 @@ export class GrampsjsChildren extends GrampsjsEditableList {
     this.hasShare = true
     this.hasEdit = true
     this.hasReorder = true
+    this.listProp = 'child_ref_list'
     this.objType = 'ChildRef'
   }
 
   row(obj, i) {
     const p = this.profile[i] || {}
-    const extPerson = this.extended.find(e => e.handle === obj.ref) || null
+    const extPerson = this.extended.find(e => e?.handle === obj.ref) || null
 
     const frel = obj.frel || 'Birth'
     const mrel = obj.mrel || 'Birth'
@@ -57,7 +59,8 @@ export class GrampsjsChildren extends GrampsjsEditableList {
 
     return html`
       <md-list-item
-        type="button"
+        type="${this.edit ? 'button' : 'link'}"
+        href="${this.edit ? '' : `/person/${p.gramps_id}`}"
         class="${classMap({
           selected: i === this._selectedIndex,
           highlight: p.gramps_id === this.highlightId,
@@ -65,12 +68,11 @@ export class GrampsjsChildren extends GrampsjsEditableList {
         @click="${() => {
           if (this.edit) {
             this._handleSelected(i)
-          } else {
-            this._handleClick(p.gramps_id)
           }
         }}"
       >
         ${p.name_given || ''} ${p.name_surname || ''}
+        ${renderPrivacyIcon(rowPrivacy(extPerson, obj), this.appState)}
         ${renderPersonDates(
           p,
           getSymbols(this.appState.settings, s => this._(s))
@@ -83,32 +85,12 @@ export class GrampsjsChildren extends GrampsjsEditableList {
     `
   }
 
-  _handleClick(grampsId) {
-    if (!this.edit && grampsId) {
-      fireEvent(this, 'nav', {path: `person/${grampsId}`})
-    }
-  }
-
   _handleDelete() {
-    const obj = this.data[this._selectedIndex]
-    if (obj) {
-      fireEvent(this, 'edit:action', {action: 'delChildRef', handle: obj.ref})
-    }
-  }
-
-  _handleUp() {
-    const obj = this.data[this._selectedIndex]
-    if (obj) {
-      fireEvent(this, 'edit:action', {action: 'upChildRef', handle: obj.ref})
-      this._updateSelectionAfterReorder(true)
-    }
-  }
-
-  _handleDown() {
-    const obj = this.data[this._selectedIndex]
-    if (obj) {
-      fireEvent(this, 'edit:action', {action: 'downChildRef', handle: obj.ref})
-      this._updateSelectionAfterReorder(false)
+    if (this.data[this._selectedIndex]) {
+      fireEvent(this, 'edit:action', {
+        action: 'delChildRef',
+        index: this._selectedIndex,
+      })
     }
   }
 

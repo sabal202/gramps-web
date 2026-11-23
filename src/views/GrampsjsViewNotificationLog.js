@@ -6,34 +6,24 @@ import '@material/web/button/outlined-button.js'
 import '@material/web/button/text-button.js'
 import '@material/web/dialog/dialog.js'
 import '@material/web/iconbutton/icon-button.js'
-import {
-  mdiAlertCircleOutline,
-  mdiCheckCircleOutline,
-  mdiInformationOutline,
-  mdiAlertOutline,
-  mdiDeleteSweep,
-  mdiChevronRight,
-  mdiContentCopy,
-} from '@mdi/js'
+import {mdiDeleteSweep, mdiChevronRight, mdiContentCopy} from '@mdi/js'
 
 import {GrampsjsView} from './GrampsjsView.js'
+import {downloadExportFile} from '../api.js'
+import {
+  notificationDownloadFileName,
+  notificationDownloadUrl,
+  notificationFailureMessage,
+  notificationHasDetail,
+  notificationHref,
+  notificationMessage,
+  notificationSourceLabel,
+  renderNotificationContent,
+  runningTasks,
+} from '../notifications.js'
 import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsTimedelta.js'
 import '../components/GrampsjsTaskProgressIndicator.js'
-
-const TYPE_ICON = {
-  error: mdiAlertCircleOutline,
-  warning: mdiAlertOutline,
-  info: mdiInformationOutline,
-  success: mdiCheckCircleOutline,
-}
-
-const TYPE_COLOR = {
-  error: 'var(--md-sys-color-error)',
-  warning: 'var(--md-sys-color-tertiary)',
-  info: 'var(--md-sys-color-primary)',
-  success: 'var(--grampsjs-alert-success-font-color)',
-}
 
 export class GrampsjsViewNotificationLog extends GrampsjsView {
   static get styles() {
@@ -43,7 +33,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
         .header {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-end;
           flex-wrap: wrap;
           gap: 0.5em;
           margin-bottom: 1.5em;
@@ -63,7 +53,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
         }
 
         .empty-state {
-          color: var(--grampsjs-body-font-color-60);
+          color: var(--grampsjs-text-secondary-color);
         }
 
         md-list-item[type='button'] {
@@ -79,7 +69,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
         }
 
         dt {
-          color: var(--grampsjs-body-font-color-60);
+          color: var(--grampsjs-text-secondary-color);
           font-weight: 500;
         }
 
@@ -141,8 +131,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
   }
 
   get _runningTasks() {
-    const terminal = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
-    return this._activeTasks.filter(t => !terminal.has(t.state))
+    return runningTasks(this._activeTasks)
   }
 
   _handleNotificationsChanged(e) {
@@ -165,7 +154,6 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
   renderContent() {
     return html`
       <div class="header">
-        <h2>${this._('Notifications')}</h2>
         <md-outlined-button
           ?disabled="${this._notifications.length === 0}"
           @click="${() => this.appState?.clearNotifications()}"
@@ -215,7 +203,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
           `
         : ''}
       ${this._notifications.length === 0 && this._runningTasks.length === 0
-        ? html`<p class="empty-state">${this._('None')}.</p>`
+        ? html`<p class="empty-state">${this._('No notifications')}</p>`
         : this._notifications.length === 0
         ? ''
         : html`
@@ -226,29 +214,18 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
               ${this._notifications.map(
                 n => html`
                   <md-list-item
-                    type="${this._hasDetail(n) ? 'button' : 'text'}"
-                    ?noninteractive="${!this._hasDetail(n)}"
-                    @click="${() => this._hasDetail(n) && this._openDetail(n)}"
+                    type="${this._itemType(n)}"
+                    href="${this._href(n)}"
+                    ?noninteractive="${this._itemType(n) === 'text'}"
+                    @click="${() =>
+                      this._itemType(n) === 'button' && this._openDetail(n)}"
                   >
-                    <grampsjs-icon
-                      slot="start"
-                      path="${TYPE_ICON[n.type] ?? TYPE_ICON.info}"
-                      color="${TYPE_COLOR[n.type] ?? TYPE_COLOR.info}"
-                      height="20"
-                      width="20"
-                    ></grampsjs-icon>
-                    <div slot="headline">
-                      ${n.source === 'task' ? this._(n.message) : n.message}
-                    </div>
-                    <div slot="supporting-text">
-                      ${this._sourceLabel(n)} &middot;
-                      <grampsjs-timedelta
-                        timestamp="${n.timestamp.getTime() / 1000}"
-                        locale="${this.appState?.i18n?.lang || 'en'}"
-                      ></grampsjs-timedelta>
-                      ${n.userName ? html` &middot; ${n.userName}` : ''}
-                    </div>
-                    ${this._hasDetail(n)
+                    ${renderNotificationContent(
+                      n,
+                      (...a) => this._(...a),
+                      this.appState?.i18n?.lang
+                    )}
+                    ${this._itemType(n) !== 'text'
                       ? html`<grampsjs-icon
                           slot="end"
                           path="${mdiChevronRight}"
@@ -267,9 +244,7 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
         ? html`
             <md-dialog open @cancel="${e => e.preventDefault()}">
               <div slot="headline">
-                ${this._selectedNotification.source === 'task'
-                  ? this._(this._selectedNotification.message)
-                  : this._selectedNotification.message}
+                ${this._message(this._selectedNotification)}
               </div>
               <div slot="content">
                 ${this._failureMessage(this._selectedNotification)
@@ -301,19 +276,55 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
                       width="20"
                     ></grampsjs-icon>
                   </md-icon-button>
-                  <md-text-button
-                    @click="${() => {
-                      this._selectedNotification = null
-                    }}"
-                  >
-                    ${this._('Close')}
-                  </md-text-button>
+                  <div>
+                    ${this._downloadUrl(this._selectedNotification)
+                      ? html`<md-text-button
+                          @click="${() =>
+                            this._download(this._selectedNotification)}"
+                        >
+                          ${this._('Download')}
+                        </md-text-button>`
+                      : ''}
+                    <md-text-button
+                      @click="${() => {
+                        this._selectedNotification = null
+                      }}"
+                    >
+                      ${this._('Close')}
+                    </md-text-button>
+                  </div>
                 </div>
               </div>
             </md-dialog>
           `
         : ''}
+      <a
+        id="downloadanchor"
+        aria-hidden="true"
+        href="#"
+        style="display:none"
+        download
+      ></a>
     `
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  _downloadUrl(n) {
+    return notificationDownloadUrl(n)
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  _downloadFileName(n) {
+    return notificationDownloadFileName(n)
+  }
+
+  _download(n) {
+    return downloadExportFile(
+      this.appState,
+      this.renderRoot.querySelector('#downloadanchor'),
+      this._downloadUrl(n),
+      this._downloadFileName(n)
+    )
   }
 
   async _copyDetail(detail) {
@@ -335,48 +346,32 @@ export class GrampsjsViewNotificationLog extends GrampsjsView {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  _hasDetail(n) {
-    return n.detail && Object.keys(n.detail).length > 0
+  _href(n) {
+    return notificationHref(n)
+  }
+
+  // 'link' for an entry with a page, 'button' for one with details to show,
+  // 'text' otherwise.
+  _itemType(n) {
+    if (this._href(n)) return 'link'
+    return notificationHasDetail(n) ? 'button' : 'text'
+  }
+
+  _message(n) {
+    return notificationMessage(n, (...a) => this._(...a))
   }
 
   _openDetail(n) {
     this._selectedNotification = n
   }
 
-  // Finished tasks state their outcome; other entries name their source.
   _sourceLabel(n) {
-    if (n.source === 'task' && n.type === 'success') {
-      return this._('Task completed')
-    }
-    if (n.source === 'task' && n.type === 'error') {
-      return this._('Task failed')
-    }
-    const labels = {
-      api: this._('Network'),
-      task: this._('Task'),
-      save: this._('_Save'),
-      browser: this._('Browser'),
-    }
-    return labels[n.source] ?? n.source
+    return notificationSourceLabel(n, (...a) => this._(...a))
   }
 
-  // The error message of a failed task, shown in place of the raw details
-  // (which stay available via Copy JSON). Empty when the failure carries no
-  // plain-text message.
   // eslint-disable-next-line class-methods-use-this
   _failureMessage(n) {
-    if (n.source !== 'task' || n.type !== 'error') {
-      return ''
-    }
-    const {info, result_object: resultObject} = n.detail ?? {}
-    const errorMessage = resultObject?.error?.message
-    if (typeof errorMessage === 'string' && errorMessage) {
-      return errorMessage
-    }
-    if (typeof info === 'string' && info) {
-      return info
-    }
-    return typeof resultObject === 'string' ? resultObject : ''
+    return notificationFailureMessage(n)
   }
 }
 

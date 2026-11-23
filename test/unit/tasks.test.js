@@ -1,285 +1,502 @@
-import {describe, it, expect} from 'vitest'
+import {describe, it, expect, afterEach, vi} from 'vitest'
+import '../../src/components/GrampsjsTasks.js'
+import {GrampsjsViewTasks} from '../../src/views/GrampsjsViewTasks.js'
+import {fireEvent} from '../../src/util.js'
 import {
-  ATTR,
-  srcAttribute,
-  getAttr,
-  getAllAttrs,
-  parseSubtask,
-  formatSubtask,
-  getSubtasks,
-  subtaskProgress,
-  parseUpdate,
-  formatUpdate,
-  getUpdates,
-  sortUpdates,
-  lastUpdate,
-  parseRelated,
-  formatRelated,
-  getRelated,
   filterTasks,
+  priorityLabel,
   sortTasks,
-  groupTasks,
-  assigneeOptions,
-} from '../../src/tasks.js'
+  taskStatusFilter,
+} from '../../src/taskConstants.js'
 
-// Build a task (source) with the given attributes and optional title.
-const task = (attrs = [], title = '') => ({
-  _class: 'Source',
-  title,
-  attribute_list: attrs.map(([type, value]) => srcAttribute(type, value)),
+// tippy.js cannot find the tooltip targets in happy-dom
+vi.mock('tippy.js', () => ({default: () => ({setContent() {}})}))
+
+// The filter bar holds Material form fields, which need ElementInternals
+// that happy-dom does not implement. Its slotted buttons stay in the list.
+vi.mock('../../src/components/GrampsjsFilters.js', () => {
+  customElements.define('grampsjs-filters', class extends HTMLElement {})
+  return {}
 })
 
-describe('getAttr / getAllAttrs', () => {
-  it('returns the value of a single attribute', () => {
-    const t = task([
-      [ATTR.status, 'Open'],
-      [ATTR.priority, '5'],
-    ])
-    expect(getAttr(t, ATTR.status)).toBe('Open')
-    expect(getAttr(t, ATTR.priority)).toBe('5')
+// The Material menus animate opening, which happy-dom does not implement.
+if (!HTMLElement.prototype.animate) {
+  HTMLElement.prototype.animate = function animate() {
+    return {
+      addEventListener() {},
+      cancel() {},
+      finished: Promise.resolve(),
+    }
+  }
+}
+
+// The Material checkboxes call attachInternals(), which happy-dom does not
+// implement.
+if (!HTMLElement.prototype.attachInternals) {
+  HTMLElement.prototype.attachInternals = function attachInternals() {
+    return {setFormValue() {}, setValidity() {}}
+  }
+}
+
+function task(handle, {status, priority, title, change} = {}) {
+  const attributes = []
+  if (status !== undefined) attributes.push({type: 'Status', value: status})
+  if (priority !== undefined) {
+    attributes.push({type: 'Priority', value: priority})
+  }
+  return {
+    handle,
+    gramps_id: `S${handle}`,
+    title: title ?? `Task ${handle}`,
+    change,
+    attribute_list: attributes,
+    extended: {tags: []},
+  }
+}
+
+describe('priorityLabel', () => {
+  it('maps numbers below, at and above 5', () => {
+    expect(priorityLabel('1')).toBe('High')
+    expect(priorityLabel('4')).toBe('High')
+    expect(priorityLabel('5')).toBe('Medium')
+    expect(priorityLabel('6')).toBe('Low')
+    expect(priorityLabel('9')).toBe('Low')
   })
 
-  it('returns undefined for a missing attribute and tolerates no list', () => {
-    expect(getAttr(task(), ATTR.status)).toBeUndefined()
-    expect(getAttr({}, ATTR.status)).toBeUndefined()
-    expect(getAttr(undefined, ATTR.status)).toBeUndefined()
-  })
-
-  it('returns all matching attributes with their attribute_list index', () => {
-    const t = task([
-      [ATTR.status, 'Open'],
-      [ATTR.subtask, '[ ] a'],
-      [ATTR.priority, '5'],
-      [ATTR.subtask, '[x] b'],
-    ])
-    expect(getAllAttrs(t, ATTR.subtask)).toEqual([
-      {attrIndex: 1, value: '[ ] a'},
-      {attrIndex: 3, value: '[x] b'},
-    ])
-  })
-})
-
-describe('subtasks', () => {
-  it('parses checked and unchecked items', () => {
-    expect(parseSubtask('[ ] buy milk')).toEqual({
-      done: false,
-      text: 'buy milk',
-    })
-    expect(parseSubtask('[x] done thing')).toEqual({
-      done: true,
-      text: 'done thing',
-    })
-    expect(parseSubtask('[X] caps')).toEqual({done: true, text: 'caps'})
-  })
-
-  it('treats a value with no checkbox prefix as an unchecked item', () => {
-    expect(parseSubtask('no prefix')).toEqual({done: false, text: 'no prefix'})
-  })
-
-  it('round-trips through format/parse', () => {
-    const item = {done: true, text: 'write tests'}
-    expect(parseSubtask(formatSubtask(item))).toEqual(item)
-    expect(formatSubtask({done: false, text: 'x'})).toBe('[ ] x')
-  })
-
-  it('computes progress', () => {
-    const t = task([
-      [ATTR.subtask, '[x] a'],
-      [ATTR.subtask, '[ ] b'],
-      [ATTR.subtask, '[x] c'],
-    ])
-    expect(subtaskProgress(t)).toEqual({done: 2, total: 3})
-    expect(getSubtasks(t)[1]).toEqual({attrIndex: 1, done: false, text: 'b'})
-    expect(subtaskProgress(task())).toEqual({done: 0, total: 0})
-  })
-})
-
-describe('updates', () => {
-  it('parses the date|author|text format and keeps pipes in the text', () => {
-    expect(parseUpdate('2026-05-22T10:00:00Z|alice|found a record')).toEqual({
-      date: '2026-05-22T10:00:00Z',
-      author: 'alice',
-      text: 'found a record',
-    })
-    expect(parseUpdate('2026-05-22T10:00:00Z|bob|a|b|c').text).toBe('a|b|c')
-  })
-
-  it('treats a malformed value as text only', () => {
-    expect(parseUpdate('just some text')).toEqual({
-      date: '',
-      author: '',
-      text: 'just some text',
-    })
-  })
-
-  it('sanitizes pipes in date/author when formatting', () => {
-    const value = formatUpdate({date: '2026-01-01', author: 'a|b', text: 'hi'})
-    expect(parseUpdate(value)).toEqual({
-      date: '2026-01-01',
-      author: 'a/b',
-      text: 'hi',
-    })
-  })
-
-  it('sorts updates newest first and reports the latest date', () => {
-    const t = task([
-      [ATTR.update, '2026-01-01T00:00:00Z|a|old'],
-      [ATTR.update, '2026-05-01T00:00:00Z|a|new'],
-      [ATTR.update, '2026-03-01T00:00:00Z|a|mid'],
-    ])
-    const sorted = sortUpdates(getUpdates(t))
-    expect(sorted.map(u => u.text)).toEqual(['new', 'mid', 'old'])
-    expect(lastUpdate(t)).toBe('2026-05-01T00:00:00Z')
-    expect(lastUpdate(task())).toBe('')
-  })
-})
-
-describe('related records', () => {
-  it('parses and formats object_type:gramps_id', () => {
-    expect(parseRelated('person:I0001')).toEqual({
-      objectType: 'person',
-      grampsId: 'I0001',
-    })
-    expect(formatRelated({objectType: 'event', grampsId: 'E5'})).toBe(
-      'event:E5'
-    )
-  })
-
-  it('lists related records with their attribute index', () => {
-    const t = task([
-      [ATTR.status, 'Open'],
-      [ATTR.related, 'person:I1'],
-      [ATTR.related, 'place:P2'],
-    ])
-    expect(getRelated(t)).toEqual([
-      {attrIndex: 1, objectType: 'person', grampsId: 'I1'},
-      {attrIndex: 2, objectType: 'place', grampsId: 'P2'},
-    ])
-  })
-})
-
-describe('filterTasks', () => {
-  const list = [
-    task(
-      [
-        [ATTR.status, 'Open'],
-        [ATTR.priority, '1'],
-        [ATTR.assignee, 'Alice'],
-      ],
-      'Find birth record'
-    ),
-    task(
-      [
-        [ATTR.status, 'Done'],
-        [ATTR.priority, '5'],
-        [ATTR.assignee, 'Bob'],
-      ],
-      'Scan photos'
-    ),
-    task(
-      [
-        [ATTR.status, 'Open'],
-        [ATTR.priority, '9'],
-      ],
-      'Verify census'
-    ),
-  ]
-
-  it('filters by free-text title search (case-insensitive)', () => {
-    expect(filterTasks(list, {search: 'CENSUS'})).toHaveLength(1)
-  })
-
-  it('filters by status, priority and assignee', () => {
-    expect(filterTasks(list, {status: 'Open'})).toHaveLength(2)
-    expect(filterTasks(list, {priority: '1'})).toHaveLength(1)
-    expect(filterTasks(list, {assignee: 'Bob'})).toHaveLength(1)
-  })
-
-  it('returns everything with no criteria', () => {
-    expect(filterTasks(list, {})).toHaveLength(3)
-    expect(filterTasks(list)).toHaveLength(3)
+  it('has no label for a missing or non-numeric priority', () => {
+    expect(priorityLabel(undefined)).toBe('')
+    expect(priorityLabel('')).toBe('')
+    expect(priorityLabel('urgent')).toBe('')
   })
 })
 
 describe('sortTasks', () => {
-  it('orders by status (Open before Done, unknown before Done)', () => {
-    const list = [
-      task([[ATTR.status, 'Done']], 'd'),
-      task([[ATTR.status, 'Open']], 'o'),
-      task([], 'u'),
-      task([[ATTR.status, 'In Progress']], 'p'),
+  const handles = tasks => sortTasks(tasks).map(t => t.handle)
+
+  it('sorts by status with unknown statuses before Done', () => {
+    expect(
+      handles([
+        task('done', {status: 'Done'}),
+        task('waiting', {status: 'Waiting'}),
+        task('none'),
+        task('blocked', {status: 'Blocked'}),
+        task('open', {status: 'Open'}),
+        task('progress', {status: 'In Progress'}),
+      ])
+    ).toEqual(['open', 'progress', 'blocked', 'waiting', 'none', 'done'])
+  })
+
+  it('sorts by priority within a status, missing priorities last', () => {
+    expect(
+      handles([
+        task('none', {status: 'Open'}),
+        task('low', {status: 'Open', priority: '9'}),
+        task('high', {status: 'Open', priority: '1'}),
+        task('medium', {status: 'Open', priority: '5'}),
+        task('odd', {status: 'Open', priority: 'x'}),
+      ])
+    ).toEqual(['high', 'medium', 'low', 'none', 'odd'])
+  })
+
+  it('sorts by priority, then by status', () => {
+    expect(
+      sortTasks(
+        [
+          task('none', {status: 'Open'}),
+          task('lowOpen', {status: 'Open', priority: '9'}),
+          task('highDone', {status: 'Done', priority: '1'}),
+          task('highOpen', {status: 'Open', priority: '1'}),
+        ],
+        'priority'
+      ).map(t => t.handle)
+    ).toEqual(['highOpen', 'highDone', 'lowOpen', 'none'])
+  })
+
+  it('sorts by title and by last change, newest first', () => {
+    const tasks = [
+      task('b', {title: 'beta', change: 1}),
+      task('none', {title: 'Gamma'}),
+      task('a', {title: 'Alpha', change: 3}),
     ]
-    expect(sortTasks(list, 'status').map(t => t.title)).toEqual([
-      'o',
-      'p',
-      'u',
-      'd',
+    expect(sortTasks(tasks, 'title', 'en').map(t => t.handle)).toEqual([
+      'a',
+      'b',
+      'none',
+    ])
+    expect(sortTasks(tasks, 'change').map(t => t.handle)).toEqual([
+      'a',
+      'b',
+      'none',
     ])
   })
 
-  it('orders by priority ascending (High=1 first)', () => {
-    const list = [
-      task([[ATTR.priority, '9']], 'low'),
-      task([[ATTR.priority, '1']], 'high'),
-      task([[ATTR.priority, '5']], 'med'),
-    ]
-    expect(sortTasks(list, 'priority').map(t => t.title)).toEqual([
-      'high',
-      'med',
-      'low',
-    ])
-  })
-
-  it('does not mutate the input array', () => {
-    const list = [
-      task([[ATTR.status, 'Done']], 'd'),
-      task([[ATTR.status, 'Open']], 'o'),
-    ]
-    const copy = [...list]
-    sortTasks(list, 'status')
-    expect(list).toEqual(copy)
+  it('keeps the order of tasks that tie', () => {
+    expect(
+      handles([
+        task('b', {status: 'Open', priority: '5'}),
+        task('a', {status: 'Open', priority: '5'}),
+      ])
+    ).toEqual(['b', 'a'])
   })
 })
 
-describe('groupTasks', () => {
-  it('returns a single null group when grouping is off', () => {
-    const list = [task([[ATTR.status, 'Open']])]
-    expect(groupTasks(list, 'none')).toEqual([{key: null, items: list}])
+describe('filterTasks', () => {
+  const tasks = [
+    task('open', {status: 'Open', priority: '1'}),
+    task('blocked', {status: 'Blocked', priority: '9'}),
+    task('done', {status: 'Done', priority: '2'}),
+    task('none'),
+  ]
+  const status = value => ({name: 'Status', values: [value]})
+  const priority = value => ({name: 'Priority', values: [value]})
+  const handles = rules => filterTasks(tasks, rules).map(t => t.handle)
+
+  it('keeps every task without rules', () => {
+    expect(handles([])).toEqual(['open', 'blocked', 'done', 'none'])
   })
 
-  it('groups by status in canonical order', () => {
-    const list = [
-      task([[ATTR.status, 'Done']], 'd'),
-      task([[ATTR.status, 'Open']], 'o1'),
-      task([[ATTR.status, 'Open']], 'o2'),
-    ]
-    const groups = groupTasks(list, 'status')
-    expect(groups.map(g => g.key)).toEqual(['Open', 'Done'])
-    expect(groups[0].items).toHaveLength(2)
+  it('keeps tasks with any of the statuses', () => {
+    expect(handles([status('Open'), status('Blocked')])).toEqual([
+      'open',
+      'blocked',
+    ])
   })
 
-  it('groups by assignee with unassigned last', () => {
-    const list = [
-      task([], 'none'),
-      task([[ATTR.assignee, 'Zed']], 'z'),
-      task([[ATTR.assignee, 'Amy']], 'a'),
-    ]
-    expect(groupTasks(list, 'assignee').map(g => g.key)).toEqual([
-      'Amy',
-      'Zed',
-      '',
+  it('keeps tasks with any of the priorities and any of the statuses', () => {
+    expect(handles([priority('High')])).toEqual(['open', 'done'])
+    expect(handles([priority('High'), status('Done')])).toEqual(['done'])
+  })
+
+  it('has rules the filter panel can show', () => {
+    const section = taskStatusFilter(s => s)
+    expect(section.local).toBe(true)
+    expect(section.entries.map(e => e.rule)).toEqual([
+      status('Open'),
+      status('In Progress'),
+      status('Blocked'),
+      status('Done'),
     ])
   })
 })
 
-describe('assigneeOptions', () => {
-  it('returns distinct sorted assignees, ignoring empty', () => {
-    const list = [
-      task([[ATTR.assignee, 'Bob']]),
-      task([[ATTR.assignee, 'Alice']]),
-      task([[ATTR.assignee, 'Bob']]),
-      task([]),
-    ]
-    expect(assigneeOptions(list)).toEqual(['Alice', 'Bob'])
+const mounted = []
+
+function appStateFor({canEdit = true, settings = {}} = {}) {
+  return {
+    i18n: {lang: 'en', strings: {}},
+    permissions: {canEdit, canAdd: canEdit},
+    settings,
+    updateSettings: vi.fn(),
+  }
+}
+
+async function mount(props) {
+  const el = document.createElement('grampsjs-tasks')
+  Object.assign(el, {appState: appStateFor(), ...props})
+  el.updates = []
+  el.addEventListener('tasks:update-attribute', e => el.updates.push(e.detail))
+  document.body.appendChild(el)
+  mounted.push(el)
+  await el.updateComplete
+  return el
+}
+
+afterEach(() => {
+  mounted.splice(0).forEach(el => el.remove())
+})
+
+const $ = (el, selector) => el.shadowRoot.querySelector(selector)
+const $$ = (el, selector) => [...el.shadowRoot.querySelectorAll(selector)]
+const rows = el => $$(el, '.task-item')
+const rowCheckbox = (el, index) => rows(el)[index].querySelector('md-checkbox')
+
+async function check(el, index) {
+  rowCheckbox(el, index).dispatchEvent(new Event('change'))
+  await el.updateComplete
+}
+
+describe('GrampsjsTasks', () => {
+  const data = [task('a'), task('b'), task('c', {status: 'Done'})]
+
+  it('links the titles to the tasks', async () => {
+    const el = await mount({data})
+    const link = $(el, '.task-item a')
+    expect(link.getAttribute('href')).toBe('/task/Sa')
+    expect(link.textContent).toBe('Task a')
+  })
+
+  it('opens a task by clicking its row, also inside a link', async () => {
+    const link = document.createElement('a')
+    document.body.appendChild(link)
+    const el = await mount({data})
+    link.appendChild(el)
+    await el.updateComplete
+    const paths = []
+    el.addEventListener('nav', e => paths.push(e.detail.path))
+    $$(el, '.task-item .status-icon')[1].click()
+    expect(paths).toEqual(['task/Sb'])
+  })
+
+  it('leaves clicks on the title to the link', async () => {
+    const el = await mount({data})
+    const paths = []
+    el.addEventListener('nav', e => paths.push(e.detail.path))
+    $(el, '.task-item a').addEventListener('click', e => e.preventDefault())
+    $(el, '.task-item a').click()
+    expect(paths).toEqual([])
+  })
+
+  it('offers selection only to editors', async () => {
+    const el = await mount({data, appState: appStateFor({canEdit: false})})
+    expect($(el, 'md-checkbox')).toBeNull()
+    expect($(el, '.batch-toolbar')).toBeNull()
+  })
+
+  it('shows a checkbox on every row and the bulk actions to editors', async () => {
+    const el = await mount({data})
+    expect($$(el, '.task-item md-checkbox')).toHaveLength(3)
+    const actions = $$(el, '.batch-actions md-outlined-button')
+    expect(actions).toHaveLength(2)
+    expect(actions.every(button => button.disabled)).toBe(true)
+  })
+
+  it('selects with the checkbox and shows a partial select-all', async () => {
+    const el = await mount({data})
+    await check(el, 1)
+    expect(el._selectedHandles).toEqual(['b'])
+    const all = $(el, '.batch-toolbar md-checkbox')
+    expect(all.indeterminate).toBe(true)
+    expect(all.checked).toBe(false)
+    expect(rows(el)[1].classList.contains('selected')).toBe(true)
+    const actions = $$(el, '.batch-actions md-outlined-button')
+    expect(actions.some(button => button.disabled)).toBe(false)
+  })
+
+  it('shows the icons of the priorities and statuses in the menus', async () => {
+    const el = await mount({data})
+    const icons = id =>
+      $$(el, `#${id}-menu md-menu-item grampsjs-icon[slot="start"]`)
+    expect(icons('prio')).toHaveLength(3)
+    expect(icons('status')).toHaveLength(4)
+    expect(icons('status')[3].getAttribute('color')).toBe(
+      'var(--grampsjs-task-done-solid)'
+    )
+  })
+
+  it('leaves clicks on the checkbox to the checkbox', async () => {
+    const el = await mount({data})
+    const paths = []
+    el.addEventListener('nav', e => paths.push(e.detail.path))
+    rowCheckbox(el, 0).click()
+    expect(paths).toEqual([])
+  })
+
+  it('selects all, then none', async () => {
+    const el = await mount({data})
+    await check(el, 0)
+    el._handleSelectAll()
+    expect(el._selectedHandles).toEqual(['a', 'b', 'c'])
+    el._handleSelectAll()
+    expect(el._selectedHandles).toEqual([])
+  })
+
+  it('lists the tasks with the filtered status and selects only them', async () => {
+    const el = await mount({data})
+    el._localFilters = [{name: 'Status', values: ['Done']}]
+    await el.updateComplete
+    expect(rows(el).map(row => row.querySelector('a').textContent)).toEqual([
+      'Task c',
+    ])
+    el._handleSelectAll()
+    expect(el._selectedHandles).toEqual(['c'])
+  })
+
+  it('deselects the tasks a filter hides', async () => {
+    const el = await mount({data})
+    await check(el, 0)
+    await check(el, 2)
+    el._localFilters = [{name: 'Status', values: ['Done']}]
+    await el.updateComplete
+    expect(el._selectedHandles).toEqual(['c'])
+  })
+
+  it('marks the sort control with an icon', async () => {
+    const el = await mount({data})
+    expect(
+      $(el, '.sort-control grampsjs-icon[slot="leading-icon"]')
+    ).not.toBeNull()
+  })
+
+  it('says so when the filters leave no tasks', async () => {
+    const el = await mount({data})
+    el._localFilters = [{name: 'Priority', values: ['High']}]
+    await el.updateComplete
+    expect($(el, '.empty').textContent).toBe('None')
+  })
+
+  it('sorts with the selected order', async () => {
+    const el = await mount({
+      data: [task('a', {title: 'Zulu'}), task('b', {title: 'Alpha'})],
+    })
+    el._sortKey = 'title'
+    await el.updateComplete
+    expect(rows(el).map(row => row.querySelector('a').textContent)).toEqual([
+      'Alpha',
+      'Zulu',
+    ])
+  })
+
+  it('sorts by title in a language with a region', async () => {
+    const appState = appStateFor()
+    appState.i18n.lang = 'pt_BR'
+    const el = await mount({
+      appState,
+      data: [task('a', {title: 'Zulu'}), task('b', {title: 'Alpha'})],
+    })
+    el._sortKey = 'title'
+    await el.updateComplete
+    expect(rows(el).map(row => row.querySelector('a').textContent)).toEqual([
+      'Alpha',
+      'Zulu',
+    ])
+  })
+
+  it('takes the status and priority filters from the filter bar', async () => {
+    const el = await mount({data})
+    const rules = [{name: 'Priority', values: ['Low']}]
+    fireEvent($(el, 'grampsjs-filters'), 'filters:changed', {
+      filters: [],
+      localFilters: rules,
+    })
+    expect(el._localFilters).toEqual(rules)
+  })
+
+  it('updates the selected tasks after the list reloads in a new order', async () => {
+    const el = await mount({data})
+    await check(el, 0)
+    el.data = [task('b'), task('a'), task('c')]
+    await el.updateComplete
+    el._updateAttribute('Status', 'Done')
+    expect(el.updates).toHaveLength(1)
+    expect(el.updates[0].objects.map(t => t.handle)).toEqual(['a'])
+    expect(el.updates[0]).toMatchObject({key: 'Status', value: 'Done'})
+    expect(el._selectedHandles).toEqual([])
+  })
+
+  it('drops selected tasks that are no longer listed', async () => {
+    const el = await mount({data})
+    await check(el, 0)
+    await check(el, 1)
+    el.data = [task('b'), task('c')]
+    await el.updateComplete
+    expect(el._selectedHandles).toEqual(['b'])
+  })
+
+  it('sets the status of one task from its status icon', async () => {
+    const el = await mount({data})
+    const paths = []
+    el.addEventListener('nav', e => paths.push(e.detail.path))
+    const button = $$(el, '.task-item .status-icon md-icon-button')[1]
+    button.click()
+    await el.updateComplete
+    expect(paths).toEqual([])
+    const menu = $(el, '#row-status-menu')
+    expect(menu.anchorElement).toBe(button)
+    const done = [...menu.querySelectorAll('md-menu-item')].find(item =>
+      item.textContent.includes('Done')
+    )
+    done.click()
+    expect(el.updates).toEqual([
+      {objects: [data[1]], key: 'Status', value: 'Done'},
+    ])
+  })
+
+  it('does not update a task to the status it has', async () => {
+    const el = await mount({data})
+    el._setStatus(data[2], 'Done')
+    expect(el.updates).toEqual([])
+  })
+
+  it('shows viewers the status icon without a button', async () => {
+    const el = await mount({data, appState: appStateFor({canEdit: false})})
+    expect($(el, '.status-icon md-icon-button')).toBeNull()
+    expect($(el, '.status-icon grampsjs-icon')).not.toBeNull()
+    expect($(el, '#row-status-menu')).toBeNull()
+  })
+
+  it('says so when there are no tasks', async () => {
+    const el = await mount({data: []})
+    expect($(el, '.empty').textContent).toBe('None')
+  })
+
+  it('shows nothing while the first list loads', async () => {
+    const el = await mount({data: [], loading: true})
+    expect($(el, '.empty')).toBeNull()
+  })
+})
+
+describe('GrampsjsViewTasks filters', () => {
+  function makeView() {
+    const view = {
+      _filters: [],
+      _fetchData: vi.fn(),
+      _handleFiltersChanged: GrampsjsViewTasks.prototype._handleFiltersChanged,
+    }
+    return view
+  }
+  const changed = filters => ({detail: {filters}, stopPropagation() {}})
+
+  it('loads the tasks again only when the server filters change', () => {
+    const view = makeView()
+    view._handleFiltersChanged(changed([]))
+    expect(view._fetchData).not.toHaveBeenCalled()
+    const rules = [{name: 'MatchesTitleSubstringOf', values: ['x']}]
+    view._handleFiltersChanged(changed(rules))
+    view._handleFiltersChanged(changed([...rules]))
+    expect(view._fetchData).toHaveBeenCalledTimes(1)
+    expect(view._filters).toEqual(rules)
+  })
+})
+
+describe('GrampsjsViewTasks bulk update', () => {
+  // the view's state that the bulk update uses
+  function makeView(results) {
+    const view = {
+      events: [],
+      appState: {apiPut: vi.fn(async () => results.shift())},
+      _handleUpdateAttribute:
+        GrampsjsViewTasks.prototype._handleUpdateAttribute,
+    }
+    view.dispatchEvent = e => view.events.push(e)
+    return view
+  }
+
+  const update = objects => ({
+    detail: {objects, key: 'Status', value: 'Done'},
+  })
+
+  it('replaces the attribute of every task', async () => {
+    const view = makeView([{data: {}}, {data: {}}])
+    const t = task('a', {status: 'Open', priority: '1'})
+    await view._handleUpdateAttribute(update([t, task('b')]))
+    expect(view.appState.apiPut).toHaveBeenCalledTimes(2)
+    const [url, body] = view.appState.apiPut.mock.calls[0]
+    expect(url).toBe('/api/sources/a')
+    expect(body.attribute_list).toEqual([
+      {type: 'Priority', value: '1'},
+      {_class: 'SrcAttribute', type: 'Status', value: 'Done'},
+    ])
+    expect(view.events.map(e => e.type)).toEqual(['db:changed'])
+  })
+
+  it('reports the first failure and still reloads', async () => {
+    const view = makeView([{error: 'one'}, {data: {}}, {error: 'two'}])
+    await view._handleUpdateAttribute(update([task('a'), task('b'), task('c')]))
+    expect(view.appState.apiPut).toHaveBeenCalledTimes(3)
+    expect(view.events.map(e => e.type)).toEqual([
+      'db:changed',
+      'grampsjs:error',
+    ])
+    expect(view.events[1].detail).toEqual({message: 'one'})
   })
 })

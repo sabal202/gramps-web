@@ -5,11 +5,16 @@ A view passes a list of sections to <grampsjs-filters>. Each section is
 one collapsible part of the panel, with a `label` for its header, an
 optional `pillLabel` for its pills, and an `editor` for its rules:
 
-- 'years', 'text', 'type', 'mime', 'objectType': one rule `rule` with
-  parameters, where `index` and `numArgs` place the value among them
+- 'years', 'text', 'type': one rule `rule` with parameters, where `index`
+  and `numArgs` place the value among them
+- 'mime', 'objectType': one rule `rule` with parameters
 - 'tags': one `HasTag` rule per selected tag
-- 'checkboxes': rules without parameters, one per checked `entries` item,
-  each an object `{label, rule}`
+- 'checkboxes': fixed rules, one per checked `entries` item,
+  each an object `{label, rule}`; their pills show the entry label alone,
+  or after the section's `pillLabel` if it has one
+
+A section with `local: true` filters the loaded list in the view. Its rules
+are never sent to the server, reported as `localFilters` next to `filters`.
 
 All builders take the translation function `_` and return translated labels.
 
@@ -40,13 +45,18 @@ export function textFilter(_, {label, rule, index = 0, numArgs = 1}) {
   }
 }
 
-export function typeFilter(_, {label, typeName, rule = 'HasType'}) {
+export function typeFilter(
+  _,
+  {label, typeName, rule = 'HasType', index = 0, numArgs = 1}
+) {
   return {
-    id: rule,
+    id: `${rule}:${index}`,
     label: _(label).replace(/:$/, ''),
     editor: 'type',
     rule,
     typeName,
+    index,
+    numArgs,
   }
 }
 
@@ -155,11 +165,12 @@ export function ruleSummary(_, section, rule) {
     }
     case 'text':
       return values[section.index]
+    case 'type':
+      return _(values[section.index])
     case 'mime':
       return _(filterMime[values[1]] ?? values[1])
     case 'tags':
       return values[0]
-    case 'type':
     case 'objectType':
       return _(values[0])
     case 'checkboxes':
@@ -171,7 +182,7 @@ export function ruleSummary(_, section, rule) {
 
 export function pillLabel(_, section, rule) {
   const summary = ruleSummary(_, section, rule)
-  return section.editor === 'checkboxes'
+  return section.editor === 'checkboxes' && !section.pillLabel
     ? summary
     : `${section.pillLabel ?? section.label}: ${summary}`
 }

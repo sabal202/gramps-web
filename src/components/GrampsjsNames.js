@@ -31,25 +31,23 @@ export class GrampsjsNames extends GrampsjsEditableList {
   }
 
   row(obj, i) {
-    return html` ${!obj
-      ? ''
-      : html`
-          <md-list-item
-            type="${this.edit ? 'button' : 'text'}"
-            style="height: auto"
-            class="${classMap({selected: i === this._selectedIndex})}"
-            @click="${() => {
-              if (this.edit) {
-                this._handleSelected(i)
-              }
-            }}"
-          >
-            <grampsjs-name
-              .appState="${this.appState}"
-              .data="${obj}"
-            ></grampsjs-name>
-          </md-list-item>
-        `}`
+    return html`
+      <md-list-item
+        type="${this.edit ? 'button' : 'text'}"
+        style="height: auto"
+        class="${classMap({selected: i === this._selectedIndex})}"
+        @click="${() => {
+          if (this.edit) {
+            this._handleSelected(i)
+          }
+        }}"
+      >
+        <grampsjs-name
+          .appState="${this.appState}"
+          .data="${obj}"
+        ></grampsjs-name>
+      </md-list-item>
+    `
   }
 
   _handleAdd() {
@@ -85,20 +83,8 @@ export class GrampsjsNames extends GrampsjsEditableList {
     `
   }
 
-  _handleUp() {
-    fireEvent(this, 'edit:action', {
-      action: 'upName',
-      handle: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(true)
-  }
-
-  _handleDown() {
-    fireEvent(this, 'edit:action', {
-      action: 'downName',
-      handle: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(false)
+  _handleMove(from, to) {
+    fireEvent(this, 'edit:action', {action: 'moveName', handle: from, to})
   }
 
   _handleEdit() {
@@ -108,6 +94,7 @@ export class GrampsjsNames extends GrampsjsEditableList {
         id="name"
         @object:save="${e => this._handleNameSave(handle, e)}"
         @object:cancel="${this._handleNameCancel}"
+        ?primary="${handle === 0}"
         .appState="${this.appState}"
         .data="${this.data[handle]}"
       >

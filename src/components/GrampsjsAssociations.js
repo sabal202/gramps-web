@@ -7,6 +7,7 @@ import './GrampsjsFormEditAssociation.js'
 import './GrampsjsIcon.js'
 
 import {personDisplayName, fireEvent} from '../util.js'
+import {renderPrivacyIcon, rowPrivacy} from '../objectRender.js'
 
 import '@material/web/list/list-item.js'
 
@@ -17,19 +18,27 @@ export class GrampsjsAssociations extends GrampsjsEditableList {
     }
   }
 
+  constructor() {
+    super()
+    this.hasReorder = true
+    this.listProp = 'person_ref_list'
+  }
+
   row(obj, i) {
     return html`
       <md-list-item
-        type="button"
+        type="${this.edit ? 'button' : 'link'}"
+        href="${this.edit
+          ? ''
+          : `/${this._getItemPath(this.extended[i]?.gramps_id)}`}"
         class="${classMap({selected: i === this._selectedIndex})}"
         @click="${() => {
           if (this.edit) {
             this._handleSelected(i)
-          } else {
-            this._handleClick(this.extended[i])
           }
         }}"
         >${personDisplayName(this.extended[i])}
+        ${renderPrivacyIcon(rowPrivacy(this.extended[i], obj), this.appState)}
         <span slot="supporting-text">${this._(obj.rel)}</span>
         <grampsjs-icon
           slot="start"
@@ -38,12 +47,6 @@ export class GrampsjsAssociations extends GrampsjsEditableList {
         ></grampsjs-icon>
       </md-list-item>
     `
-  }
-
-  _handleClick(obj) {
-    if (!this.edit) {
-      fireEvent(this, 'nav', {path: this._getItemPath(obj.gramps_id)})
-    }
   }
 
   // eslint-disable-next-line class-methods-use-this

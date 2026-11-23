@@ -4,9 +4,9 @@ import {sharedStyles} from '../SharedStyles.js'
 import './GrampsjsImg.js'
 import './GrampsjsGallery.js'
 import './GrampsjsNoteContent.js'
-import './GrampsjsTimedelta.js'
 import {GrampsjsAppStateMixin} from '../mixins/GrampsjsAppStateMixin.js'
 import {IMAGE_PLACEHOLDER} from '../inlineImages.js'
+import {formatBlogPostDate} from '../blog.js'
 
 export class GrampsjsBlogPostPreview extends GrampsjsAppStateMixin(LitElement) {
   static get styles() {
@@ -16,12 +16,11 @@ export class GrampsjsBlogPostPreview extends GrampsjsAppStateMixin(LitElement) {
         h3 {
           font-family: var(--grampsjs-heading-font-family);
           font-size: 20px;
-          margin-bottom: 20px;
-          font-weight: 400;
+          margin-bottom: 8px;
+          font-weight: var(--grampsjs-font-weight-heading);
           margin-top: 0;
           line-height: 1.3em;
-          min-height: 2.6em;
-          color: var(--grampsjs-body-font-color-75);
+          color: var(--grampsjs-body-font-color);
         }
 
         #image {
@@ -33,17 +32,17 @@ export class GrampsjsBlogPostPreview extends GrampsjsAppStateMixin(LitElement) {
         #note {
           flex-grow: 1;
           font-size: 17px;
-          font-weight: 300;
-          color: var(--grampsjs-body-font-color-70);
+          font-weight: var(--grampsjs-font-weight-body);
+          color: var(--grampsjs-body-font-color);
           line-height: 1.45em;
         }
 
         #date {
-          color: var(--grampsjs-body-font-color-60);
+          color: var(--grampsjs-text-secondary-color);
           font-size: 14px;
           letter-spacing: 0.02em;
-          margin: 2em 0;
-          font-weight: 250;
+          margin: 12px 0 0 0;
+          font-weight: var(--grampsjs-font-weight-body);
         }
 
         .clear {
@@ -52,6 +51,7 @@ export class GrampsjsBlogPostPreview extends GrampsjsAppStateMixin(LitElement) {
 
         #content {
           display: flex;
+          gap: 16px;
         }
 
         @media (max-width: 500px) {
@@ -87,12 +87,7 @@ export class GrampsjsBlogPostPreview extends GrampsjsAppStateMixin(LitElement) {
         </div>
         <div class="clear"></div>
         <div id="date">
-          ${this.appState.i18n.lang
-            ? html`<grampsjs-timedelta
-                timestamp="${this.data.change}"
-                locale="${this.appState.i18n.lang}"
-              ></grampsjs-timedelta>`
-            : ''}
+          ${formatBlogPostDate(this.data, this.appState.i18n.lang)}
         </div>
       </div>
     `

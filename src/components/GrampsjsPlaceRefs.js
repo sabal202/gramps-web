@@ -24,6 +24,7 @@ export class GrampsjsPlaceRefs extends GrampsjsEditableList {
     this.hasShare = true
     this.hasEdit = true
     this.hasReorder = true
+    this.listProp = 'placeref_list'
     this._places = []
   }
 
@@ -34,13 +35,14 @@ export class GrampsjsPlaceRefs extends GrampsjsEditableList {
     const dateStr = this.profile[i]?.date_str || ''
     return html`
       <md-list-item
-        type="button"
+        type="${this.edit || !place?.gramps_id ? 'button' : 'link'}"
+        href="${this.edit || !place?.gramps_id
+          ? ''
+          : `/place/${place.gramps_id}`}"
         class="${classMap({selected: i === this._selectedIndex})}"
         @click="${() => {
           if (this.edit) {
             this._handleSelected(i)
-          } else {
-            this._handleClick(place?.gramps_id)
           }
         }}"
       >
@@ -87,12 +89,6 @@ export class GrampsjsPlaceRefs extends GrampsjsEditableList {
     }&profile=self`
   }
 
-  _handleClick(grampsId) {
-    if (grampsId) {
-      fireEvent(this, 'nav', {path: `place/${grampsId}`})
-    }
-  }
-
   _handleShare() {
     this.dialogContent = html`
       <grampsjs-form-placeref
@@ -127,24 +123,6 @@ export class GrampsjsPlaceRefs extends GrampsjsEditableList {
       action: 'delPlace',
       index: this._selectedIndex,
     })
-  }
-
-  _handleUp() {
-    if (this._selectedIndex === -1) return
-    fireEvent(this, 'edit:action', {
-      action: 'upPlace',
-      index: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(true)
-  }
-
-  _handleDown() {
-    if (this._selectedIndex === -1) return
-    fireEvent(this, 'edit:action', {
-      action: 'downPlace',
-      index: this._selectedIndex,
-    })
-    this._updateSelectionAfterReorder(false)
   }
 
   _handlePlaceRefAdd(e) {

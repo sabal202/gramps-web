@@ -116,7 +116,7 @@ const _allTabs = {
     condition: data =>
       data?.profile?.participants?.people?.length ||
       data?.profile?.participants?.families?.length,
-    conditionEdit: data => false,
+    conditionEdit: data => 'participants' in (data?.profile ?? {}),
   },
   gallery: {
     title: 'Gallery',
@@ -246,6 +246,12 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           min-width: 0;
         }
 
+        /* the object's toolbar, at the end of the heading's first line */
+        .profile > .actions {
+          float: right;
+          margin: 12px 0 0 16px;
+        }
+
         .content-wrapper {
           display: flex;
           margin-top: 30px;
@@ -282,7 +288,7 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           margin-bottom: 1.5rem;
           font-size: 24px;
           padding-bottom: 12px;
-          border-bottom: 1px solid var(--md-sys-color-outline-variant);
+          border-bottom: 1px solid var(--grampsjs-divider-color);
         }
 
         .section * {
@@ -415,6 +421,7 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
       data: {type: Object},
       edit: {type: Boolean},
       preview: {type: Boolean},
+      actions: {attribute: false},
       dialogContent: {type: String},
       _objectsName: {type: String},
       _objectEndpoint: {type: String},
@@ -429,6 +436,7 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
     this.data = {}
     this.edit = false
     this.preview = false
+    this.actions = ''
     this.dialogContent = ''
     this._objectsName = 'Objects'
     this._objectIcon = ''
@@ -485,6 +493,12 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
     return this._wide
   }
 
+  // the headline of an event page, which has the participants list
+  // eslint-disable-next-line class-methods-use-this
+  _eventTitle() {
+    return ''
+  }
+
   render() {
     if (Object.keys(this.data).length === 0) {
       return html``
@@ -494,7 +508,12 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
 
       <div class="header">
         <div id="picture">${this.renderPicture()}</div>
-        <div class="profile">${this.renderProfile()}</div>
+        <div class="profile">
+          ${this.actions
+            ? html`<div class="actions">${this.actions}</div>`
+            : ''}
+          ${this.renderProfile()}
+        </div>
       </div>
 
       <div class="tags">${this.renderTags()}</div>
@@ -572,31 +591,19 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
     const ref = this.data.media_list[0]
     const obj = this.data.extended.media[0]
     return html`
-      <grampsjs-img
-        handle="${obj.handle}"
-        size="200"
-        displayHeight="200"
-        .rect="${ref.rect || []}"
-        square
-        circle
-        mime="${obj.mime}"
-        checksum="${obj.checksum}"
-        @click="${() => this._handleImgClick(obj.gramps_id)}"
-        class="link"
-      ></grampsjs-img>
+      <a href="/media/${obj.gramps_id}" aria-label="${this._('Media Object')}">
+        <grampsjs-img
+          handle="${obj.handle}"
+          size="200"
+          displayHeight="200"
+          .rect="${ref.rect || []}"
+          square
+          circle
+          mime="${obj.mime}"
+          checksum="${obj.checksum}"
+        ></grampsjs-img>
+      </a>
     `
-  }
-
-  _handleImgClick(grampsId) {
-    this.dispatchEvent(
-      new CustomEvent('nav', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          path: `media/${grampsId}`,
-        },
-      })
-    )
   }
 
   renderSections() {
@@ -799,6 +806,7 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           .data=${this.data?.extended?.events}
           .profile=${this.data?.profile?.events}
           .eventRef=${this.data?.event_ref_list}
+          ownerHandle="${this.data?.handle || ''}"
           ?edit="${this.edit}"
         ></grampsjs-events>`
       case 'placeEvents':
@@ -841,17 +849,13 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           active
           .appState="${this.appState}"
           ?edit="${this.edit}"
-          .grampsIds=${(this.data?.extended?.citations || [])
-            .map(obj => obj.gramps_id)
-            .filter(obj => Boolean(obj))}
+          .handles=${this.data?.citation_list || []}
         ></grampsjs-view-source-citations>`
       case 'notes':
         return html` <grampsjs-view-object-notes
           active
           .appState="${this.appState}"
-          .grampsIds=${(this.data?.extended?.notes || [])
-            .map(obj => obj.gramps_id)
-            .filter(obj => Boolean(obj))}
+          .handles=${this.data?.note_list || []}
           ?edit="${this.edit}"
           numberOfNotes="${this.data?.note_list?.length || 0}"
           objType="${this._objectEndpoint}"
@@ -861,7 +865,9 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           .appState="${this.appState}"
           .media=${this.data?.extended?.media}
           .mediaRef=${this.data?.media_list}
-          ?profilePicture=${this._objectEndpoint === 'people'}
+          firstTileLabel=${this._objectEndpoint === 'people'
+            ? this._('Profile picture')
+            : ''}
           ?edit="${this.edit}"
         ></grampsjs-gallery>`
       case 'metadata':
@@ -912,6 +918,9 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
           .data=${[this.data?.profile?.participants]}
           .backlinksPeople=${this.data?.extended?.backlinks?.person || []}
           .backlinksFamilies=${this.data?.extended?.backlinks?.family || []}
+          eventHandle="${this.data?.handle || ''}"
+          eventTitle="${this._eventTitle()}"
+          ?edit="${this.edit}"
         ></grampsjs-participants>`
       case 'repositories':
         return html` <grampsjs-repositories
@@ -950,7 +959,6 @@ export class GrampsjsObject extends GrampsjsAppStateMixin(LitElement) {
         _allTabs[key].condition(this.data) &&
         (this._showReferences || key !== 'references') &&
         (key !== 'history' || this.appState.permissions.canEdit)
-
     )
   }
 
