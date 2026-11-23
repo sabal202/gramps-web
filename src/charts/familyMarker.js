@@ -26,10 +26,11 @@ export const familyMarkerPosition = [-2, 0]
 // Partners who are not next to each other are joined by a bracket, which the
 // caller draws.
 // The chip encodes the union status (from the node's `union` datum:
-// {maritalStatus, marriage, divorce} — see buildFamilyUnionMap): rings inside
-// the chip, a slash across them for divorces, a cross above for widowed, and
-// an optional year label above. Families without a derived status follow the
-// upstream convention: solid chip for married, dashed otherwise.
+// {maritalStatus, marriage, divorce} — see buildFamilyUnionMap): solid for
+// married, dashed for unmarried partners, a slash across it for divorces, a
+// cross above for widowed, and an optional year label above. Families
+// without a derived status follow the upstream convention: solid chip for
+// married, dashed otherwise.
 export function appendFamilyMarker(
   nodes,
   {palette = chartPalette, showUnionDates = false} = {}
@@ -79,43 +80,11 @@ export function appendFamilyMarker(
   // Union status overlays never intercept the chip's hover/click events
   const overlay = sel => sel.attr('pointer-events', 'none')
 
-  // Ring(s): two for married/divorced, one for partners/widowed
-  overlay(
-    withUnion
-      .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings >= 1)
-      .append('circle')
-      .attr('class', 'union-ring union-ring-left')
-      .attr('r', 5)
-      .attr('cx', d =>
-        maritalStatusToMarker(d.union.maritalStatus).rings === 2 ? x - 5 : x
-      )
-      .attr('cy', y)
-      .attr('stroke', palette.familyMarker)
-      .attr('stroke-width', 1)
-      .attr('fill', d =>
-        maritalStatusToMarker(d.union.maritalStatus).filled
-          ? palette.familyMarkerFill
-          : 'none'
-      )
-  )
-  overlay(
-    withUnion
-      .filter(d => maritalStatusToMarker(d.union.maritalStatus).rings === 2)
-      .append('circle')
-      .attr('class', 'union-ring union-ring-right')
-      .attr('r', 5)
-      .attr('cx', x + 5)
-      .attr('cy', y)
-      .attr('stroke', palette.familyMarker)
-      .attr('stroke-width', 1)
-      .attr('fill', d =>
-        maritalStatusToMarker(d.union.maritalStatus).filled
-          ? palette.familyMarkerFill
-          : 'none'
-      )
-  )
+  // The chip itself carries married (solid) vs unmarried (dashed) — see the
+  // dasharray logic above. Only the states the chip cannot encode are drawn
+  // on top of it.
 
-  // Divorce slash — diagonal line across the rings
+  // Divorce slash — diagonal line across the chip
   overlay(
     withUnion
       .filter(d => maritalStatusToMarker(d.union.maritalStatus).slash)
